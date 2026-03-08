@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/internal/terminal/iterm"
 )
 
 func checkBackend(backend terminal.Backend) tea.Cmd {
@@ -137,6 +138,17 @@ func listDirs(watchDirs []string) tea.Cmd {
 			return dirs[i].Name < dirs[j].Name
 		})
 		return DirBrowserMsg{Dirs: dirs}
+	}
+}
+
+func discoverAgent(backend terminal.Backend, sess terminal.Session, agentType model.AgentType, watchDirs []string, projectDirs []string) tea.Cmd {
+	return func() tea.Msg {
+		dir := iterm.DiscoverCWD(backend, sess, watchDirs, projectDirs)
+		return AgentDiscoveredMsg{
+			SessionID: sess.ID,
+			AgentType: agentType,
+			Dir:       dir,
+		}
 	}
 }
 

@@ -144,6 +144,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case AgentDiscoveredMsg:
+		return m.handleAgentDiscovered(msg)
+
 	case ScreenReadMsg:
 		return m.handleScreenRead(msg)
 
@@ -207,8 +210,12 @@ func (m Model) viewProjectList() string {
 			activeCount++
 		}
 	}
+	var selected *projectRow
+	if m.cursor >= 0 && m.cursor < len(m.rows) {
+		selected = &m.rows[m.cursor]
+	}
 	sb.WriteString("\n")
-	sb.WriteString(renderFooter(len(m.rows), activeCount))
+	sb.WriteString(renderFooter(len(m.rows), activeCount, selected))
 
 	if m.statusText != "" {
 		sb.WriteString("\n")
@@ -345,9 +352,11 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, keys.Enter):
-		// Toggle expand — for now just show path in status
 		if m.cursor >= 0 && m.cursor < len(m.rows) {
 			r := m.rows[m.cursor]
+			if r.session != nil {
+				return m.openChat()
+			}
 			m.statusText = r.project.Dir
 		}
 		return m, nil
@@ -549,6 +558,10 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	// Auto-discover untracked agent sessions
 	var cmds []tea.Cmd
 	liveIDs := make(map[string]bool)
+	projectDirs := make([]string, len(m.store.Projects))
+	for i, p := range m.store.Projects {
+		projectDirs[i] = p.Dir
+	}
 	for _, sess := range msg.Sessions {
 		liveIDs[sess.ID] = true
 		if trackedIDs[sess.ID] {
@@ -558,29 +571,8 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		if agentType == "" {
 			continue
 		}
-		// Try to discover CWD — we'll do a simple name match for now
-		// Full CWD discovery (lsof etc.) happens in iterm package
-		dir := matchProjectDir(sess.Name, m.store.Projects)
-		if dir == "" {
-			continue
-		}
-		p := m.store.AddProject(dir)
-		if p != nil {
-			_ = m.store.SaveProjects()
-		}
-		as := &model.AgentSession{
-			ProjectDir: dir,
-			SessionID:  sess.ID,
-			Type:       agentType,
-			Status:     model.StatusWorking,
-		}
-		m.store.SetSession(as)
-		_ = m.store.SaveSessions()
-
-		// Start monitoring
-		logPath := filepath.Join(m.monitorDir, filepath.Base(dir)+".log")
-		cmds = append(cmds, startMonitor(m.backend, sess.ID, logPath,
-			`Allow|Permission|Error:|\\?$|Waiting for|\u276f`, dir))
+		// Dispatch async CWD discovery (lsof, get-var, name match)
+		cmds = append(cmds, discoverAgent(m.backend, sess, agentType, m.watchDirs, projectDirs))
 	}
 
 	// Remove sessions for dead iTerm sessions
@@ -596,6 +588,37 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
+	if msg.Dir == "" {
+		return m, nil
+	}
+	// Skip if this session was already tracked (race with multiple ticks)
+	if m.store.SessionByID(msg.SessionID) != nil {
+		return m, nil
+	}
+
+	p := m.store.AddProject(msg.Dir)
+	if p != nil {
+		_ = m.store.SaveProjects()
+	}
+
+	as := &model.AgentSession{
+		ProjectDir: msg.Dir,
+		SessionID:  msg.SessionID,
+		Type:       msg.AgentType,
+		Status:     model.StatusWorking,
+	}
+	m.store.SetSession(as)
+	_ = m.store.SaveSessions()
+
+	m.rows = buildRows(storeAdapter{m.store})
+
+	// Start monitoring
+	logPath := filepath.Join(m.monitorDir, filepath.Base(msg.Dir)+".log")
+	return m, startMonitor(m.backend, msg.SessionID, logPath,
+		`Allow|Permission|Error:|\\?$|Waiting for|\u276f`, msg.Dir)
 }
 
 func matchProjectDir(sessionName string, projects []*model.Project) string {

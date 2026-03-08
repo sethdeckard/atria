@@ -658,6 +658,93 @@ func TestSessionsRefreshedRemovesDeadSessions(t *testing.T) {
 	}
 }
 
+func TestSessionsRefreshedDispatchesDiscovery(t *testing.T) {
+	store := makeStore(t)
+	// No existing projects — the agent should be discovered via CWD
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	updated, cmd := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "new-sess", Name: "\u2733 Claude Code (claude)", TTY: "/dev/ttys005"},
+		},
+	})
+	_ = modelFrom(updated)
+	if cmd == nil {
+		t.Fatal("expected discovery command for untracked agent session")
+	}
+}
+
+func TestAgentDiscoveredMsg(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{monitorPID: 99}, store)
+	m.width = 80
+
+	updated, cmd := m.Update(AgentDiscoveredMsg{
+		SessionID: "sess-new",
+		AgentType: model.AgentClaude,
+		Dir:       "/a/discovered",
+	})
+	um := modelFrom(updated)
+
+	proj := um.store.FindProject("/a/discovered")
+	if proj == nil {
+		t.Fatal("expected project to be auto-added")
+	}
+	session := um.store.GetSession("/a/discovered")
+	if session == nil {
+		t.Fatal("expected session to be created")
+	}
+	if session.SessionID != "sess-new" {
+		t.Errorf("expected session ID sess-new, got %q", session.SessionID)
+	}
+	if session.Type != model.AgentClaude {
+		t.Errorf("expected claude, got %q", session.Type)
+	}
+	if cmd == nil {
+		t.Error("expected monitor start command")
+	}
+}
+
+func TestAgentDiscoveredEmptyDir(t *testing.T) {
+	m := newTestModelWithStore(&mockBackend{}, makeStore(t))
+	updated, cmd := m.Update(AgentDiscoveredMsg{
+		SessionID: "sess-1",
+		AgentType: model.AgentCodex,
+		Dir:       "",
+	})
+	um := modelFrom(updated)
+	if len(um.store.Sessions) != 0 {
+		t.Error("expected no session for empty dir")
+	}
+	if cmd != nil {
+		t.Error("expected no command for empty dir")
+	}
+}
+
+func TestAgentDiscoveredDuplicate(t *testing.T) {
+	store := makeStore(t)
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/existing",
+		SessionID:  "sess-1",
+		Type:       model.AgentClaude,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Same session ID discovered again — should be skipped
+	updated, cmd := m.Update(AgentDiscoveredMsg{
+		SessionID: "sess-1",
+		AgentType: model.AgentClaude,
+		Dir:       "/a/existing",
+	})
+	um := modelFrom(updated)
+	if len(um.store.Sessions) != 1 {
+		t.Errorf("expected 1 session, got %d", len(um.store.Sessions))
+	}
+	if cmd != nil {
+		t.Error("expected no command for duplicate")
+	}
+}
+
 func TestStatusUpdatedMsg(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")

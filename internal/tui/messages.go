@@ -76,3 +76,10 @@ type ScreenReadMsg struct {
 	Content    string
 	Err        error
 }
+
+// AgentDiscoveredMsg is sent when an untracked agent's CWD has been resolved.
+type AgentDiscoveredMsg struct {
+	SessionID string
+	AgentType model.AgentType
+	Dir       string // resolved working directory, empty if not found
+}

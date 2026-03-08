@@ -198,8 +198,19 @@ func renderEmptyState() string {
 	return sb.String()
 }
 
-func renderFooter(rowCount, activeCount int) string {
+func renderFooter(rowCount, activeCount int, selected *projectRow) string {
 	left := fmt.Sprintf(" %d projects  %d active", rowCount, activeCount)
-	right := "? help  q quit"
+
+	var hints []string
+	if selected != nil {
+		if selected.session != nil {
+			hints = append(hints, "enter send", "f focus")
+		} else {
+			hints = append(hints, "c claude", "x codex")
+		}
+	}
+	hints = append(hints, "a add", "? help", "q quit")
+
+	right := strings.Join(hints, "  ")
 	return footerStyle.Render(left + "    " + right)
 }
