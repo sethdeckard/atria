@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +72,9 @@ type Model struct {
 
 	// Monitor PIDs to clean up
 	monitorPIDs []int
+
+	// Debug logger (nil = no logging)
+	debugLog *log.Logger
 }
 
 type storeAdapter struct {
@@ -570,9 +574,13 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	for _, sess := range msg.Sessions {
 		if as := m.store.SessionByID(sess.ID); as != nil {
 			activity := terminal.ExtractActivity(sess.Name)
-			if activity != "" {
+			if activity != "" && activity != as.Activity {
 				as.Activity = activity
 				as.LastActivity = time.Now()
+				as.Status = model.StatusWorking
+				// Clear stale attention from previous needs_input
+				as.Attention = ""
+				delete(m.attentionDirs, as.ProjectDir)
 			}
 		}
 	}
@@ -740,6 +748,8 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 	}
 	// Clear attention when status moves away from needs_input
 	if prevStatus == model.StatusNeedsInput && msg.Status != model.StatusNeedsInput && msg.Status != "" {
+		as.Attention = ""
+		m.statusText = ""
 		delete(m.attentionDirs, msg.ProjectDir)
 	}
 
@@ -772,12 +782,83 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	as.ScreenChecked = true
-	status := terminal.ClassifyOutput(msg.Content)
-	if status != "" {
-		as.InitialStatus = status
-		as.Status = status
-		as.LastActivity = time.Now()
-		m.rows = buildRows(storeAdapter{m.store})
+	// Strip null bytes from screen content (it2 read-screen returns \x00 for spaces)
+	content := strings.ReplaceAll(msg.Content, "\x00", " ")
+	screenChanged := content != as.LastScreen
+	as.LastScreen = content
+	status, matchLine := terminal.ClassifyScreen(content)
+
+	if m.debugLog != nil {
+		proj := filepath.Base(msg.ProjectDir)
+		escaped := strings.ReplaceAll(content, "\n", "\\n")
+		m.debugLog.Printf("[screen] %s prev=%s new=%s changed=%v match=%q content=%q",
+			proj, as.Status, status, screenChanged, matchLine, escaped)
+	}
+
+	if status == "" {
+		// Screen changed but no pattern match while in needs_input →
+		// the agent moved on, transition to working
+		if screenChanged && as.Status == model.StatusNeedsInput {
+			status = model.StatusWorking
+		} else {
+			return m, nil
+		}
+	}
+
+	// Skip stale screen reads (identical content)
+	if !screenChanged && status == as.Status {
+		return m, nil
+	}
+	// Screen reads reliably detect needs_input and error.
+	// For working/idle, session name activity is the primary signal since
+	// Claude's bottom screen lines are often blank padding.
+	if status == model.StatusIdle || status == model.StatusWorking {
+		// Only transition to idle if not recently active (session name changes)
+		if status == model.StatusIdle && as.Status == model.StatusWorking {
+			if !as.LastActivity.IsZero() && time.Since(as.LastActivity) < 10*time.Second {
+				return m, nil
+			}
+		}
+	}
+
+	prevStatus := as.Status
+	as.Status = status
+	as.LastActivity = time.Now()
+	if status == model.StatusNeedsInput {
+		as.Attention = matchLine
+	}
+
+	// Add to chat if viewing this project
+	if m.view == viewChat && m.chatProject == msg.ProjectDir && status == model.StatusNeedsInput && as.Attention != "" {
+		m.chat.addEntry(model.ChatEntry{
+			Timestamp: time.Now(),
+			Direction: "received",
+			Text:      as.Attention,
+		})
+	}
+
+	m.rows = buildRows(storeAdapter{m.store})
+
+	// Bell on needs_input transition
+	if status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
+		if m.attentionDirs == nil {
+			m.attentionDirs = make(map[string]time.Time)
+		}
+		m.attentionDirs[msg.ProjectDir] = time.Now()
+		cmds := []tea.Cmd{bellCmd()}
+		if cmd := m.ensureSpinner(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
+	}
+	if prevStatus == model.StatusNeedsInput && status != model.StatusNeedsInput {
+		as.Attention = ""
+		m.statusText = ""
+		delete(m.attentionDirs, msg.ProjectDir)
+	}
+
+	if cmd := m.ensureSpinner(); cmd != nil {
+		return m, cmd
 	}
 	return m, nil
 }
@@ -789,13 +870,9 @@ func (m Model) handleTick() (Model, tea.Cmd) {
 	if m.backendOK {
 		cmds = append(cmds, refreshSessions(m.backend))
 
-		// Check status for all monitored sessions
+		// Read screen for status detection on all tracked sessions
 		for _, s := range m.store.Sessions {
-			if s.MonitorLog != "" {
-				cmds = append(cmds, checkStatus(s.ProjectDir, s.MonitorLog))
-			} else if !s.ScreenChecked {
-				cmds = append(cmds, readScreen(m.backend, s.SessionID, s.ProjectDir))
-			}
+			cmds = append(cmds, readScreen(m.backend, s.SessionID, s.ProjectDir))
 		}
 	}
 
@@ -842,6 +919,16 @@ func (m *Model) ensureSpinner() tea.Cmd {
 	}
 	m.spinnerActive = true
 	return spinnerTickCmd()
+}
+
+// EnableDebugLog sets up debug logging to the given file path.
+func (m *Model) EnableDebugLog(path string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	m.debugLog = log.New(f, "", log.Ltime|log.Lmicroseconds)
+	return nil
 }
 
 // EnsureMonitorDir creates the monitor directory if needed.

@@ -83,32 +83,9 @@ func startMonitor(backend terminal.Backend, sessionID, logPath, patterns string,
 	}
 }
 
-func checkStatus(projectDir, logPath string) tea.Cmd {
-	return func() tea.Msg {
-		line := terminal.ReadLastLine(logPath)
-		status := terminal.ClassifyOutput(line)
-		attention := ""
-		// Check recent output for bell character as needs_input signal
-		if status != model.StatusNeedsInput {
-			tail := terminal.ReadTail(logPath, 512)
-			if terminal.HasBell(tail) {
-				status = model.StatusNeedsInput
-			}
-		}
-		if status == model.StatusNeedsInput {
-			attention = strings.ReplaceAll(line, "\x07", "")
-		}
-		return StatusUpdatedMsg{
-			ProjectDir: projectDir,
-			Status:     status,
-			Attention:  attention,
-		}
-	}
-}
-
 func readScreen(backend terminal.Backend, sessionID, projectDir string) tea.Cmd {
 	return func() tea.Msg {
-		content, err := backend.ReadScreen(sessionID, 3)
+		content, err := backend.ReadScreen(sessionID, 5)
 		return ScreenReadMsg{
 			ProjectDir: projectDir,
 			Content:    content,

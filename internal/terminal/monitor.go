@@ -12,6 +12,7 @@ var (
 	needsInputPattern = regexp.MustCompile(`(?i)(Allow|Permission|\?$|Continue|Waiting for|Do you want to proceed|Esc to cancel)`)
 	bellPattern       = regexp.MustCompile("\x07")
 	errorPattern      = regexp.MustCompile(`Error:`)
+	workingPattern    = regexp.MustCompile(`[✻✶·] \S+…|esc to interrupt`)
 	idlePattern       = regexp.MustCompile(`❯|›|\? for shortcuts|(\$ $)`)
 	completedPattern  = regexp.MustCompile(`✓|completed|No findings`)
 )
@@ -36,11 +37,7 @@ func ReadLastLine(logPath string) string {
 	return ""
 }
 
-// ClassifyOutput determines agent status from output text.
-// Returns needs_input for permission prompts, questions, or bell characters.
-// Returns error for error messages.
-// Returns idle for shell/agent prompts and completion signals.
-// Returns "" (empty) if no match.
+// ClassifyOutput determines agent status from a single line of output text.
 func ClassifyOutput(text string) model.AgentStatus {
 	if bellPattern.MatchString(text) {
 		return model.StatusNeedsInput
@@ -54,6 +51,10 @@ func ClassifyOutput(text string) model.AgentStatus {
 		return model.StatusError
 	}
 
+	if workingPattern.MatchString(text) {
+		return model.StatusWorking
+	}
+
 	if completedPattern.MatchString(text) {
 		return model.StatusIdle
 	}
@@ -63,6 +64,48 @@ func ClassifyOutput(text string) model.AgentStatus {
 	}
 
 	return ""
+}
+
+// statusPriority returns a numeric priority for status (lower = more urgent).
+func statusPriority(s model.AgentStatus) int {
+	switch s {
+	case model.StatusNeedsInput:
+		return 0
+	case model.StatusError:
+		return 1
+	case model.StatusWorking:
+		return 2
+	case model.StatusIdle:
+		return 3
+	default:
+		return 4
+	}
+}
+
+// ClassifyScreen checks each line of multi-line screen content and returns
+// the highest priority status found. This prevents idle prompts (always
+// visible) from masking needs_input or error states on other lines.
+func ClassifyScreen(content string) (model.AgentStatus, string) {
+	lines := strings.Split(content, "\n")
+	bestStatus := model.AgentStatus("")
+	bestLine := ""
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		status := ClassifyOutput(line)
+		if status == "" {
+			continue
+		}
+		if bestStatus == "" || statusPriority(status) < statusPriority(bestStatus) {
+			bestStatus = status
+			bestLine = line
+		}
+	}
+
+	return bestStatus, bestLine
 }
 
 // ReadTail reads the last n bytes of a log file.

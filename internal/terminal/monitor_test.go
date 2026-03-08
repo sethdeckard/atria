@@ -3,6 +3,7 @@ package terminal
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sethdeckard/atria/internal/model"
@@ -33,7 +34,12 @@ func TestClassifyOutput(t *testing.T) {
 		{"no findings", "No findings reported", model.StatusIdle},
 		{"bell character", "\x07", model.StatusNeedsInput},
 		{"bell with text", "prompt\x07here", model.StatusNeedsInput},
-		{"working output", "Compiling main.go...", ""},
+		{"claude working spinner", "✻ Reading…", model.StatusWorking},
+		{"claude thinking", "✶ Doodling… (thought for 6s)", model.StatusWorking},
+		{"claude dot spinner", "· Doodling… (48s)", model.StatusWorking},
+		{"claude esc to interrupt", "esc to interrupt", model.StatusWorking},
+		{"claude done static", "✻", ""},
+		{"generic working output", "Compiling main.go...", ""},
 		{"empty string", "", ""},
 		{"random text", "Hello world", ""},
 	}
@@ -109,6 +115,63 @@ func TestReadLastLine(t *testing.T) {
 			t.Errorf("ReadLastLine() = %q, want %q", got, "")
 		}
 	})
+}
+
+func TestClassifyScreen(t *testing.T) {
+	tests := []struct {
+		name       string
+		content    string
+		wantStatus model.AgentStatus
+		wantLine   string
+	}{
+		{
+			"needs_input wins over idle",
+			"Do you want to proceed?\n❯ prompt here\n? for shortcuts",
+			model.StatusNeedsInput,
+			"Do you want to proceed?",
+		},
+		{
+			"working wins over idle",
+			"✻ Reading…\n❯ \n? for shortcuts",
+			model.StatusWorking,
+			"✻ Reading…",
+		},
+		{
+			"idle only",
+			"some output\n❯ \n? for shortcuts",
+			model.StatusIdle,
+			"❯",
+		},
+		{
+			"error wins over idle",
+			"Error: something broke\n❯ prompt",
+			model.StatusError,
+			"Error: something broke",
+		},
+		{
+			"empty content",
+			"",
+			"",
+			"",
+		},
+		{
+			"no match",
+			"just some random text\nnothing special",
+			"",
+			"",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, line := ClassifyScreen(tt.content)
+			if status != tt.wantStatus {
+				t.Errorf("ClassifyScreen() status = %q, want %q", status, tt.wantStatus)
+			}
+			if tt.wantLine != "" && !strings.Contains(line, tt.wantLine) {
+				t.Errorf("ClassifyScreen() line = %q, want containing %q", line, tt.wantLine)
+			}
+		})
+	}
 }
 
 func TestHasBell(t *testing.T) {

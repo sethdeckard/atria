@@ -62,6 +62,7 @@ type AgentSession struct {
 	LastActivity  time.Time   `json:"-"`
 	ScreenChecked bool        `json:"-"`
 	InitialStatus AgentStatus `json:"-"`
+	LastScreen    string      `json:"-"`
 }
 
 type ChatEntry struct {

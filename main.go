@@ -15,15 +15,19 @@ import (
 )
 
 func main() {
+	debug := false
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--uninstall-it2":
 			iterm.Uninstall()
 			return
+		case "--debug":
+			debug = true
 		case "--help", "-h":
 			fmt.Println("Usage: atria [options]")
 			fmt.Println()
 			fmt.Println("Options:")
+			fmt.Println("  --debug           Log screen reads to /tmp/atria-debug.log")
 			fmt.Println("  --uninstall-it2   Remove the auto-installed it2 venv")
 			fmt.Println("  --help, -h        Show this help")
 			return
@@ -59,6 +63,12 @@ func main() {
 	}
 
 	m := tui.NewModel(cached, store, cfg.WatchDirs, cfg.MonitorDir)
+
+	if debug {
+		if err := m.EnableDebugLog("/tmp/atria-debug.log"); err != nil {
+			fmt.Fprintf(os.Stderr, "debug log error: %v\n", err)
+		}
+	}
 
 	// Cleanup monitors on exit
 	sigCh := make(chan os.Signal, 1)
