@@ -1097,8 +1097,8 @@ func TestViewProjectListEmpty(t *testing.T) {
 	m.availableAgents = []model.AgentType{model.AgentClaude, model.AgentCodex}
 	m.defaultAgent = model.AgentClaude
 	v := m.View()
-	if !strings.Contains(v, "Agents") {
-		t.Error("expected Agents title")
+	if !strings.Contains(v, "agents") {
+		t.Error("expected agents title")
 	}
 	if !strings.Contains(v, "Agent orchestration") {
 		t.Error("expected tagline in empty state")
@@ -1155,9 +1155,20 @@ func TestViewProjectListWithAgents(t *testing.T) {
 	if !strings.Contains(v, "l:launch (Claude)") {
 		t.Error("expected launch hint with agent name")
 	}
-	// Should show path lines
+	// Directory should be inline in the row
 	if !strings.Contains(v, "/a/alpha") {
 		t.Error("expected path for alpha")
+	}
+	// Column headers
+	if !strings.Contains(v, "agent") {
+		t.Error("expected column header 'agent'")
+	}
+	if !strings.Contains(v, "harness") {
+		t.Error("expected column header 'harness'")
+	}
+	// Branding
+	if !strings.Contains(v, "atria") {
+		t.Error("expected atria branding")
 	}
 }
 
@@ -1292,5 +1303,71 @@ func TestShellEscape(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("shellEscape(%q) = %q, want %q", tc.input, got, tc.expected)
 		}
+	}
+}
+
+func TestScrollOffset(t *testing.T) {
+	store := makeStore(t)
+	// Create enough projects to exceed a small terminal
+	dirs := []string{"/a/p1", "/a/p2", "/a/p3", "/a/p4", "/a/p5", "/a/p6", "/a/p7", "/a/p8", "/a/p9", "/a/p10"}
+	store.Projects = makeProjects(dirs...)
+	for _, p := range store.Projects {
+		store.SetSession(&model.AgentSession{
+			ProjectDir: p.Dir,
+			SessionID:  "sess-" + p.Name,
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+		})
+	}
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 100
+	m.height = 12 // small: header(4) + footer(2) = 6 overhead, so ~6 visible rows
+
+	if m.scrollOffset != 0 {
+		t.Fatalf("expected initial scrollOffset 0, got %d", m.scrollOffset)
+	}
+
+	// Navigate down past visible area
+	var updated tea.Model
+	for i := 0; i < 9; i++ {
+		updated, _ = m.Update(keyMsg("j"))
+		m = modelFrom(updated)
+	}
+	if m.cursor != 9 {
+		t.Errorf("expected cursor at 9, got %d", m.cursor)
+	}
+	if m.scrollOffset == 0 {
+		t.Error("expected scrollOffset to increase when cursor moves past visible area")
+	}
+
+	// Navigate back up
+	for i := 0; i < 9; i++ {
+		updated, _ = m.Update(keyMsg("k"))
+		m = modelFrom(updated)
+	}
+	if m.cursor != 0 {
+		t.Errorf("expected cursor at 0, got %d", m.cursor)
+	}
+	if m.scrollOffset != 0 {
+		t.Errorf("expected scrollOffset 0 after scrolling back up, got %d", m.scrollOffset)
+	}
+}
+
+func TestViewHeaderBranding(t *testing.T) {
+	m := newTestModelWithStore(&mockBackend{}, makeStore(t))
+	m.width = 80
+	m.height = 40
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	v := m.View()
+	if !strings.Contains(v, "atria") {
+		t.Error("expected atria branding in header")
+	}
+	if !strings.Contains(v, "agents") {
+		t.Error("expected agents title in header")
+	}
+	// Separator
+	if !strings.Contains(v, "\u2500") {
+		t.Error("expected horizontal separator")
 	}
 }

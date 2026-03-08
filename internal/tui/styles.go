@@ -5,8 +5,7 @@ import "github.com/charmbracelet/lipgloss"
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#1a1a2e", Dark: "#e0e0e0"}).
-			MarginBottom(1)
+			Foreground(lipgloss.AdaptiveColor{Light: "#1a1a2e", Dark: "#e0e0e0"})
 
 	selectedStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -85,4 +84,18 @@ var (
 	emptyKeyStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.AdaptiveColor{Light: "#4444aa", Dark: "#9999dd"})
+
+	selectedTextStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.AdaptiveColor{Light: "#1a1a2e", Dark: "#ffffff"}).
+				Background(lipgloss.AdaptiveColor{Light: "#d0d0ff", Dark: "#3a3a5c"})
+
+	brandingStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#555555"})
 )
+
+var selectedBg = lipgloss.AdaptiveColor{Light: "#d0d0ff", Dark: "#3a3a5c"}
+
+func withSelectedBg(s lipgloss.Style) lipgloss.Style {
+	return s.Background(selectedBg)
+}

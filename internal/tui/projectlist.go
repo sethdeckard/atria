@@ -60,50 +60,127 @@ func statusPriority(s *model.AgentSession) int {
 	}
 }
 
-func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, canToggle bool) string {
+// headerLines returns the number of lines the header occupies (branding + separator + column headers + blank).
+const headerLineCount = 3
+
+// footerLineCount is lines for the footer (margin + content).
+const footerLineCount = 3
+
+func renderHeader(width int) string {
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Agents"))
-	sb.WriteString("\n\n")
+
+	// Line 1: "Agents" left, "Atria" right
+	left := titleStyle.Render("  agents")
+	right := brandingStyle.Render("atria  ")
+	leftW := lipgloss.Width(left)
+	rightW := lipgloss.Width(right)
+	gap := width - leftW - rightW
+	if gap < 0 {
+		// Too narrow for branding — show title only
+		sb.WriteString(left)
+	} else {
+		sb.WriteString(left + strings.Repeat(" ", gap) + right)
+	}
+	sb.WriteString("\n")
+
+	// Line 2: separator (account for 2-char indent)
+	sepWidth := width - 2
+	if sepWidth < 1 {
+		sepWidth = 1
+	}
+	sb.WriteString(dimStyle.Render("  " + strings.Repeat("\u2500", sepWidth)))
+	sb.WriteString("\n")
+
+	return sb.String()
+}
+
+func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int) string {
+	name := fmt.Sprintf("  %-*s", nameWidth, "agent")
+	harness := fmt.Sprintf("%-*s", typeWidth, "harness")
+	dir := fmt.Sprintf("%-*s", dirWidth, "directory")
+
+	// status + updated fill the rest
+	remaining := totalWidth - lipgloss.Width(name) - typeWidth - dirWidth - 10
+	if remaining < 10 {
+		remaining = 10
+	}
+	status := fmt.Sprintf("%-*s", remaining, "status")
+	updated := "updated"
+
+	line := name + harness + dir + status + updated
+	return dimStyle.Render(line)
+}
+
+func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, canToggle bool, maxRows int, scrollOffset int) string {
+	var sb strings.Builder
+
+	sb.WriteString(renderHeader(width))
 
 	if len(rows) == 0 {
 		sb.WriteString(renderEmptyState(defaultAgent, canToggle))
 		return sb.String()
 	}
 
+	// Compute column widths
 	nameWidth := 20
 	typeWidth := 10
+	dirWidth := 20
 	for _, r := range rows {
 		dn := r.project.DisplayName(allProjects)
 		if len(dn) > nameWidth-2 {
 			nameWidth = len(dn) + 2
 		}
+		dp := contractHome(r.project.Dir)
+		if len(dp)+2 > dirWidth {
+			dirWidth = len(dp) + 2
+		}
 	}
 	if nameWidth > 30 {
 		nameWidth = 30
 	}
+	if dirWidth > 40 {
+		dirWidth = 40
+	}
 
-	for i, r := range rows {
-		pathLine := formatPathLine(r.project.Dir, nameWidth)
+	sb.WriteString(renderColumnHeaders(nameWidth, typeWidth, dirWidth, width))
+	sb.WriteString("\n")
+
+	// Clamp scroll to keep cursor visible regardless of how maxRows changed
+	if len(rows) <= maxRows || maxRows <= 0 {
+		scrollOffset = 0
+	} else {
+		if cursor < scrollOffset {
+			scrollOffset = cursor
+		} else if cursor >= scrollOffset+maxRows {
+			scrollOffset = cursor - maxRows + 1
+		}
+	}
+	visibleRows := rows
+	if maxRows > 0 && len(rows) > maxRows {
+		end := scrollOffset + maxRows
+		if end > len(rows) {
+			end = len(rows)
+		}
+		visibleRows = rows[scrollOffset:end]
+	}
+
+	for i, r := range visibleRows {
+		actualIdx := i + scrollOffset
 		_, hasAttention := attentionSessions[r.session.SessionID]
-		if i == cursor {
-			style := selectedStyle
-			if hasAttention {
-				style = attentionSelectedStyle
-			}
-			line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame, true)
-			sb.WriteString(style.Render(padToWidth(line, width)))
-			sb.WriteString("\n")
-			sb.WriteString(style.Render(padToWidth(pathLine, width)))
-		} else if hasAttention {
-			line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame, true)
-			sb.WriteString(attentionRowStyle.Render(padToWidth(line, width)))
-			sb.WriteString("\n")
-			sb.WriteString(attentionRowStyle.Render(padToWidth(pathLine, width)))
-		} else {
-			line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame, false)
+		isSelected := actualIdx == cursor
+
+		if isSelected && hasAttention {
+			line := formatRow(r, allProjects, nameWidth, typeWidth, dirWidth, width, spinnerFrame, true)
+			sb.WriteString(attentionSelectedStyle.Render(padToWidth(line, width)))
+		} else if isSelected {
+			line := formatSelectedRow(r, allProjects, nameWidth, typeWidth, dirWidth, width, spinnerFrame)
 			sb.WriteString(line)
-			sb.WriteString("\n")
-			sb.WriteString(pathStyle.Render(pathLine))
+		} else if hasAttention {
+			line := formatRow(r, allProjects, nameWidth, typeWidth, dirWidth, width, spinnerFrame, true)
+			sb.WriteString(attentionRowStyle.Render(padToWidth(line, width)))
+		} else {
+			line := formatRow(r, allProjects, nameWidth, typeWidth, dirWidth, width, spinnerFrame, false)
+			sb.WriteString(line)
 		}
 		sb.WriteString("\n")
 	}
@@ -120,26 +197,9 @@ func padToWidth(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
-func formatPathLine(dir string, nameWidth int) string {
-	displayPath := contractHome(dir)
-	gitInfo := detectGitWorktree(dir)
-	line := displayPath
-	if gitInfo.IsWorktree {
-		ann := "worktree"
-		if gitInfo.ParentRepo != "" {
-			ann = "worktree of " + gitInfo.ParentRepo
-		}
-		if gitInfo.Branch != "" {
-			ann += " \u00b7 " + gitInfo.Branch
-		}
-		line += "  " + ann
-	}
-	return "     " + line
-}
-
-// formatRow builds a row line. When plain is true, no inner styles are
+// formatRow builds a single-line row. When plain is true, no inner styles are
 // applied so a row-level style can wrap the whole line cleanly.
-func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, totalWidth int, spinnerFrame int, plain bool) string {
+func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, plain bool) string {
 	name := r.project.DisplayName(allProjects)
 	if len(name) > nameWidth-2 {
 		name = name[:nameWidth-3] + "\u2026"
@@ -150,23 +210,25 @@ func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth,
 	agentStr = strings.ToUpper(agentStr[:1]) + agentStr[1:]
 	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
 
+	dir := contractHome(r.project.Dir)
+	if len(dir) > dirWidth-2 {
+		dir = dir[:dirWidth-3] + "\u2026"
+	}
+	dirCol := fmt.Sprintf("%-*s", dirWidth, dir)
+
 	statusStr, style := formatStatus(r.session, spinnerFrame)
 
 	timeStr := ""
 	timeVisual := ""
 	if !r.session.LastActivity.IsZero() {
 		timeVisual = relativeTime(r.session.LastActivity)
-		if plain {
-			timeStr = timeVisual
-		} else {
-			timeStr = dimStyle.Render(timeVisual)
-		}
+		timeStr = timeVisual
 	}
 
 	// Build the line
-	remaining := totalWidth - lipgloss.Width(name) - typeWidth - len(timeVisual) - 4
-	if remaining < 0 {
-		remaining = 20
+	remaining := totalWidth - lipgloss.Width(name) - typeWidth - dirWidth - len(timeVisual) - 4
+	if remaining < 2 {
+		remaining = 2
 	}
 	if lipgloss.Width(statusStr) > remaining {
 		statusStr = statusStr[:remaining-1] + "\u2026"
@@ -181,7 +243,57 @@ func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth,
 	if pad < 0 {
 		pad = 0
 	}
-	return name + agentCol + statusCol + strings.Repeat(" ", pad) + timeStr
+	return name + agentCol + dirCol + statusCol + strings.Repeat(" ", pad) + timeStr
+}
+
+// formatSelectedRow builds a selected row where the status retains its color
+// on a purple background, while other columns get white text on purple.
+func formatSelectedRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int) string {
+	name := r.project.DisplayName(allProjects)
+	if len(name) > nameWidth-2 {
+		name = name[:nameWidth-3] + "\u2026"
+	}
+	nameStr := fmt.Sprintf("  %-*s", nameWidth, name)
+
+	agentStr := string(r.session.Type)
+	agentStr = strings.ToUpper(agentStr[:1]) + agentStr[1:]
+	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
+
+	dir := contractHome(r.project.Dir)
+	if len(dir) > dirWidth-2 {
+		dir = dir[:dirWidth-3] + "\u2026"
+	}
+	dirCol := fmt.Sprintf("%-*s", dirWidth, dir)
+
+	statusStr, style := formatStatus(r.session, spinnerFrame)
+
+	timeVisual := ""
+	if !r.session.LastActivity.IsZero() {
+		timeVisual = relativeTime(r.session.LastActivity)
+	}
+
+	remaining := totalWidth - lipgloss.Width(nameStr) - typeWidth - dirWidth - len(timeVisual) - 4
+	if remaining < 2 {
+		remaining = 2
+	}
+	if lipgloss.Width(statusStr) > remaining {
+		statusStr = statusStr[:remaining-1] + "\u2026"
+	}
+
+	pad := remaining - lipgloss.Width(statusStr)
+	if pad < 0 {
+		pad = 0
+	}
+
+	// Render each column with selected background
+	selName := selectedTextStyle.Render(nameStr)
+	selAgent := selectedTextStyle.Render(agentCol)
+	selDir := selectedTextStyle.Render(dirCol)
+	selStatus := withSelectedBg(style).Bold(true).Render(statusStr)
+	selPad := selectedTextStyle.Render(strings.Repeat(" ", pad))
+	selTime := selectedTextStyle.Render(timeVisual)
+
+	return selName + selAgent + selDir + selStatus + selPad + selTime
 }
 
 func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Style) {
@@ -269,7 +381,7 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 
 	var parts []string
 	if selected != nil {
-		parts = append(parts, "enter:send  f:focus")
+		parts = append(parts, "enter:chat  f:focus")
 	}
 
 	var global []string

@@ -54,12 +54,13 @@ type Model struct {
 	rows  []projectRow
 
 	// UI state
-	view       viewState
-	cursor     int
-	width      int
-	height     int
-	statusText string
-	showHelp   bool
+	view         viewState
+	cursor       int
+	scrollOffset int
+	width        int
+	height       int
+	statusText   string
+	showHelp     bool
 
 	// Chat view
 	chat          chatView
@@ -172,6 +173,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.chat.setSize(msg.Width, msg.Height)
+		m.adjustScroll()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -277,7 +279,23 @@ func (m Model) View() string {
 func (m Model) viewProjectList() string {
 	var sb strings.Builder
 	allProjects := m.store.Projects
-	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, len(m.availableAgents) > 1)
+
+	maxRows := m.maxVisibleRows()
+
+	// Clamp scrollOffset for this frame in case layout changed without
+	// adjustScroll (e.g. statusText set outside key handlers).
+	scrollOffset := m.scrollOffset
+	if len(m.rows) <= maxRows || maxRows <= 0 {
+		scrollOffset = 0
+	} else {
+		if m.cursor < scrollOffset {
+			scrollOffset = m.cursor
+		} else if m.cursor >= scrollOffset+maxRows {
+			scrollOffset = m.cursor - maxRows + 1
+		}
+	}
+
+	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, len(m.availableAgents) > 1, maxRows, scrollOffset)
 	sb.WriteString(list)
 
 	var selected *projectRow
@@ -293,6 +311,35 @@ func (m Model) viewProjectList() string {
 	}
 
 	return sb.String()
+}
+
+// maxVisibleRows returns how many agent rows fit in the current terminal.
+func (m Model) maxVisibleRows() int {
+	overhead := headerLineCount + footerLineCount
+	if m.statusText != "" {
+		overhead++
+	}
+	if m.showHelp {
+		overhead += strings.Count(m.viewHelp(), "\n") + 2
+	}
+	max := m.height - overhead
+	if max < 1 {
+		max = 1
+	}
+	return max
+}
+
+// adjustScroll ensures the cursor is visible within the scroll window.
+func (m *Model) adjustScroll() {
+	maxVisible := m.maxVisibleRows()
+	if m.cursor < m.scrollOffset {
+		m.scrollOffset = m.cursor
+	} else if m.cursor >= m.scrollOffset+maxVisible {
+		m.scrollOffset = m.cursor - maxVisible + 1
+	}
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
 }
 
 func (m Model) viewChat() string {
@@ -387,17 +434,20 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, keys.Help):
 		m.showHelp = !m.showHelp
+		m.adjustScroll()
 		return m, nil
 
 	case key.Matches(msg, keys.Down):
 		if m.cursor < len(m.rows)-1 {
 			m.cursor++
+			m.adjustScroll()
 		}
 		return m, nil
 
 	case key.Matches(msg, keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
+			m.adjustScroll()
 		}
 		return m, nil
 
@@ -595,6 +645,7 @@ func (m Model) deleteSelected() (Model, tea.Cmd) {
 	if m.cursor >= len(m.rows) && m.cursor > 0 {
 		m.cursor--
 	}
+	m.adjustScroll()
 	m.statusText = fmt.Sprintf("Removed %s", r.project.Name)
 	return m, nil
 }
@@ -676,6 +727,7 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	if m.cursor >= len(m.rows) && m.cursor > 0 {
 		m.cursor = len(m.rows) - 1
 	}
+	m.adjustScroll()
 
 	if cmd := m.ensureSpinner(); cmd != nil {
 		cmds = append(cmds, cmd)
