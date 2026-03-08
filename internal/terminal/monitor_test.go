@@ -20,8 +20,19 @@ func TestClassifyOutput(t *testing.T) {
 		{"continue prompt", "Press Continue to proceed", model.StatusNeedsInput},
 		{"error message", "Error: file not found", model.StatusError},
 		{"error with context", "compilation Error: syntax", model.StatusError},
+		{"waiting for", "Waiting for response", model.StatusNeedsInput},
+		{"proceed prompt", "Do you want to proceed?", model.StatusNeedsInput},
+		{"esc to cancel", "Esc to cancel · Tab to amend", model.StatusNeedsInput},
 		{"idle prompt", "❯ ", model.StatusIdle},
 		{"idle prompt with path", "~/projects ❯", model.StatusIdle},
+		{"codex prompt", "› Write tests for @filename", model.StatusIdle},
+		{"claude shortcuts", "? for shortcuts", model.StatusIdle},
+		{"shell prompt", "user@host $ ", model.StatusIdle},
+		{"completed check", "✓ All tests passed", model.StatusIdle},
+		{"completed text", "Task completed successfully", model.StatusIdle},
+		{"no findings", "No findings reported", model.StatusIdle},
+		{"bell character", "\x07", model.StatusNeedsInput},
+		{"bell with text", "prompt\x07here", model.StatusNeedsInput},
 		{"working output", "Compiling main.go...", ""},
 		{"empty string", "", ""},
 		{"random text", "Hello world", ""},
@@ -98,4 +109,48 @@ func TestReadLastLine(t *testing.T) {
 			t.Errorf("ReadLastLine() = %q, want %q", got, "")
 		}
 	})
+}
+
+func TestHasBell(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"with bell", "some text\x07more", true},
+		{"no bell", "just normal text", false},
+		{"bell only", "\x07", true},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasBell(tt.input); got != tt.expected {
+				t.Errorf("HasBell(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestReadTail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.log")
+	content := "abcdefghij"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := ReadTail(path, 5)
+	if got != "fghij" {
+		t.Errorf("ReadTail(5) = %q, want %q", got, "fghij")
+	}
+
+	got = ReadTail(path, 100)
+	if got != content {
+		t.Errorf("ReadTail(100) = %q, want %q", got, content)
+	}
+
+	got = ReadTail("/nonexistent", 10)
+	if got != "" {
+		t.Errorf("ReadTail(nonexistent) = %q, want %q", got, "")
+	}
 }

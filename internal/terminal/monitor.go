@@ -9,9 +9,11 @@ import (
 )
 
 var (
-	needsInputPattern = regexp.MustCompile(`(?i)(Allow|Permission|\?$|Continue)`)
+	needsInputPattern = regexp.MustCompile(`(?i)(Allow|Permission|\?$|Continue|Waiting for|Do you want to proceed|Esc to cancel)`)
+	bellPattern       = regexp.MustCompile("\x07")
 	errorPattern      = regexp.MustCompile(`Error:`)
-	idlePattern       = regexp.MustCompile(`❯`)
+	idlePattern       = regexp.MustCompile(`❯|›|\? for shortcuts|(\$ $)`)
+	completedPattern  = regexp.MustCompile(`✓|completed|No findings`)
 )
 
 // ReadLastLine reads the last non-empty line from a log file.
@@ -35,11 +37,15 @@ func ReadLastLine(logPath string) string {
 }
 
 // ClassifyOutput determines agent status from output text.
-// Returns needs_input if text matches Allow/Permission/?$/Continue.
-// Returns error if text matches "Error:".
-// Returns idle if text matches ❯.
+// Returns needs_input for permission prompts, questions, or bell characters.
+// Returns error for error messages.
+// Returns idle for shell/agent prompts and completion signals.
 // Returns "" (empty) if no match.
 func ClassifyOutput(text string) model.AgentStatus {
+	if bellPattern.MatchString(text) {
+		return model.StatusNeedsInput
+	}
+
 	if needsInputPattern.MatchString(text) {
 		return model.StatusNeedsInput
 	}
@@ -48,9 +54,30 @@ func ClassifyOutput(text string) model.AgentStatus {
 		return model.StatusError
 	}
 
+	if completedPattern.MatchString(text) {
+		return model.StatusIdle
+	}
+
 	if idlePattern.MatchString(text) {
 		return model.StatusIdle
 	}
 
 	return ""
+}
+
+// ReadTail reads the last n bytes of a log file.
+func ReadTail(logPath string, n int) string {
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return ""
+	}
+	if len(data) <= n {
+		return string(data)
+	}
+	return string(data[len(data)-n:])
+}
+
+// HasBell checks if text contains a bell character (0x07).
+func HasBell(text string) bool {
+	return strings.Contains(text, "\x07")
 }

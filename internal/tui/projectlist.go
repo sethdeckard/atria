@@ -57,7 +57,7 @@ func statusPriority(s *model.AgentSession) int {
 	}
 }
 
-func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int) string {
+func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionDirs map[string]time.Time) string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Projects"))
 	sb.WriteString("\n\n")
@@ -80,9 +80,16 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 	}
 
 	for i, r := range rows {
-		line := formatRow(r, allProjects, nameWidth, typeWidth, width)
+		line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame)
+		_, hasAttention := attentionDirs[r.project.Dir]
 		if i == cursor {
-			sb.WriteString(selectedStyle.Render(line))
+			if hasAttention {
+				sb.WriteString(attentionSelectedStyle.Render(line))
+			} else {
+				sb.WriteString(selectedStyle.Render(line))
+			}
+		} else if hasAttention {
+			sb.WriteString(attentionRowStyle.Render(line))
 		} else {
 			sb.WriteString(line)
 		}
@@ -92,7 +99,7 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 	return sb.String()
 }
 
-func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, totalWidth int) string {
+func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, totalWidth int, spinnerFrame int) string {
 	name := r.project.DisplayName(allProjects)
 	if len(name) > nameWidth-2 {
 		name = name[:nameWidth-3] + "\u2026"
@@ -108,7 +115,7 @@ func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth,
 	agentStr = strings.ToUpper(agentStr[:1]) + agentStr[1:]
 	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
 
-	statusStr, style := formatStatus(r.session)
+	statusStr, style := formatStatus(r.session, spinnerFrame)
 	statusCol := style.Render(statusStr)
 
 	timeStr := ""
@@ -130,7 +137,7 @@ func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth,
 	return name + agentCol + padded + timeStr
 }
 
-func formatStatus(s *model.AgentSession) (string, lipgloss.Style) {
+func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Style) {
 	switch s.Status {
 	case model.StatusNeedsInput:
 		text := "\u26a0 " + s.Attention
@@ -139,7 +146,8 @@ func formatStatus(s *model.AgentSession) (string, lipgloss.Style) {
 		}
 		return text, statusNeedsInputStyle
 	case model.StatusWorking:
-		text := "\u25cf "
+		spin := spinnerFrames[spinnerFrame%len(spinnerFrames)]
+		text := spin + " "
 		if s.Activity != "" {
 			text += s.Activity
 		} else {
@@ -147,7 +155,7 @@ func formatStatus(s *model.AgentSession) (string, lipgloss.Style) {
 		}
 		return text, statusWorkingStyle
 	case model.StatusIdle:
-		return "\u25cb idle", statusIdleStyle
+		return "\u25cf idle", statusIdleStyle
 	case model.StatusError:
 		text := "\u2717 error"
 		if s.Attention != "" {
@@ -155,7 +163,8 @@ func formatStatus(s *model.AgentSession) (string, lipgloss.Style) {
 		}
 		return text, statusErrorStyle
 	default:
-		return "\u25cf Working...", statusWorkingStyle
+		spin := spinnerFrames[spinnerFrame%len(spinnerFrames)]
+		return spin + " Working...", statusWorkingStyle
 	}
 }
 

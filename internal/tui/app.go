@@ -15,6 +15,13 @@ import (
 	"github.com/sethdeckard/atria/internal/terminal"
 )
 
+// monitorPatterns are the regex patterns for it2 monitor output.
+// Captures permission prompts, errors, idle prompts, and completion signals.
+const monitorPatterns = `Allow|Permission|Error:|\\?$|Waiting for|proceed|Esc to cancel|❯|›|shortcuts|\\$|completed|No findings|✓`
+
+// spinnerFrames for the working activity indicator.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
 type viewState int
 
 const (
@@ -47,8 +54,13 @@ type Model struct {
 	showHelp   bool
 
 	// Chat view
-	chat         chatView
-	chatProject  string // project dir for active chat
+	chat        chatView
+	chatProject string // project dir for active chat
+
+	// Spinner & attention
+	spinnerFrame  int
+	spinnerActive bool
+	attentionDirs map[string]time.Time // projects needing attention, with timestamp
 
 	// Directory browser
 	browserDirs   []DirBrowserItem
@@ -150,6 +162,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ScreenReadMsg:
 		return m.handleScreenRead(msg)
 
+	case SpinnerTickMsg:
+		if !m.hasActiveAnimations() {
+			m.spinnerActive = false
+			return m, nil
+		}
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		return m, spinnerTickCmd()
+
 	case TickMsg:
 		return m.handleTick()
 
@@ -201,7 +221,7 @@ func (m Model) View() string {
 func (m Model) viewProjectList() string {
 	var sb strings.Builder
 	allProjects := m.store.Projects
-	list := renderProjectList(m.rows, m.cursor, allProjects, m.width)
+	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionDirs)
 	sb.WriteString(list)
 
 	activeCount := 0
@@ -480,9 +500,11 @@ func (m Model) openChat() (Model, tea.Cmd) {
 		m.statusText = "No agent running for this project"
 		return m, nil
 	}
-	m.chatProject = r.project.Dir
-	m.chat = newChatView()
-	m.chat.setSize(m.width, m.height)
+	if m.chatProject != r.project.Dir {
+		m.chatProject = r.project.Dir
+		m.chat = newChatView()
+		m.chat.setSize(m.width, m.height)
+	}
 	m.view = viewChat
 	return m, nil
 }
@@ -587,6 +609,9 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		m.cursor = len(m.rows) - 1
 	}
 
+	if cmd := m.ensureSpinner(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	return m, tea.Batch(cmds...)
 }
 
@@ -617,8 +642,12 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 
 	// Start monitoring
 	logPath := filepath.Join(m.monitorDir, filepath.Base(msg.Dir)+".log")
-	return m, startMonitor(m.backend, msg.SessionID, logPath,
-		`Allow|Permission|Error:|\\?$|Waiting for|\u276f`, msg.Dir)
+	cmds := []tea.Cmd{startMonitor(m.backend, msg.SessionID, logPath,
+		monitorPatterns, msg.Dir)}
+	if cmd := m.ensureSpinner(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return m, tea.Batch(cmds...)
 }
 
 func matchProjectDir(sessionName string, projects []*model.Project) string {
@@ -658,13 +687,16 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 	logPath := filepath.Join(m.monitorDir, filepath.Base(msg.ProjectDir)+".log")
 	var cmds []tea.Cmd
 	cmds = append(cmds, startMonitor(m.backend, msg.SessionID, logPath,
-		`Allow|Permission|Error:|\\?$|Waiting for|\u276f`, msg.ProjectDir))
+		monitorPatterns, msg.ProjectDir))
 	cmds = append(cmds, func() tea.Msg {
 		if cb, ok := m.backend.(interface{ Invalidate() }); ok {
 			cb.Invalidate()
 		}
 		return nil
 	})
+	if cmd := m.ensureSpinner(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	return m, tea.Batch(cmds...)
 }
 
@@ -673,6 +705,7 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 	if as == nil {
 		return m, nil
 	}
+	prevStatus := as.Status
 	if msg.Status != "" {
 		as.Status = msg.Status
 		as.LastActivity = time.Now()
@@ -692,6 +725,27 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 	}
 
 	m.rows = buildRows(storeAdapter{m.store})
+
+	// Bell + attention highlight when status changes to needs_input
+	if msg.Status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
+		if m.attentionDirs == nil {
+			m.attentionDirs = make(map[string]time.Time)
+		}
+		m.attentionDirs[msg.ProjectDir] = time.Now()
+		cmds := []tea.Cmd{bellCmd()}
+		if cmd := m.ensureSpinner(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
+	}
+	// Clear attention when status moves away from needs_input
+	if prevStatus == model.StatusNeedsInput && msg.Status != model.StatusNeedsInput && msg.Status != "" {
+		delete(m.attentionDirs, msg.ProjectDir)
+	}
+
+	if cmd := m.ensureSpinner(); cmd != nil {
+		return m, cmd
+	}
 	return m, nil
 }
 
@@ -745,6 +799,9 @@ func (m Model) handleTick() (Model, tea.Cmd) {
 		}
 	}
 
+	if cmd := m.ensureSpinner(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	return m, tea.Batch(cmds...)
 }
 
@@ -768,6 +825,23 @@ func (m Model) Cleanup() {
 			_ = syscall.Kill(pid, syscall.SIGTERM)
 		}
 	}
+}
+
+func (m Model) hasActiveAnimations() bool {
+	for _, s := range m.store.Sessions {
+		if s.Status == model.StatusWorking {
+			return true
+		}
+	}
+	return len(m.attentionDirs) > 0
+}
+
+func (m *Model) ensureSpinner() tea.Cmd {
+	if m.spinnerActive || !m.hasActiveAnimations() {
+		return nil
+	}
+	m.spinnerActive = true
+	return spinnerTickCmd()
 }
 
 // EnsureMonitorDir creates the monitor directory if needed.

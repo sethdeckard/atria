@@ -23,7 +23,17 @@ var (
 				Foreground(lipgloss.AdaptiveColor{Light: "#2d7d46", Dark: "#4ec969"})
 
 	statusIdleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#666666", Dark: "#888888"})
+			Foreground(lipgloss.AdaptiveColor{Light: "#b8860b", Dark: "#f0c040"})
+
+	attentionRowStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.AdaptiveColor{Light: "#993300", Dark: "#ffcc00"}).
+				Background(lipgloss.AdaptiveColor{Light: "#ffe0a0", Dark: "#4a3510"})
+
+	attentionSelectedStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.AdaptiveColor{Light: "#993300", Dark: "#ffffff"}).
+				Background(lipgloss.AdaptiveColor{Light: "#ffd080", Dark: "#6a4a10"})
 
 	statusNeedsInputStyle = lipgloss.NewStyle().
 				Bold(true).

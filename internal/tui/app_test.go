@@ -1030,7 +1030,7 @@ func TestFormatStatus(t *testing.T) {
 			Activity:  tc.activity,
 			Attention: tc.attention,
 		}
-		text, _ := formatStatus(session)
+		text, _ := formatStatus(session, 0)
 		if !strings.Contains(text, tc.contains) {
 			t.Errorf("formatStatus(%q, %q, %q) = %q, want containing %q",
 				tc.status, tc.activity, tc.attention, text, tc.contains)

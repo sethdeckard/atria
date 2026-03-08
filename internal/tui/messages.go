@@ -49,6 +49,9 @@ type FocusedMsg struct {
 // TickMsg triggers periodic session refresh and status polling.
 type TickMsg struct{}
 
+// SpinnerTickMsg advances the spinner animation.
+type SpinnerTickMsg struct{}
+
 // StatusMsg is a transient message shown in the status bar.
 type StatusMsg struct {
 	Text string

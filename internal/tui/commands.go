@@ -88,8 +88,15 @@ func checkStatus(projectDir, logPath string) tea.Cmd {
 		line := terminal.ReadLastLine(logPath)
 		status := terminal.ClassifyOutput(line)
 		attention := ""
+		// Check recent output for bell character as needs_input signal
+		if status != model.StatusNeedsInput {
+			tail := terminal.ReadTail(logPath, 512)
+			if terminal.HasBell(tail) {
+				status = model.StatusNeedsInput
+			}
+		}
 		if status == model.StatusNeedsInput {
-			attention = line
+			attention = strings.ReplaceAll(line, "\x07", "")
 		}
 		return StatusUpdatedMsg{
 			ProjectDir: projectDir,
@@ -114,6 +121,22 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
 		return TickMsg{}
 	})
+}
+
+func spinnerTickCmd() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return SpinnerTickMsg{}
+	})
+}
+
+func bellCmd() tea.Cmd {
+	return func() tea.Msg {
+		if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
+			tty.Write([]byte("\a"))
+			tty.Close()
+		}
+		return StatusMsg{Text: "⚠ Agent needs input"}
+	}
 }
 
 func listDirs(watchDirs []string) tea.Cmd {
