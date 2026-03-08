@@ -36,8 +36,7 @@ type browserIntent int
 
 const (
 	browserAddProject browserIntent = iota
-	browserLaunchClaude
-	browserLaunchCodex
+	browserLaunch
 )
 
 type Model struct {
@@ -71,6 +70,10 @@ type Model struct {
 	spinnerActive bool
 	attentionSessions map[string]time.Time // session IDs needing attention, with timestamp
 
+	// Agent type
+	availableAgents []model.AgentType
+	defaultAgent    model.AgentType
+
 	// Directory browser
 	browserDirs   []DirBrowserItem
 	browserCursor int
@@ -99,20 +102,60 @@ func (a storeAdapter) GetSessions(dir string) []*model.AgentSession {
 }
 
 func NewModel(backend terminal.Backend, store *model.Store, watchDirs []string, monitorDir string) Model {
+	return NewModelWithConfig(backend, store, watchDirs, monitorDir, "")
+}
+
+func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs []string, monitorDir string, defaultAgentCfg string) Model {
 	ba := textarea.New()
 	ba.Placeholder = "Batch prompt ({name} for project name)..."
 	ba.ShowLineNumbers = false
 	ba.SetHeight(3)
 	ba.CharLimit = 0
 
+	available := detectAvailableAgents()
+
+	// Resolve default agent from config, falling back to first available.
+	var defaultAgent model.AgentType
+	switch model.AgentType(defaultAgentCfg) {
+	case model.AgentClaude, model.AgentCodex:
+		// Validate it's actually available.
+		found := false
+		for _, a := range available {
+			if a == model.AgentType(defaultAgentCfg) {
+				found = true
+				break
+			}
+		}
+		if found {
+			defaultAgent = model.AgentType(defaultAgentCfg)
+		}
+	}
+	if defaultAgent == "" {
+		if len(available) > 0 {
+			defaultAgent = available[0]
+		} else {
+			defaultAgent = model.AgentClaude
+		}
+	}
+
+	// Sessions loaded from disk have no persisted status (json:"-");
+	// default to idle since we don't know their state after restart.
+	for _, s := range store.Sessions {
+		if s.Status == "" {
+			s.Status = model.StatusIdle
+		}
+	}
+
 	return Model{
-		watchDirs:  watchDirs,
-		monitorDir: monitorDir,
-		backend:    backend,
-		store:      store,
-		rows:       buildRows(storeAdapter{store}),
-		chat:       newChatView(),
-		batchInput: ba,
+		watchDirs:       watchDirs,
+		monitorDir:      monitorDir,
+		backend:         backend,
+		store:           store,
+		rows:            buildRows(storeAdapter{store}),
+		chat:            newChatView(),
+		batchInput:      ba,
+		availableAgents: available,
+		defaultAgent:    defaultAgent,
 	}
 }
 
@@ -234,7 +277,7 @@ func (m Model) View() string {
 func (m Model) viewProjectList() string {
 	var sb strings.Builder
 	allProjects := m.store.Projects
-	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionSessions)
+	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, len(m.availableAgents) > 1)
 	sb.WriteString(list)
 
 	var selected *projectRow
@@ -242,7 +285,7 @@ func (m Model) viewProjectList() string {
 		selected = &m.rows[m.cursor]
 	}
 	sb.WriteString("\n")
-	sb.WriteString(renderFooter(len(m.rows), selected))
+	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, len(m.availableAgents) > 1))
 
 	if m.statusText != "" {
 		sb.WriteString("\n")
@@ -267,11 +310,9 @@ func (m Model) viewChat() string {
 func (m Model) viewDirBrowser() string {
 	var sb strings.Builder
 	title := "Add Project"
-	switch m.browserMode {
-	case browserLaunchClaude:
-		title = "Launch Claude"
-	case browserLaunchCodex:
-		title = "Launch Codex"
+	if m.browserMode == browserLaunch {
+		agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
+		title = "Launch " + agentName
 	}
 	sb.WriteString(titleStyle.Render(title))
 	sb.WriteString("\n\n")
@@ -312,8 +353,8 @@ func (m Model) viewBatchPrompt() string {
 func (m Model) viewHelp() string {
 	help := `Key Bindings:
   j/k, arrows   Navigate project list
-  c              Launch Claude for selected project
-  x              Launch Codex for selected project
+  l              Launch agent in a project
+  t              Toggle agent type (Claude/Codex)
   s              Send prompt (opens chat view)
   f              Focus agent's terminal tab
   a              Add project (directory browser)
@@ -360,21 +401,27 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case key.Matches(msg, keys.LaunchClaude):
+	case key.Matches(msg, keys.Launch):
 		if !m.backendOK {
 			m.statusText = "Backend unavailable"
 			return m, nil
 		}
-		m.browserMode = browserLaunchClaude
+		m.browserMode = browserLaunch
 		return m, listDirs(m.watchDirs)
 
-	case key.Matches(msg, keys.LaunchCodex):
-		if !m.backendOK {
-			m.statusText = "Backend unavailable"
+	case key.Matches(msg, keys.Toggle):
+		if len(m.availableAgents) <= 1 {
 			return m, nil
 		}
-		m.browserMode = browserLaunchCodex
-		return m, listDirs(m.watchDirs)
+		for i, a := range m.availableAgents {
+			if a == m.defaultAgent {
+				m.defaultAgent = m.availableAgents[(i+1)%len(m.availableAgents)]
+				break
+			}
+		}
+		agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
+		m.statusText = "Default agent: " + agentName
+		return m, nil
 
 	case key.Matches(msg, keys.Send):
 		return m.openChat()
@@ -466,14 +513,11 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.rows = buildRows(storeAdapter{m.store})
 
 			switch m.browserMode {
-			case browserLaunchClaude:
+			case browserLaunch:
 				m.view = viewProjectList
-				m.statusText = fmt.Sprintf("Launching Claude for %s...", dir.Name)
-				return m, launchAgent(m.backend, dir.Path, model.AgentClaude)
-			case browserLaunchCodex:
-				m.view = viewProjectList
-				m.statusText = fmt.Sprintf("Launching Codex for %s...", dir.Name)
-				return m, launchAgent(m.backend, dir.Path, model.AgentCodex)
+				agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
+				m.statusText = fmt.Sprintf("Launching %s for %s...", agentName, dir.Name)
+				return m, launchAgent(m.backend, dir.Path, m.defaultAgent)
 			default:
 				m.statusText = fmt.Sprintf("Added %s", dir.Name)
 			}
@@ -581,24 +625,16 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		trackedIDs[s.SessionID] = true
 	}
 
-	// Update activity from session names for tracked sessions.
-	// Activity text is informational (shown in all states); only
-	// transition to working if the name is actively changing (indicates
-	// the agent is doing something), not on the first read.
+	// Update activity text from session names for tracked sessions.
+	// Activity is informational only (shown in all states). Screen reads
+	// are the sole authority on status — session name changes should not
+	// override status since Claude updates its title even while idle.
 	for _, sess := range msg.Sessions {
 		if as := m.store.SessionByID(sess.ID); as != nil {
 			activity := terminal.ExtractActivity(sess.Name)
 			if activity != "" && activity != as.Activity {
-				prevActivity := as.Activity
 				as.Activity = activity
 				as.LastActivity = time.Now()
-				// Only transition to working if the activity *changed*
-				// (not just set for the first time on a static name).
-				if prevActivity != "" {
-					as.Status = model.StatusWorking
-					as.Attention = ""
-					delete(m.attentionSessions, as.SessionID)
-				}
 			}
 		}
 	}
@@ -824,6 +860,10 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		// the agent moved on, transition to working
 		if screenChanged && as.Status == model.StatusNeedsInput {
 			status = model.StatusWorking
+		} else if !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) {
+			// Consecutive blank screen reads while "working" — it2 can't
+			// read this session. No evidence the agent is working.
+			status = model.StatusIdle
 		} else {
 			return m, nil
 		}
@@ -833,17 +873,8 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	if !screenChanged && status == as.Status {
 		return m, nil
 	}
-	// Screen reads reliably detect needs_input and error.
-	// For working/idle, session name activity is the primary signal since
-	// Claude's bottom screen lines are often blank padding.
-	if status == model.StatusIdle || status == model.StatusWorking {
-		// Only transition to idle if not recently active (session name changes)
-		if status == model.StatusIdle && as.Status == model.StatusWorking {
-			if !as.LastActivity.IsZero() && time.Since(as.LastActivity) < 10*time.Second {
-				return m, nil
-			}
-		}
-	}
+	// Screen reads are the sole authority on status. The bottom-region
+	// anchoring in ClassifyScreen prevents false matches from scrollback.
 
 	prevStatus := as.Status
 	as.Status = status
@@ -956,6 +987,11 @@ func (m *Model) EnableDebugLog(path string) error {
 }
 
 // EnsureMonitorDir creates the monitor directory if needed.
+// isAllBlank returns true if content contains only whitespace/newlines.
+func isAllBlank(content string) bool {
+	return strings.TrimSpace(content) == ""
+}
+
 func EnsureMonitorDir(dir string) error {
 	return os.MkdirAll(dir, 0o755)
 }

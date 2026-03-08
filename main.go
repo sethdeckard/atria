@@ -62,7 +62,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := tui.NewModel(cached, store, cfg.WatchDirs, cfg.MonitorDir)
+	m := tui.NewModelWithConfig(cached, store, cfg.WatchDirs, cfg.MonitorDir, cfg.DefaultAgent)
 
 	if debug {
 		if err := m.EnableDebugLog("/tmp/atria-debug.log"); err != nil {

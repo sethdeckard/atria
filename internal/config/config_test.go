@@ -136,10 +136,31 @@ cache_ttl = 30
 	if cfg.MonitorDir != "/tmp/atria-monitors" {
 		t.Errorf("expected default monitor_dir '/tmp/atria-monitors', got %q", cfg.MonitorDir)
 	}
+	if cfg.DefaultAgent != "" {
+		t.Errorf("expected empty default_agent, got %q", cfg.DefaultAgent)
+	}
 
 	home, _ := os.UserHomeDir()
 	expectedDataDir := filepath.Join(home, ".config/atria")
 	if cfg.DataDir != expectedDataDir {
 		t.Errorf("expected default data_dir %q, got %q", expectedDataDir, cfg.DataDir)
+	}
+}
+
+func TestLoadDefaultAgent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	content := `default_agent = "codex"`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DefaultAgent != "codex" {
+		t.Errorf("expected default_agent 'codex', got %q", cfg.DefaultAgent)
 	}
 }

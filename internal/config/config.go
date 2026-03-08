@@ -11,12 +11,13 @@ import (
 
 // Config holds the application configuration parsed from a TOML file.
 type Config struct {
-	WatchDirs  []string `toml:"watch_dirs"`
-	Backend    string   `toml:"backend"`
-	IT2Path    string   `toml:"it2_path"`
-	DataDir    string   `toml:"data_dir"`
-	MonitorDir string   `toml:"monitor_dir"`
-	CacheTTL   int      `toml:"cache_ttl"`
+	WatchDirs    []string `toml:"watch_dirs"`
+	Backend      string   `toml:"backend"`
+	IT2Path      string   `toml:"it2_path"`
+	DataDir      string   `toml:"data_dir"`
+	MonitorDir   string   `toml:"monitor_dir"`
+	CacheTTL     int      `toml:"cache_ttl"`
+	DefaultAgent string   `toml:"default_agent"`
 }
 
 // DefaultPath returns the default configuration file path.

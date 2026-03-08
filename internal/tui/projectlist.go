@@ -60,13 +60,13 @@ func statusPriority(s *model.AgentSession) int {
 	}
 }
 
-func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionSessions map[string]time.Time) string {
+func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, canToggle bool) string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Agents"))
 	sb.WriteString("\n\n")
 
 	if len(rows) == 0 {
-		sb.WriteString(renderEmptyState())
+		sb.WriteString(renderEmptyState(defaultAgent, canToggle))
 		return sb.String()
 	}
 
@@ -236,7 +236,7 @@ func relativeTime(t time.Time) string {
 	}
 }
 
-func renderEmptyState() string {
+func renderEmptyState(defaultAgent model.AgentType, canToggle bool) string {
 	var sb strings.Builder
 
 	logo := logoStyle.Render(`         _        _
@@ -248,10 +248,12 @@ func renderEmptyState() string {
 	sb.WriteString("\n\n")
 	sb.WriteString(emptyHintStyle.Render("  Agent orchestration for your terminal."))
 	sb.WriteString("\n\n")
-	sb.WriteString("  " + emptyKeyStyle.Render("c") + emptyHintStyle.Render("  Launch Claude in a project"))
+	sb.WriteString("  " + emptyKeyStyle.Render("l") + emptyHintStyle.Render("  Launch an agent in a project"))
 	sb.WriteString("\n")
-	sb.WriteString("  " + emptyKeyStyle.Render("x") + emptyHintStyle.Render("  Launch Codex in a project"))
-	sb.WriteString("\n")
+	if canToggle {
+		sb.WriteString("  " + emptyKeyStyle.Render("t") + emptyHintStyle.Render("  Toggle agent type (Claude/Codex)"))
+		sb.WriteString("\n")
+	}
 	sb.WriteString("  " + emptyKeyStyle.Render("a") + emptyHintStyle.Render("  Add a project from your watch directories"))
 	sb.WriteString("\n")
 	sb.WriteString("  " + emptyKeyStyle.Render("?") + emptyHintStyle.Render("  Show all key bindings"))
@@ -262,15 +264,25 @@ func renderEmptyState() string {
 	return sb.String()
 }
 
-func renderFooter(rowCount int, selected *projectRow) string {
+func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, canToggle bool) string {
 	left := fmt.Sprintf(" %d agents", rowCount)
 
-	var hints []string
+	var parts []string
 	if selected != nil {
-		hints = append(hints, "enter send", "f focus")
+		parts = append(parts, "enter:send  f:focus")
 	}
-	hints = append(hints, "c claude", "x codex", "a add", "? help", "q quit")
 
-	right := strings.Join(hints, "  ")
-	return footerStyle.Render(left + "    " + right)
+	var global []string
+	if defaultAgent != "" {
+		agentName := strings.ToUpper(string(defaultAgent)[:1]) + string(defaultAgent)[1:]
+		global = append(global, fmt.Sprintf("l:launch (%s)", agentName))
+	}
+	if canToggle {
+		global = append(global, "t:toggle")
+	}
+	global = append(global, "a:add", "?:help", "q:quit")
+	parts = append(parts, strings.Join(global, "  "))
+
+	all := append([]string{left}, parts...)
+	return footerStyle.Render(strings.Join(all, "  \u00b7  "))
 }

@@ -106,7 +106,7 @@ Notes:
 
 ### Session Name Activity
 
-Session names are checked on each tick via `ListSessions()`. `ExtractActivity()` strips the `✳` prefix and parenthesized suffixes. Activity text is displayed in all states (including idle). A session name *change* (not the first read) triggers a working transition, since the first read is just a static title.
+Session names are checked on each tick via `ListSessions()`. `ExtractActivity()` strips the `✳` prefix and parenthesized suffixes. Activity text is informational only — displayed in all states (including idle) but does **not** change status. Screen reads are the sole authority on status. Claude updates its tab title even while idle, so session name changes are unreliable as a working signal.
 
 ### Debug Logging
 
@@ -119,7 +119,7 @@ Run with `--debug` to write screen read diagnostics to `/tmp/atria-debug.log`. E
 3. **Conversation history pollutes detection.** With 25 lines, scrollback contains quoted patterns ("Do you want to proceed?", `✶ Doodling…`, etc.). Restricting active-status matching to the bottom region solves this.
 4. **Background task bars look like working.** Claude shows `⏵⏵ ... esc to interrupt` for background tasks even when idle. Must exclude `⏵` lines from `esc to interrupt` matching.
 5. **Broad patterns cause cascading false positives.** `(?i)Continue` matched "spinner ticks continue indefinitely" in Codex review output. `\?$` matched any question in text. Keep patterns specific to actual prompt UI text.
-6. **Session names are often static.** The first activity extracted from a session name is usually just a title (e.g., "Atria Agent Orchestration"), not a working signal. Only treat *changes* as working transitions.
+6. **Session name changes don't indicate status.** Claude updates its tab title even while idle, so session name changes are unreliable as a working signal. Use session names for activity text only; screen reads are the sole authority on status.
 7. **Bell character needs `/dev/tty`.** Writing `\a` to stderr doesn't reach the terminal through Bubble Tea's alternate screen. Write directly to `/dev/tty`.
 8. **Multiple agents per directory need session-scoped state.** Keying by ProjectDir causes agents to overwrite each other's sessions and share attention highlights. Key everything (store, attention map) by SessionID.
 9. **Slice mutation during iteration skips entries.** Removing dead sessions with `RemoveSession` inside `for range store.Sessions` can skip adjacent entries. Collect IDs first, then remove.

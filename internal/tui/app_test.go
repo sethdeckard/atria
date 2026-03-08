@@ -227,15 +227,31 @@ func TestLaunchBlockedWithoutBackend(t *testing.T) {
 	store.Projects = makeProjects("/a/myproject")
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
 	// backendOK is false by default
 
-	updated, cmd := m.Update(keyMsg("c"))
+	updated, cmd := m.Update(keyMsg("l"))
 	um := modelFrom(updated)
 	if cmd != nil {
 		t.Error("expected no command when backend unavailable")
 	}
 	if !strings.Contains(um.statusText, "Backend unavailable") {
 		t.Errorf("expected unavailable message, got %q", um.statusText)
+	}
+}
+
+func TestLaunchWorksWithoutDetectedAgents(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.backendOK = true
+	m.availableAgents = nil
+	m.defaultAgent = model.AgentClaude
+
+	_, cmd := m.Update(keyMsg("l"))
+	if cmd == nil {
+		t.Error("expected listDirs command even without detected agents")
 	}
 }
 
@@ -246,11 +262,54 @@ func TestLaunchOpensProjectPicker(t *testing.T) {
 	m := newTestModelWithStore(mb, store)
 	m.width = 80
 	m.backendOK = true
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
 
-	// c key should open the project picker (listDirs command)
-	_, cmd := m.Update(keyMsg("c"))
+	// l key should open the project picker (listDirs command)
+	_, cmd := m.Update(keyMsg("l"))
 	if cmd == nil {
 		t.Fatal("expected a listDirs command")
+	}
+}
+
+func TestToggleAgent(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.availableAgents = []model.AgentType{model.AgentClaude, model.AgentCodex}
+	m.defaultAgent = model.AgentClaude
+
+	updated, _ := m.Update(keyMsg("t"))
+	um := modelFrom(updated)
+	if um.defaultAgent != model.AgentCodex {
+		t.Errorf("expected codex after toggle, got %q", um.defaultAgent)
+	}
+	if !strings.Contains(um.statusText, "Default agent: Codex") {
+		t.Errorf("expected status message, got %q", um.statusText)
+	}
+
+	// Toggle again — should cycle back
+	updated, _ = um.Update(keyMsg("t"))
+	um = modelFrom(updated)
+	if um.defaultAgent != model.AgentClaude {
+		t.Errorf("expected claude after second toggle, got %q", um.defaultAgent)
+	}
+}
+
+func TestToggleHiddenWithOneAgent(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+
+	updated, cmd := m.Update(keyMsg("t"))
+	um := modelFrom(updated)
+	if um.defaultAgent != model.AgentClaude {
+		t.Errorf("expected claude unchanged, got %q", um.defaultAgent)
+	}
+	if cmd != nil {
+		t.Error("expected no command for single agent toggle")
 	}
 }
 
@@ -893,6 +952,83 @@ func TestScreenReadUpdatesStatus(t *testing.T) {
 	}
 }
 
+func TestScreenReadIdleTransitionWithRecentActivity(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir:   "/a/myproject",
+		SessionID:    "sess-1",
+		Type:         model.AgentClaude,
+		Status:       model.StatusWorking,
+		LastActivity: time.Now(), // recent activity from session name
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Screen changes to show idle prompt — should transition despite recent activity
+	updated, _ := m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
+		ProjectDir: "/a/myproject",
+		Content:    "some output\n\u276f",
+	})
+	um := modelFrom(updated)
+	session := um.store.GetSession("/a/myproject")
+	if session.Status != model.StatusIdle {
+		t.Errorf("expected idle when screen shows prompt, got %q", session.Status)
+	}
+}
+
+func TestScreenReadIdleUnchangedStillTransitions(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir:   "/a/myproject",
+		SessionID:    "sess-1",
+		Type:         model.AgentClaude,
+		Status:       model.StatusWorking,
+		LastActivity: time.Now(),
+		LastScreen:   "some output\n\u276f", // same content as incoming
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Same screen content showing idle — screen reads are authoritative,
+	// should still transition even if content unchanged
+	updated, _ := m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
+		ProjectDir: "/a/myproject",
+		Content:    "some output\n\u276f",
+	})
+	um := modelFrom(updated)
+	session := um.store.GetSession("/a/myproject")
+	if session.Status != model.StatusIdle {
+		t.Errorf("expected idle when screen shows prompt, got %q", session.Status)
+	}
+}
+
+func TestScreenReadBlankTransitionsToIdle(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+		LastScreen: "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n", // previous blank
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Second consecutive blank read — should transition to idle
+	updated, _ := m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
+		ProjectDir: "/a/myproject",
+		Content:    "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+	})
+	um := modelFrom(updated)
+	session := um.store.GetSession("/a/myproject")
+	if session.Status != model.StatusIdle {
+		t.Errorf("expected idle after consecutive blank reads, got %q", session.Status)
+	}
+}
+
 func TestScreenReadErrorIgnored(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
@@ -958,6 +1094,8 @@ func TestViewProjectListEmpty(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, makeStore(t))
 	m.width = 80
 	m.height = 40
+	m.availableAgents = []model.AgentType{model.AgentClaude, model.AgentCodex}
+	m.defaultAgent = model.AgentClaude
 	v := m.View()
 	if !strings.Contains(v, "Agents") {
 		t.Error("expected Agents title")
@@ -965,8 +1103,26 @@ func TestViewProjectListEmpty(t *testing.T) {
 	if !strings.Contains(v, "Agent orchestration") {
 		t.Error("expected tagline in empty state")
 	}
-	if !strings.Contains(v, "Add a project") {
-		t.Error("expected hint in empty state")
+	if !strings.Contains(v, "Launch an agent") {
+		t.Error("expected launch hint in empty state")
+	}
+	if !strings.Contains(v, "Toggle agent type") {
+		t.Error("expected toggle hint in empty state")
+	}
+}
+
+func TestViewProjectListEmptySingleAgent(t *testing.T) {
+	m := newTestModelWithStore(&mockBackend{}, makeStore(t))
+	m.width = 80
+	m.height = 40
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	v := m.View()
+	if !strings.Contains(v, "Launch an agent") {
+		t.Error("expected launch hint in empty state")
+	}
+	if strings.Contains(v, "Toggle agent type") {
+		t.Error("should not show toggle hint with single agent")
 	}
 }
 
@@ -984,6 +1140,8 @@ func TestViewProjectListWithAgents(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 	m.height = 40
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
 	v := m.View()
 	if !strings.Contains(v, "alpha") {
 		t.Error("expected alpha in view")
@@ -993,6 +1151,9 @@ func TestViewProjectListWithAgents(t *testing.T) {
 	}
 	if !strings.Contains(v, "2 agents") {
 		t.Error("expected agent count")
+	}
+	if !strings.Contains(v, "l:launch (Claude)") {
+		t.Error("expected launch hint with agent name")
 	}
 	// Should show path lines
 	if !strings.Contains(v, "/a/alpha") {
