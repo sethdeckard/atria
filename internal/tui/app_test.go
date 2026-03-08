@@ -954,10 +954,11 @@ func TestSessionsRefreshedRemovesExitedAgent(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir: "/a/myproject",
-		SessionID:  "sess-exited",
-		Type:       model.AgentCodex,
-		Status:     model.StatusIdle, // screen reads transitioned to idle
+		ProjectDir:     "/a/myproject",
+		SessionID:      "sess-exited",
+		Type:           model.AgentCodex,
+		Status:         model.StatusIdle,
+		UnmatchedReads: 3, // screen shows no agent patterns (plain shell)
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1637,7 +1638,7 @@ func TestRelativeTime(t *testing.T) {
 		ago      time.Duration
 		expected string
 	}{
-		{10 * time.Second, "just now"},
+		{10 * time.Second, "now"},
 		{5 * time.Minute, "5m ago"},
 		{3 * time.Hour, "3h ago"},
 		{48 * time.Hour, "2d ago"},
@@ -1814,6 +1815,15 @@ func TestStreamPanelShowsSelectedScreen(t *testing.T) {
 	if !strings.Contains(v, "Reading file...") {
 		t.Error("expected stream panel to contain LastScreen content")
 	}
+	if !strings.Contains(v, "alpha") {
+		t.Error("expected stream panel header to contain project name")
+	}
+	if !strings.Contains(v, "Claude") {
+		t.Error("expected stream panel header to contain agent type")
+	}
+	if !strings.Contains(v, "v:close") {
+		t.Error("expected stream panel header to contain v:close hint")
+	}
 }
 
 func TestStreamPanelNoOutput(t *testing.T) {
@@ -1919,6 +1929,26 @@ func TestStreamPanelTruncatesLongLines(t *testing.T) {
 	}
 	if !strings.Contains(v, "\u2026") {
 		t.Error("expected truncation ellipsis in stream panel")
+	}
+}
+
+func TestStreamPanelHeaderTruncatesLongName(t *testing.T) {
+	longName := strings.Repeat("a", 200)
+	session := &model.AgentSession{
+		ProjectDir: "/proj/" + longName,
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+		LastScreen: "some content",
+	}
+	width := 40
+	panel := renderStreamPanel(session, longName, "/proj/"+longName, width, 8)
+	if !strings.Contains(panel, "\u2026") {
+		t.Error("expected truncated project name with ellipsis")
+	}
+	// The full long name should NOT appear — it must be truncated
+	if strings.Contains(panel, longName) {
+		t.Error("expected long project name to be truncated in header")
 	}
 }
 

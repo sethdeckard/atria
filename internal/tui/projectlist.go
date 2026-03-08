@@ -130,7 +130,7 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 		if len(dn) > nameWidth-2 {
 			nameWidth = len(dn) + 2
 		}
-		dp := contractHome(r.project.Dir)
+		dp := shortenPath(r.project.Dir)
 		if len(dp)+2 > dirWidth {
 			dirWidth = len(dp) + 2
 		}
@@ -210,7 +210,7 @@ func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth,
 	agentStr = strings.ToUpper(agentStr[:1]) + agentStr[1:]
 	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
 
-	dir := contractHome(r.project.Dir)
+	dir := shortenPath(r.project.Dir)
 	if len(dir) > dirWidth-2 {
 		dir = dir[:dirWidth-3] + "\u2026"
 	}
@@ -259,7 +259,7 @@ func formatSelectedRow(r projectRow, allProjects []*model.Project, nameWidth, ty
 	agentStr = strings.ToUpper(agentStr[:1]) + agentStr[1:]
 	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
 
-	dir := contractHome(r.project.Dir)
+	dir := shortenPath(r.project.Dir)
 	if len(dir) > dirWidth-2 {
 		dir = dir[:dirWidth-3] + "\u2026"
 	}
@@ -335,7 +335,7 @@ func relativeTime(t time.Time) string {
 	d := time.Since(t)
 	switch {
 	case d < time.Minute:
-		return "just now"
+		return "now"
 	case d < time.Hour:
 		m := int(d.Minutes())
 		return fmt.Sprintf("%dm ago", m)

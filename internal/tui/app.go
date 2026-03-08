@@ -305,11 +305,14 @@ func (m Model) viewProjectList() string {
 
 	if m.streamOpen {
 		var session *model.AgentSession
+		var projectName, projectDir string
 		if m.cursor >= 0 && m.cursor < len(m.rows) {
 			session = m.rows[m.cursor].session
+			projectName = m.rows[m.cursor].project.DisplayName(m.store.Projects)
+			projectDir = contractHome(m.rows[m.cursor].project.Dir)
 		}
 		panelH := streamPanelHeight(m.height)
-		sb.WriteString(renderStreamPanel(session, m.width, panelH))
+		sb.WriteString(renderStreamPanel(session, projectName, projectDir, m.width, panelH))
 	}
 
 	var selected *projectRow
@@ -328,69 +331,133 @@ func (m Model) viewProjectList() string {
 }
 
 // renderStreamPanel renders the live screen output panel for the selected agent.
-func renderStreamPanel(session *model.AgentSession, width, height int) string {
+func renderStreamPanel(session *model.AgentSession, projectName, projectDir string, width, height int) string {
 	var sb strings.Builder
 
-	// Top separator
-	sepWidth := width - 2
-	if sepWidth < 1 {
-		sepWidth = 1
+	// Box dimensions: 1 char indent, box is width-1 chars wide
+	boxWidth := width - 1
+	if boxWidth < 6 {
+		boxWidth = 6
 	}
-	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("  " + strings.Repeat("\u2500", sepWidth)))
+	innerWidth := boxWidth - 4 // "│ " + content + " │"
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+
 	sb.WriteString("\n")
 
-	contentLines := height - 2 // account for top/bottom separators
+	// Top border with header
+	if session != nil && projectName != "" {
+		agentType := strings.ToUpper(string(session.Type)[:1]) + string(session.Type)[1:]
+		leftText := " " + projectName + " \u00b7 " + agentType + " \u00b7 " + projectDir + " "
+		rightText := " v:close "
+		maxLeftWidth := boxWidth - 2 - lipgloss.Width(rightText) - 1 // -2 for ┌┐, -1 for min fill
+		if leftWidth := lipgloss.Width(leftText); leftWidth > maxLeftWidth {
+			// Truncate path first, then project name if still too wide
+			prefix := " " + projectName + " \u00b7 " + agentType + " \u00b7 "
+			availForDir := maxLeftWidth - lipgloss.Width(prefix) - 1 // -1 for trailing space
+			if availForDir >= 4 {
+				// Truncate dir from the left: …/tail (rune-safe)
+				dirRunes := []rune(projectDir)
+				truncDir := ""
+				for i := len(dirRunes) - 1; i >= 0; i-- {
+					candidate := "\u2026" + string(dirRunes[i]) + truncDir
+					if lipgloss.Width(candidate) > availForDir {
+						break
+					}
+					truncDir = string(dirRunes[i]) + truncDir
+				}
+				leftText = prefix + "\u2026" + truncDir + " "
+			}
+			// If path truncation wasn't possible or leftText is still too wide,
+			// drop path and truncate name to guarantee fit.
+			if lipgloss.Width(leftText) > maxLeftWidth {
+				truncName := ""
+				for _, r := range projectName {
+					candidate := " " + truncName + string(r) + "\u2026 \u00b7 " + agentType + " "
+					if lipgloss.Width(candidate) > maxLeftWidth {
+						break
+					}
+					truncName += string(r)
+				}
+				leftText = " " + truncName + "\u2026 \u00b7 " + agentType + " "
+				// Final clamp: if even "…· Type " overflows, hard-truncate
+				if lipgloss.Width(leftText) > maxLeftWidth {
+					leftText = " "
+				}
+			}
+		}
+		fillLen := boxWidth - 2 - lipgloss.Width(leftText) - lipgloss.Width(rightText)
+		if fillLen < 0 {
+			fillLen = 0
+		}
+		topBorder := "\u250c" + leftText + strings.Repeat("\u2500", fillLen) + rightText + "\u2510"
+		sb.WriteString(dimStyle.Render(" " + topBorder))
+	} else {
+		topBorder := "\u250c" + strings.Repeat("\u2500", boxWidth-2) + "\u2510"
+		sb.WriteString(dimStyle.Render(" " + topBorder))
+	}
+	sb.WriteString("\n")
+
+	contentLines := height - 2 // account for top/bottom borders
 	if contentLines < 1 {
 		contentLines = 1
 	}
 
 	if session == nil || strings.TrimSpace(session.LastScreen) == "" {
 		// Placeholder
-		sb.WriteString(dimStyle.Render("  no output"))
+		placeholder := "no output"
+		pad := innerWidth - lipgloss.Width(placeholder)
+		if pad < 0 {
+			pad = 0
+		}
+		sb.WriteString(dimStyle.Render(" \u2502") + " " + dimStyle.Render(placeholder) + strings.Repeat(" ", pad) + " " + dimStyle.Render("\u2502"))
 		sb.WriteString("\n")
 		for i := 1; i < contentLines; i++ {
+			sb.WriteString(dimStyle.Render(" \u2502") + strings.Repeat(" ", innerWidth+2) + dimStyle.Render("\u2502"))
 			sb.WriteString("\n")
 		}
 	} else {
 		// Split screen content, trim trailing blank lines, take from bottom
 		lines := strings.Split(session.LastScreen, "\n")
-		// Trim trailing blank lines
 		for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 			lines = lines[:len(lines)-1]
 		}
-		// Take last contentLines lines
 		if len(lines) > contentLines {
 			lines = lines[len(lines)-contentLines:]
 		}
-		maxLineWidth := width - 2 // account for 2-char indent
-		if maxLineWidth < 1 {
-			maxLineWidth = 1
-		}
 		for _, line := range lines {
-			if lipgloss.Width(line) > maxLineWidth {
-				// Truncate to fit terminal width (rune-safe)
+			lineWidth := lipgloss.Width(line)
+			if lineWidth > innerWidth {
+				// Truncate to fit (rune-safe)
 				truncated := ""
 				for _, r := range line {
-					if lipgloss.Width(truncated+string(r)) > maxLineWidth-1 {
+					if lipgloss.Width(truncated+string(r)) > innerWidth-1 {
 						truncated += "\u2026"
 						break
 					}
 					truncated += string(r)
 				}
 				line = truncated
+				lineWidth = lipgloss.Width(line)
 			}
-			sb.WriteString("  " + line)
+			pad := innerWidth - lineWidth
+			if pad < 0 {
+				pad = 0
+			}
+			sb.WriteString(dimStyle.Render(" \u2502") + " " + line + strings.Repeat(" ", pad) + " " + dimStyle.Render("\u2502"))
 			sb.WriteString("\n")
 		}
 		// Pad remaining lines
 		for i := len(lines); i < contentLines; i++ {
+			sb.WriteString(dimStyle.Render(" \u2502") + strings.Repeat(" ", innerWidth+2) + dimStyle.Render("\u2502"))
 			sb.WriteString("\n")
 		}
 	}
 
-	// Bottom separator
-	sb.WriteString(dimStyle.Render("  " + strings.Repeat("\u2500", sepWidth)))
+	// Bottom border
+	bottomBorder := "\u2514" + strings.Repeat("\u2500", boxWidth-2) + "\u2518"
+	sb.WriteString(dimStyle.Render(" " + bottomBorder))
 
 	return sb.String()
 }
@@ -1039,15 +1106,17 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	}
 
 	// Check tracked sessions whose iTerm name no longer matches an agent.
-	// If the session is also idle (from screen reads), the agent exited
-	// and the pane reverted to a plain shell — treat as dead.
+	// The agent must be idle AND have accumulated unmatched screen reads,
+	// meaning the screen shows no agent patterns (e.g. a plain shell after
+	// the agent exited). Idle alone is not sufficient — Claude's tab title
+	// drops the ✳ prefix while idle but the screen still shows agent UI.
 	liveNames := make(map[string]string)
 	for _, sess := range msg.Sessions {
 		liveNames[sess.ID] = sess.Name
 	}
 	for _, s := range m.store.Sessions {
 		name, alive := liveNames[s.SessionID]
-		if alive && s.Status == model.StatusIdle && terminal.DetectAgent(name) == "" {
+		if alive && s.Status == model.StatusIdle && s.UnmatchedReads >= 3 && terminal.DetectAgent(name) == "" {
 			liveIDs[s.SessionID] = false // mark for removal below
 		}
 	}
