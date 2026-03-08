@@ -950,6 +950,52 @@ func TestSessionsRefreshedRemovesDeadSessions(t *testing.T) {
 	}
 }
 
+func TestSessionsRefreshedRemovesExitedAgent(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-exited",
+		Type:       model.AgentCodex,
+		Status:     model.StatusIdle, // screen reads transitioned to idle
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// iTerm pane still alive but name no longer matches an agent (plain zsh)
+	updated, _ := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "sess-exited", Name: "zsh"},
+		},
+	})
+	um := modelFrom(updated)
+	if um.store.SessionByID("sess-exited") != nil {
+		t.Error("expected exited agent session to be removed")
+	}
+}
+
+func TestSessionsRefreshedKeepsActiveAgentWithChangedName(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-working",
+		Type:       model.AgentCodex,
+		Status:     model.StatusWorking, // still working
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Even if name doesn't match agent, keep it while still working
+	updated, _ := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "sess-working", Name: "zsh"},
+		},
+	})
+	um := modelFrom(updated)
+	if um.store.SessionByID("sess-working") == nil {
+		t.Error("expected working session to be kept even with non-agent name")
+	}
+}
+
 func TestSessionsRefreshedDispatchesDiscovery(t *testing.T) {
 	store := makeStore(t)
 	// No existing projects — the agent should be discovered via CWD
@@ -1231,6 +1277,99 @@ func TestScreenReadBlankTransitionsToIdle(t *testing.T) {
 	session := um.store.GetSession("/a/myproject")
 	if session.Status != model.StatusIdle {
 		t.Errorf("expected idle after consecutive blank reads, got %q", session.Status)
+	}
+}
+
+func TestScreenReadAgentExitedTransitionsToIdle(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Type:       model.AgentCodex,
+		Status:     model.StatusWorking,
+		LastScreen: "› some codex prompt\n",
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	shellContent := "myhost% \n"
+
+	// First unmatched read — should stay working (could be transient output)
+	updated, _ := m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
+		ProjectDir: "/a/myproject",
+		Content:    shellContent,
+	})
+	m = modelFrom(updated)
+	session := m.store.SessionByID("sess-1")
+	if session.Status != model.StatusWorking {
+		t.Errorf("expected working after 1 unmatched read, got %q", session.Status)
+	}
+
+	// Second unmatched read — still working
+	updated, _ = m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
+		ProjectDir: "/a/myproject",
+		Content:    shellContent,
+	})
+	m = modelFrom(updated)
+	session = m.store.SessionByID("sess-1")
+	if session.Status != model.StatusWorking {
+		t.Errorf("expected working after 2 unmatched reads, got %q", session.Status)
+	}
+
+	// Third unmatched read — now transitions to idle
+	updated, _ = m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
+		ProjectDir: "/a/myproject",
+		Content:    shellContent,
+	})
+	m = modelFrom(updated)
+	session = m.store.SessionByID("sess-1")
+	if session.Status != model.StatusIdle {
+		t.Errorf("expected idle after 3 unmatched reads, got %q", session.Status)
+	}
+}
+
+func TestScreenReadUnmatchedCounterResetsOnMatch(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+		LastScreen: "✻ Reading file…\n",
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Two unmatched reads (plain output)
+	for i := 0; i < 2; i++ {
+		updated, _ := m.Update(ScreenReadMsg{
+			SessionID:  "sess-1",
+			ProjectDir: "/a/myproject",
+			Content:    "some plain output\n",
+		})
+		m = modelFrom(updated)
+	}
+	session := m.store.SessionByID("sess-1")
+	if session.UnmatchedReads != 2 {
+		t.Fatalf("expected 2 unmatched reads, got %d", session.UnmatchedReads)
+	}
+
+	// Matched read resets counter
+	updated, _ := m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
+		ProjectDir: "/a/myproject",
+		Content:    "✻ Editing…\n",
+	})
+	m = modelFrom(updated)
+	session = m.store.SessionByID("sess-1")
+	if session.UnmatchedReads != 0 {
+		t.Errorf("expected unmatched counter reset to 0, got %d", session.UnmatchedReads)
+	}
+	if session.Status != model.StatusWorking {
+		t.Errorf("expected still working after matched read, got %q", session.Status)
 	}
 }
 

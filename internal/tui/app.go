@@ -1038,7 +1038,21 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		cmds = append(cmds, discoverAgent(m.backend, sess, agentType, m.watchDirs, projectDirs))
 	}
 
-	// Remove sessions for dead iTerm sessions.
+	// Check tracked sessions whose iTerm name no longer matches an agent.
+	// If the session is also idle (from screen reads), the agent exited
+	// and the pane reverted to a plain shell — treat as dead.
+	liveNames := make(map[string]string)
+	for _, sess := range msg.Sessions {
+		liveNames[sess.ID] = sess.Name
+	}
+	for _, s := range m.store.Sessions {
+		name, alive := liveNames[s.SessionID]
+		if alive && s.Status == model.StatusIdle && terminal.DetectAgent(name) == "" {
+			liveIDs[s.SessionID] = false // mark for removal below
+		}
+	}
+
+	// Remove sessions for dead iTerm sessions and exited agents.
 	// Collect IDs first to avoid mutating the slice during iteration.
 	var deadIDs []string
 	for _, s := range m.store.Sessions {
@@ -1238,10 +1252,16 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	}
 
 	if status == "" {
+		as.UnmatchedReads++
 		// Screen changed but no pattern match while in needs_input →
 		// the agent moved on, transition to working
 		if screenChanged && as.Status == model.StatusNeedsInput {
 			status = model.StatusWorking
+		} else if as.Status == model.StatusWorking && as.UnmatchedReads >= 3 {
+			// Multiple consecutive reads with no agent patterns — the
+			// agent likely exited (e.g. killed) and the pane shows a
+			// shell. A single unmatched read is normal during output.
+			status = model.StatusIdle
 		} else if !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) {
 			// Consecutive blank screen reads while "working" — it2 can't
 			// read this session. No evidence the agent is working.
@@ -1249,6 +1269,8 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		} else {
 			return m, nil
 		}
+	} else {
+		as.UnmatchedReads = 0
 	}
 
 	// Skip stale screen reads (identical content)

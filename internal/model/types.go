@@ -61,9 +61,10 @@ type AgentSession struct {
 	MonitorLog    string      `json:"-"`
 	LastSent      time.Time   `json:"last_sent"`
 	LastActivity  time.Time   `json:"-"`
-	ScreenChecked bool        `json:"-"`
-	InitialStatus AgentStatus `json:"-"`
-	LastScreen    string      `json:"-"`
+	ScreenChecked  bool        `json:"-"`
+	InitialStatus  AgentStatus `json:"-"`
+	LastScreen     string      `json:"-"`
+	UnmatchedReads int         `json:"-"` // consecutive screen reads with no agent pattern
 }
 
 type ChatEntry struct {
