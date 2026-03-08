@@ -75,6 +75,7 @@ type BackendAvailableMsg struct {
 
 // ScreenReadMsg contains screen content read from a session.
 type ScreenReadMsg struct {
+	SessionID  string
 	ProjectDir string
 	Content    string
 	Err        error

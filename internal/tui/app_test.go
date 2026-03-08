@@ -851,6 +851,7 @@ func TestScreenReadUpdatesStatus(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, store)
 
 	updated, _ := m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
 		ProjectDir: "/a/myproject",
 		Content:    "some output\n\u276f",
 	})
@@ -1019,6 +1020,7 @@ func TestFormatStatus(t *testing.T) {
 		{model.StatusWorking, "", "", "Working..."},
 		{model.StatusWorking, "Running tests", "", "Running tests"},
 		{model.StatusIdle, "", "", "idle"},
+		{model.StatusIdle, "Atria Agent Orchestration", "", "Atria Agent Orchestration"},
 		{model.StatusNeedsInput, "", "Allow edit?", "Allow edit?"},
 		{model.StatusNeedsInput, "", "", "Needs input"},
 		{model.StatusError, "", "", "error"},

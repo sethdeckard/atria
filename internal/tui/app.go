@@ -85,8 +85,8 @@ func (a storeAdapter) Projects() []*model.Project {
 	return a.s.Projects
 }
 
-func (a storeAdapter) GetSession(dir string) *model.AgentSession {
-	return a.s.GetSession(dir)
+func (a storeAdapter) GetSessions(dir string) []*model.AgentSession {
+	return a.s.GetSessions(dir)
 }
 
 func NewModel(backend terminal.Backend, store *model.Store, watchDirs []string, monitorDir string) Model {
@@ -570,17 +570,24 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		trackedIDs[s.SessionID] = true
 	}
 
-	// Update activity from session names for tracked sessions
+	// Update activity from session names for tracked sessions.
+	// Activity text is informational (shown in all states); only
+	// transition to working if the name is actively changing (indicates
+	// the agent is doing something), not on the first read.
 	for _, sess := range msg.Sessions {
 		if as := m.store.SessionByID(sess.ID); as != nil {
 			activity := terminal.ExtractActivity(sess.Name)
 			if activity != "" && activity != as.Activity {
+				prevActivity := as.Activity
 				as.Activity = activity
 				as.LastActivity = time.Now()
-				as.Status = model.StatusWorking
-				// Clear stale attention from previous needs_input
-				as.Attention = ""
-				delete(m.attentionDirs, as.ProjectDir)
+				// Only transition to working if the activity *changed*
+				// (not just set for the first time on a static name).
+				if prevActivity != "" {
+					as.Status = model.StatusWorking
+					as.Attention = ""
+					delete(m.attentionDirs, as.ProjectDir)
+				}
 			}
 		}
 	}
@@ -608,7 +615,7 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	// Remove sessions for dead iTerm sessions
 	for _, s := range m.store.Sessions {
 		if !liveIDs[s.SessionID] {
-			m.store.RemoveSession(s.ProjectDir)
+			m.store.RemoveSession(s.SessionID)
 		}
 	}
 
@@ -777,7 +784,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	if msg.Err != nil {
 		return m, nil
 	}
-	as := m.store.GetSession(msg.ProjectDir)
+	as := m.store.SessionByID(msg.SessionID)
 	if as == nil {
 		return m, nil
 	}

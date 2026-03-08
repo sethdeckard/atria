@@ -28,8 +28,10 @@ func TestAvailableErrorWhenNotFound(t *testing.T) {
 }
 
 func TestAvailableErrorWhenEmptyPathAndNotInPATH(t *testing.T) {
-	// Set PATH to empty to ensure it2 is not found.
+	// Set PATH to empty and HOME to nonexistent to ensure it2 is not found
+	// via PATH or venv fallback paths.
 	t.Setenv("PATH", "")
+	t.Setenv("HOME", "/nonexistent-home-for-test")
 	c := NewClient("")
 	err := c.Available()
 	if err == nil {

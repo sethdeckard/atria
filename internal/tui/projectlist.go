@@ -17,12 +17,19 @@ type projectRow struct {
 
 func buildRows(store interface {
 	Projects() []*model.Project
-	GetSession(string) *model.AgentSession
+	GetSessions(string) []*model.AgentSession
 }) []projectRow {
 	projects := store.Projects()
-	rows := make([]projectRow, len(projects))
-	for i, p := range projects {
-		rows[i] = projectRow{project: p, session: store.GetSession(p.Dir)}
+	var rows []projectRow
+	for _, p := range projects {
+		sessions := store.GetSessions(p.Dir)
+		if len(sessions) == 0 {
+			rows = append(rows, projectRow{project: p, session: nil})
+		} else {
+			for _, s := range sessions {
+				rows = append(rows, projectRow{project: p, session: s})
+			}
+		}
 	}
 	sortRows(rows)
 	return rows
@@ -155,7 +162,11 @@ func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Sty
 		}
 		return text, statusWorkingStyle
 	case model.StatusIdle:
-		return "\u25cf idle", statusIdleStyle
+		text := "\u25cf idle"
+		if s.Activity != "" {
+			text = "\u25cf " + s.Activity
+		}
+		return text, statusIdleStyle
 	case model.StatusError:
 		text := "\u2717 error"
 		if s.Attention != "" {

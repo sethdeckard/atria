@@ -115,10 +115,10 @@ func (s *Store) SaveSessions() error {
 	return os.WriteFile(s.sessionsPath(), data, 0o644)
 }
 
-// SetSession adds or updates a session keyed by ProjectDir.
+// SetSession adds or updates a session keyed by SessionID.
 func (s *Store) SetSession(session *AgentSession) {
 	for i, existing := range s.Sessions {
-		if existing.ProjectDir == session.ProjectDir {
+		if existing.SessionID == session.SessionID {
 			s.Sessions[i] = session
 			return
 		}
@@ -136,14 +136,25 @@ func (s *Store) GetSession(projectDir string) *AgentSession {
 	return nil
 }
 
-// RemoveSession removes the session for the given project directory.
-func (s *Store) RemoveSession(projectDir string) {
+// RemoveSession removes the session with the given session ID.
+func (s *Store) RemoveSession(sessionID string) {
 	for i, sess := range s.Sessions {
-		if sess.ProjectDir == projectDir {
+		if sess.SessionID == sessionID {
 			s.Sessions = append(s.Sessions[:i], s.Sessions[i+1:]...)
 			return
 		}
 	}
+}
+
+// GetSessions returns all sessions for the given project directory.
+func (s *Store) GetSessions(projectDir string) []*AgentSession {
+	var result []*AgentSession
+	for _, sess := range s.Sessions {
+		if sess.ProjectDir == projectDir {
+			result = append(result, sess)
+		}
+	}
+	return result
 }
 
 // SessionByID returns the session with the given session ID, or nil.

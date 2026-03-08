@@ -159,20 +159,32 @@ func TestSetGetSession(t *testing.T) {
 		t.Fatal("expected to get session s1")
 	}
 
-	// Update existing session.
+	// Add second session for same project (different agent).
 	sess2 := &AgentSession{
 		ProjectDir: "/proj/x",
 		SessionID:  "s2",
-		Type:       AgentClaude,
+		Type:       AgentCodex,
 		Status:     StatusWorking,
 	}
 	s.SetSession(sess2)
-	if len(s.Sessions) != 1 {
-		t.Fatalf("expected 1 session after update, got %d", len(s.Sessions))
+	if len(s.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions after adding second agent, got %d", len(s.Sessions))
 	}
-	got = s.GetSession("/proj/x")
-	if got.SessionID != "s2" {
-		t.Fatalf("expected updated session s2, got %s", got.SessionID)
+	sessions := s.GetSessions("/proj/x")
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions for project, got %d", len(sessions))
+	}
+
+	// Update existing session by same SessionID.
+	sess2updated := &AgentSession{
+		ProjectDir: "/proj/x",
+		SessionID:  "s2",
+		Type:       AgentCodex,
+		Status:     StatusIdle,
+	}
+	s.SetSession(sess2updated)
+	if len(s.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions after update, got %d", len(s.Sessions))
 	}
 
 	// SessionByID
@@ -186,16 +198,16 @@ func TestSetGetSession(t *testing.T) {
 	// TrackedSessionIDs
 	s.SetSession(&AgentSession{ProjectDir: "/proj/y", SessionID: "s3"})
 	ids := s.TrackedSessionIDs()
-	if len(ids) != 2 {
-		t.Fatalf("expected 2 IDs, got %d", len(ids))
+	if len(ids) != 3 {
+		t.Fatalf("expected 3 IDs, got %d", len(ids))
 	}
 
-	// RemoveSession
-	s.RemoveSession("/proj/x")
-	if s.GetSession("/proj/x") != nil {
-		t.Fatal("expected session removed")
+	// RemoveSession by session ID
+	s.RemoveSession("s1")
+	if s.SessionByID("s1") != nil {
+		t.Fatal("expected session s1 removed")
 	}
-	if len(s.Sessions) != 1 {
-		t.Fatalf("expected 1 session after remove, got %d", len(s.Sessions))
+	if len(s.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions after remove, got %d", len(s.Sessions))
 	}
 }
