@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/sethdeckard/atria/internal/terminal"
 )
+
+// defaultVenvDir is where atria recommends installing it2.
+const defaultVenvDir = "~/.local/share/atria/venv"
 
 // Client implements terminal.Backend by wrapping the it2 CLI tool.
 type Client struct {
@@ -35,20 +39,46 @@ func (c *Client) run(args ...string) ([]byte, error) {
 }
 
 // Available checks if it2 is usable by running "it2 session list --json".
-// If it2Path is empty, it tries to find "it2" in PATH.
+// If it2Path is empty, searches PATH then common venv locations.
+// Returns concise errors suitable for the TUI status bar. For detailed
+// pre-flight output, use Preflight() before starting the TUI.
 func (c *Client) Available() error {
 	if c.it2Path == "" {
-		path, err := exec.LookPath("it2")
-		if err != nil {
-			return fmt.Errorf("it2 not found in PATH: %w", err)
-		}
-		c.it2Path = path
+		c.it2Path = findIT2()
+	}
+	if c.it2Path == "" {
+		return fmt.Errorf("it2 not found — run atria again to install")
 	}
 	_, err := c.run("session", "list", "--json")
 	if err != nil {
-		return fmt.Errorf("it2 not available: %w", err)
+		return fmt.Errorf("it2 cannot connect to iTerm2 — check Python API setting")
 	}
 	return nil
+}
+
+// findIT2 searches for the it2 binary in PATH and common venv locations.
+func findIT2() string {
+	// 1. Check PATH
+	if path, err := exec.LookPath("it2"); err == nil {
+		return path
+	}
+
+	// 2. Check atria's recommended venv
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	candidates := []string{
+		filepath.Join(home, ".local", "share", "atria", "venv", "bin", "it2"),
+		filepath.Join(home, ".venvs", "iterm2", "bin", "it2"),
+		filepath.Join(home, ".venv", "bin", "it2"),
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 // it2Session represents a session as returned by it2 session list --json.

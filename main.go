@@ -15,6 +15,21 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--uninstall-it2":
+			iterm.Uninstall()
+			return
+		case "--help", "-h":
+			fmt.Println("Usage: atria [options]")
+			fmt.Println()
+			fmt.Println("Options:")
+			fmt.Println("  --uninstall-it2   Remove the auto-installed it2 venv")
+			fmt.Println("  --help, -h        Show this help")
+			return
+		}
+	}
+
 	cfg, err := config.Load(config.DefaultPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
@@ -28,7 +43,11 @@ func main() {
 	var backend terminal.Backend
 	switch cfg.Backend {
 	case "iterm2":
-		backend = iterm.NewClient(cfg.IT2Path)
+		it2Path, ok := iterm.Preflight(cfg.IT2Path)
+		if !ok {
+			os.Exit(1)
+		}
+		backend = iterm.NewClient(it2Path)
 	default:
 		backend = iterm.NewClient(cfg.IT2Path)
 	}
