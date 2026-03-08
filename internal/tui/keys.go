@@ -3,22 +3,23 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Launch key.Binding
-	Toggle key.Binding
-	Send   key.Binding
-	Focus  key.Binding
-	Delete key.Binding
-	Batch  key.Binding
-	Stream key.Binding
-	Enter  key.Binding
-	Help   key.Binding
-	Quit   key.Binding
-	Right  key.Binding
-	Left   key.Binding
-	Escape key.Binding
-	CtrlD  key.Binding
+	Up          key.Binding
+	Down        key.Binding
+	Launch      key.Binding
+	Toggle      key.Binding
+	Sort        key.Binding
+	SortReverse key.Binding
+	Focus       key.Binding
+	Delete      key.Binding
+	Batch       key.Binding
+	Stream      key.Binding
+	Enter       key.Binding
+	Help        key.Binding
+	Quit        key.Binding
+	Right       key.Binding
+	Left        key.Binding
+	Escape      key.Binding
+	CtrlD       key.Binding
 }
 
 var keys = keyMap{
@@ -38,9 +39,13 @@ var keys = keyMap{
 		key.WithKeys("t"),
 		key.WithHelp("t", "toggle agent type"),
 	),
-	Send: key.NewBinding(
+	Sort: key.NewBinding(
 		key.WithKeys("s"),
-		key.WithHelp("s", "send prompt"),
+		key.WithHelp("s", "sort column"),
+	),
+	SortReverse: key.NewBinding(
+		key.WithKeys("S"),
+		key.WithHelp("S", "reverse sort"),
 	),
 	Focus: key.NewBinding(
 		key.WithKeys("f"),

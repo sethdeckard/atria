@@ -58,6 +58,8 @@ type Model struct {
 	height       int
 	statusText   string
 	showHelp     bool
+	sortCol      sortColumn
+	sortDesc     bool
 
 	// Chat view
 	chat          chatView
@@ -148,13 +150,16 @@ func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs 
 		}
 	}
 
+	rows := buildRows(storeAdapter{store})
+	sortRows(rows, sortByAgent, false)
+
 	return Model{
 		watchDirs:       watchDirs,
 		monitorDir:      monitorDir,
 		launchDir:       launchDir,
 		backend:         backend,
 		store:           store,
-		rows:            buildRows(storeAdapter{store}),
+		rows:            rows,
 		chat:            newChatView(),
 		batchInput:      ba,
 		availableAgents: available,
@@ -283,7 +288,6 @@ func (m Model) View() string {
 
 func (m Model) viewProjectList() string {
 	var sb strings.Builder
-	allProjects := m.store.Projects
 
 	maxRows := m.maxVisibleRows()
 
@@ -300,7 +304,7 @@ func (m Model) viewProjectList() string {
 		}
 	}
 
-	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, len(m.availableAgents) > 1, maxRows, scrollOffset)
+	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, len(m.availableAgents) > 1, maxRows, scrollOffset, m.sortCol, m.sortDesc)
 	sb.WriteString(list)
 
 	if m.streamOpen {
@@ -308,7 +312,7 @@ func (m Model) viewProjectList() string {
 		var projectName, projectDir string
 		if m.cursor >= 0 && m.cursor < len(m.rows) {
 			session = m.rows[m.cursor].session
-			projectName = m.rows[m.cursor].project.DisplayName(m.store.Projects)
+			projectName = m.rows[m.cursor].displayName
 			projectDir = contractHome(m.rows[m.cursor].project.Dir)
 		}
 		panelH := streamPanelHeight(m.height)
@@ -693,11 +697,12 @@ func (m Model) viewHelp() string {
   v              Toggle agent screen stream
   l              Launch agent in a project
   t              Toggle agent type (Claude/Codex)
-  s              Send prompt (opens chat view)
+  s              Cycle sort column
+  S              Reverse sort direction
   f              Focus agent's terminal tab
   d              Remove project from list
   B              Batch send to multiple agents
-  Enter          Expand/collapse project details
+  Enter          Open chat view
   ?              Toggle this help
   q, Ctrl+C      Quit`
 	return helpStyle.Render(help)
@@ -775,8 +780,19 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusText = "Default agent: " + agentName
 		return m, nil
 
-	case key.Matches(msg, keys.Send):
-		return m.openChat()
+	case key.Matches(msg, keys.Sort):
+		m.sortCol = (m.sortCol + 1) % sortColumnCount
+		sortRows(m.rows, m.sortCol, m.sortDesc)
+		m.cursor = 0
+		m.scrollOffset = 0
+		return m, nil
+
+	case key.Matches(msg, keys.SortReverse):
+		m.sortDesc = !m.sortDesc
+		sortRows(m.rows, m.sortCol, m.sortDesc)
+		m.cursor = 0
+		m.scrollOffset = 0
+		return m, nil
 
 	case key.Matches(msg, keys.Focus):
 		return m.focusSelected()
@@ -924,6 +940,7 @@ func (m Model) launchFromBrowser(dirPath, name string) (Model, tea.Cmd) {
 	m.store.AddProject(dirPath)
 	_ = m.store.SaveProjects()
 	m.rows = buildRows(storeAdapter{m.store})
+	sortRows(m.rows, m.sortCol, m.sortDesc)
 	m.view = viewProjectList
 	agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
 	m.statusText = fmt.Sprintf("Launching %s for %s...", agentName, name)
@@ -1037,6 +1054,7 @@ func (m Model) deleteSelected() (Model, tea.Cmd) {
 	m.store.RemoveProject(r.project.Dir)
 	_ = m.store.SaveProjects()
 	m.rows = buildRows(storeAdapter{m.store})
+	sortRows(m.rows, m.sortCol, m.sortDesc)
 	if m.cursor >= len(m.rows) && m.cursor > 0 {
 		m.cursor--
 	}
@@ -1135,6 +1153,7 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	}
 
 	m.rows = buildRows(storeAdapter{m.store})
+	sortRows(m.rows, m.sortCol, m.sortDesc)
 	if m.cursor >= len(m.rows) && m.cursor > 0 {
 		m.cursor = len(m.rows) - 1
 	}
@@ -1170,6 +1189,7 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 	_ = m.store.SaveSessions()
 
 	m.rows = buildRows(storeAdapter{m.store})
+	sortRows(m.rows, m.sortCol, m.sortDesc)
 
 	// Start monitoring
 	logPath := filepath.Join(m.monitorDir, filepath.Base(msg.Dir)+".log")
@@ -1214,6 +1234,7 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 	_ = m.store.SaveSessions()
 
 	m.rows = buildRows(storeAdapter{m.store})
+	sortRows(m.rows, m.sortCol, m.sortDesc)
 	m.statusText = fmt.Sprintf("Launched %s for %s", msg.AgentType, filepath.Base(msg.ProjectDir))
 
 	// Start monitoring
@@ -1258,6 +1279,7 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 	}
 
 	m.rows = buildRows(storeAdapter{m.store})
+	sortRows(m.rows, m.sortCol, m.sortDesc)
 
 	// Bell + attention highlight when status changes to needs_input
 	if msg.Status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
@@ -1372,6 +1394,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	}
 
 	m.rows = buildRows(storeAdapter{m.store})
+	sortRows(m.rows, m.sortCol, m.sortDesc)
 
 	// Bell on needs_input transition
 	if status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {

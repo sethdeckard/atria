@@ -10,9 +10,21 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 )
 
+type sortColumn int
+
+const (
+	sortByAgent sortColumn = iota
+	sortByHarness
+	sortByDir
+	sortByStatus
+	sortByUpdated
+	sortColumnCount // sentinel for cycling
+)
+
 type projectRow struct {
-	project *model.Project
-	session *model.AgentSession
+	project     *model.Project
+	session     *model.AgentSession
+	displayName string
 }
 
 func buildRows(store interface {
@@ -24,21 +36,65 @@ func buildRows(store interface {
 	for _, p := range projects {
 		sessions := store.GetSessions(p.Dir)
 		for _, s := range sessions {
-			rows = append(rows, projectRow{project: p, session: s})
+			rows = append(rows, projectRow{project: p, session: s, displayName: p.DisplayName(projects)})
 		}
 	}
-	sortRows(rows)
+
+	// Disambiguate duplicate display names with #2, #3 suffixes
+	counts := make(map[string]int)
+	for _, r := range rows {
+		counts[r.displayName]++
+	}
+	seen := make(map[string]int)
+	for i, r := range rows {
+		if counts[r.displayName] > 1 {
+			seen[r.displayName]++
+			if seen[r.displayName] > 1 {
+				rows[i].displayName = fmt.Sprintf("%s #%d", r.displayName, seen[r.displayName])
+			}
+		}
+	}
+
 	return rows
 }
 
-func sortRows(rows []projectRow) {
+func sortRows(rows []projectRow, col sortColumn, desc bool) {
 	sort.SliceStable(rows, func(i, j int) bool {
-		si := statusPriority(rows[i].session)
-		sj := statusPriority(rows[j].session)
-		if si != sj {
-			return si < sj
+		if desc {
+			i, j = j, i
 		}
-		return rows[i].project.Name < rows[j].project.Name
+		switch col {
+		case sortByAgent:
+			return rows[i].displayName < rows[j].displayName
+		case sortByHarness:
+			ti := string(rows[i].session.Type)
+			tj := string(rows[j].session.Type)
+			if ti != tj {
+				return ti < tj
+			}
+			return rows[i].displayName < rows[j].displayName
+		case sortByDir:
+			if rows[i].project.Dir != rows[j].project.Dir {
+				return rows[i].project.Dir < rows[j].project.Dir
+			}
+			return rows[i].displayName < rows[j].displayName
+		case sortByStatus:
+			si := statusPriority(rows[i].session)
+			sj := statusPriority(rows[j].session)
+			if si != sj {
+				return si < sj
+			}
+			return rows[i].displayName < rows[j].displayName
+		case sortByUpdated:
+			ti := rows[i].session.LastActivity
+			tj := rows[j].session.LastActivity
+			if !ti.Equal(tj) {
+				return ti.After(tj) // most recent first in ascending
+			}
+			return rows[i].displayName < rows[j].displayName
+		default:
+			return rows[i].displayName < rows[j].displayName
+		}
 	})
 }
 
@@ -94,24 +150,34 @@ func renderHeader(width int) string {
 	return sb.String()
 }
 
-func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int) string {
-	name := fmt.Sprintf("  %-*s", nameWidth, "agent")
-	harness := fmt.Sprintf("%-*s", typeWidth, "harness")
-	dir := fmt.Sprintf("%-*s", dirWidth, "directory")
+func sortIndicator(col, active sortColumn, desc bool) string {
+	if col != active {
+		return ""
+	}
+	if desc {
+		return "▼"
+	}
+	return "▲"
+}
+
+func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int, col sortColumn, desc bool) string {
+	name := fmt.Sprintf("  %-*s", nameWidth, "agent"+sortIndicator(sortByAgent, col, desc))
+	harness := fmt.Sprintf("%-*s", typeWidth, "harness"+sortIndicator(sortByHarness, col, desc))
+	dir := fmt.Sprintf("%-*s", dirWidth, "directory"+sortIndicator(sortByDir, col, desc))
 
 	// status + updated fill the rest
 	remaining := totalWidth - lipgloss.Width(name) - typeWidth - dirWidth - 10
 	if remaining < 10 {
 		remaining = 10
 	}
-	status := fmt.Sprintf("%-*s", remaining, "status")
-	updated := "updated"
+	status := fmt.Sprintf("%-*s", remaining, "status"+sortIndicator(sortByStatus, col, desc))
+	updated := "updated" + sortIndicator(sortByUpdated, col, desc)
 
 	line := name + harness + dir + status + updated
 	return dimStyle.Render(line)
 }
 
-func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, canToggle bool, maxRows int, scrollOffset int) string {
+func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, canToggle bool, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool) string {
 	var sb strings.Builder
 
 	sb.WriteString(renderHeader(width))
@@ -126,9 +192,8 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 	typeWidth := 10
 	dirWidth := 20
 	for _, r := range rows {
-		dn := r.project.DisplayName(allProjects)
-		if len(dn) > nameWidth-2 {
-			nameWidth = len(dn) + 2
+		if len(r.displayName) > nameWidth-2 {
+			nameWidth = len(r.displayName) + 2
 		}
 		dp := shortenPath(r.project.Dir)
 		if len(dp)+2 > dirWidth {
@@ -142,7 +207,7 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 		dirWidth = 40
 	}
 
-	sb.WriteString(renderColumnHeaders(nameWidth, typeWidth, dirWidth, width))
+	sb.WriteString(renderColumnHeaders(nameWidth, typeWidth, dirWidth, width, sortCol, sortDesc))
 	sb.WriteString("\n")
 
 	// Clamp scroll to keep cursor visible regardless of how maxRows changed
@@ -170,16 +235,16 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 		isSelected := actualIdx == cursor
 
 		if isSelected && hasAttention {
-			line := formatRow(r, allProjects, nameWidth, typeWidth, dirWidth, width, spinnerFrame, true)
+			line := formatRow(r, nameWidth, typeWidth, dirWidth, width, spinnerFrame, true)
 			sb.WriteString(attentionSelectedStyle.Render(padToWidth(line, width)))
 		} else if isSelected {
-			line := formatSelectedRow(r, allProjects, nameWidth, typeWidth, dirWidth, width, spinnerFrame)
+			line := formatSelectedRow(r, nameWidth, typeWidth, dirWidth, width, spinnerFrame)
 			sb.WriteString(line)
 		} else if hasAttention {
-			line := formatRow(r, allProjects, nameWidth, typeWidth, dirWidth, width, spinnerFrame, true)
+			line := formatRow(r, nameWidth, typeWidth, dirWidth, width, spinnerFrame, true)
 			sb.WriteString(attentionRowStyle.Render(padToWidth(line, width)))
 		} else {
-			line := formatRow(r, allProjects, nameWidth, typeWidth, dirWidth, width, spinnerFrame, false)
+			line := formatRow(r, nameWidth, typeWidth, dirWidth, width, spinnerFrame, false)
 			sb.WriteString(line)
 		}
 		sb.WriteString("\n")
@@ -199,8 +264,8 @@ func padToWidth(s string, width int) string {
 
 // formatRow builds a single-line row. When plain is true, no inner styles are
 // applied so a row-level style can wrap the whole line cleanly.
-func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, plain bool) string {
-	name := r.project.DisplayName(allProjects)
+func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, plain bool) string {
+	name := r.displayName
 	if len(name) > nameWidth-2 {
 		name = name[:nameWidth-3] + "\u2026"
 	}
@@ -248,8 +313,8 @@ func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth,
 
 // formatSelectedRow builds a selected row where the status retains its color
 // on a purple background, while other columns get white text on purple.
-func formatSelectedRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int) string {
-	name := r.project.DisplayName(allProjects)
+func formatSelectedRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int) string {
+	name := r.displayName
 	if len(name) > nameWidth-2 {
 		name = name[:nameWidth-3] + "\u2026"
 	}
@@ -395,7 +460,7 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 	if canToggle {
 		global = append(global, "t:toggle")
 	}
-	global = append(global, "?:help", "q:quit")
+	global = append(global, "s:sort", "?:help", "q:quit")
 	parts = append(parts, strings.Join(global, "  "))
 
 	all := append([]string{left}, parts...)

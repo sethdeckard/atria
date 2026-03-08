@@ -443,7 +443,7 @@ func TestOpenChatNoRows(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 
-	updated, _ := m.Update(keyMsg("s"))
+	updated, _ := m.Update(keyMsg("enter"))
 	um := modelFrom(updated)
 	if um.view != viewProjectList {
 		t.Error("expected to stay on project list when no rows")
@@ -463,7 +463,7 @@ func TestOpenChatWithAgent(t *testing.T) {
 	m.width = 80
 	m.height = 40
 
-	updated, _ := m.Update(keyMsg("s"))
+	updated, _ := m.Update(keyMsg("enter"))
 	um := modelFrom(updated)
 	if um.view != viewChat {
 		t.Errorf("expected chat view, got %d", um.view)
@@ -487,7 +487,7 @@ func TestChatEscapeReturnsToProjectList(t *testing.T) {
 	m.height = 40
 
 	// Enter chat
-	updated, _ := m.Update(keyMsg("s"))
+	updated, _ := m.Update(keyMsg("enter"))
 	um := modelFrom(updated)
 	if um.view != viewChat {
 		t.Fatal("expected chat view")
@@ -1567,19 +1567,205 @@ func TestViewHelp(t *testing.T) {
 // --- projectlist unit tests ---
 
 func TestSortRows(t *testing.T) {
-	rows := []projectRow{
-		{project: &model.Project{Name: "delta"}, session: &model.AgentSession{Status: model.StatusIdle}},
-		{project: &model.Project{Name: "alpha"}, session: &model.AgentSession{Status: model.StatusIdle}},
-		{project: &model.Project{Name: "beta"}, session: &model.AgentSession{Status: model.StatusNeedsInput}},
-		{project: &model.Project{Name: "gamma"}, session: &model.AgentSession{Status: model.StatusWorking}},
-	}
-	sortRows(rows)
-
-	expected := []string{"beta", "gamma", "alpha", "delta"}
-	for i, name := range expected {
-		if rows[i].project.Name != name {
-			t.Errorf("position %d: expected %q, got %q", i, name, rows[i].project.Name)
+	t.Run("by status ascending", func(t *testing.T) {
+		rows := []projectRow{
+			{project: &model.Project{Name: "delta"}, session: &model.AgentSession{Status: model.StatusIdle}, displayName: "delta"},
+			{project: &model.Project{Name: "alpha"}, session: &model.AgentSession{Status: model.StatusIdle}, displayName: "alpha"},
+			{project: &model.Project{Name: "beta"}, session: &model.AgentSession{Status: model.StatusNeedsInput}, displayName: "beta"},
+			{project: &model.Project{Name: "gamma"}, session: &model.AgentSession{Status: model.StatusWorking}, displayName: "gamma"},
 		}
+		sortRows(rows, sortByStatus, false)
+
+		expected := []string{"beta", "gamma", "alpha", "delta"}
+		for i, name := range expected {
+			if rows[i].project.Name != name {
+				t.Errorf("position %d: expected %q, got %q", i, name, rows[i].project.Name)
+			}
+		}
+	})
+
+	t.Run("by agent ascending", func(t *testing.T) {
+		rows := []projectRow{
+			{project: &model.Project{Name: "delta"}, session: &model.AgentSession{}, displayName: "delta"},
+			{project: &model.Project{Name: "alpha"}, session: &model.AgentSession{}, displayName: "alpha"},
+			{project: &model.Project{Name: "gamma"}, session: &model.AgentSession{}, displayName: "gamma"},
+		}
+		sortRows(rows, sortByAgent, false)
+
+		expected := []string{"alpha", "delta", "gamma"}
+		for i, name := range expected {
+			if rows[i].displayName != name {
+				t.Errorf("position %d: expected %q, got %q", i, name, rows[i].displayName)
+			}
+		}
+	})
+
+	t.Run("by agent descending", func(t *testing.T) {
+		rows := []projectRow{
+			{project: &model.Project{Name: "delta"}, session: &model.AgentSession{}, displayName: "delta"},
+			{project: &model.Project{Name: "alpha"}, session: &model.AgentSession{}, displayName: "alpha"},
+			{project: &model.Project{Name: "gamma"}, session: &model.AgentSession{}, displayName: "gamma"},
+		}
+		sortRows(rows, sortByAgent, true)
+
+		expected := []string{"gamma", "delta", "alpha"}
+		for i, name := range expected {
+			if rows[i].displayName != name {
+				t.Errorf("position %d: expected %q, got %q", i, name, rows[i].displayName)
+			}
+		}
+	})
+
+	t.Run("by harness", func(t *testing.T) {
+		rows := []projectRow{
+			{project: &model.Project{Name: "a"}, session: &model.AgentSession{Type: model.AgentCodex}, displayName: "a"},
+			{project: &model.Project{Name: "b"}, session: &model.AgentSession{Type: model.AgentClaude}, displayName: "b"},
+			{project: &model.Project{Name: "c"}, session: &model.AgentSession{Type: model.AgentClaude}, displayName: "c"},
+		}
+		sortRows(rows, sortByHarness, false)
+
+		expected := []string{"b", "c", "a"} // claude < codex, then by name
+		for i, name := range expected {
+			if rows[i].displayName != name {
+				t.Errorf("position %d: expected %q, got %q", i, name, rows[i].displayName)
+			}
+		}
+	})
+
+	t.Run("by directory", func(t *testing.T) {
+		rows := []projectRow{
+			{project: &model.Project{Name: "b", Dir: "/z/proj"}, session: &model.AgentSession{}, displayName: "b"},
+			{project: &model.Project{Name: "a", Dir: "/a/proj"}, session: &model.AgentSession{}, displayName: "a"},
+		}
+		sortRows(rows, sortByDir, false)
+
+		if rows[0].displayName != "a" {
+			t.Errorf("expected 'a' first, got %q", rows[0].displayName)
+		}
+	})
+
+	t.Run("by updated", func(t *testing.T) {
+		now := time.Now()
+		rows := []projectRow{
+			{project: &model.Project{Name: "old"}, session: &model.AgentSession{LastActivity: now.Add(-5 * time.Minute)}, displayName: "old"},
+			{project: &model.Project{Name: "new"}, session: &model.AgentSession{LastActivity: now}, displayName: "new"},
+		}
+		sortRows(rows, sortByUpdated, false)
+
+		if rows[0].displayName != "new" {
+			t.Errorf("expected 'new' first (most recent), got %q", rows[0].displayName)
+		}
+	})
+}
+
+func TestDuplicateDisplayNames(t *testing.T) {
+	store := &model.Store{
+		Projects: []*model.Project{
+			{Name: "myapp", Dir: "/go/myapp"},
+			{Name: "myapp", Dir: "/rb/myapp"},
+			{Name: "other", Dir: "/home/other"},
+		},
+		Sessions: []*model.AgentSession{
+			{ProjectDir: "/go/myapp", SessionID: "s1", Type: model.AgentClaude, Status: model.StatusIdle},
+			{ProjectDir: "/rb/myapp", SessionID: "s2", Type: model.AgentClaude, Status: model.StatusIdle},
+			{ProjectDir: "/home/other", SessionID: "s3", Type: model.AgentClaude, Status: model.StatusIdle},
+		},
+	}
+	rows := buildRows(storeAdapter{store})
+	sortRows(rows, sortByAgent, false)
+
+	// Find duplicate myapp rows
+	var myappNames []string
+	for _, r := range rows {
+		if r.project.Name == "myapp" {
+			myappNames = append(myappNames, r.displayName)
+		}
+	}
+	if len(myappNames) != 2 {
+		t.Fatalf("expected 2 myapp rows, got %d", len(myappNames))
+	}
+	// First keeps clean name, second gets #2
+	// DisplayName adds parent dir disambiguator: "myapp (go)" and "myapp (rb)"
+	// Since these are already different, no #N suffix is needed
+	if myappNames[0] == myappNames[1] {
+		t.Errorf("duplicate display names should be disambiguated, both are %q", myappNames[0])
+	}
+
+	// Test with truly duplicate display names (same parent dir)
+	store2 := &model.Store{
+		Projects: []*model.Project{
+			{Name: "myapp", Dir: "/work/myapp"},
+		},
+		Sessions: []*model.AgentSession{
+			{ProjectDir: "/work/myapp", SessionID: "s1", Type: model.AgentClaude, Status: model.StatusIdle},
+			{ProjectDir: "/work/myapp", SessionID: "s2", Type: model.AgentCodex, Status: model.StatusIdle},
+		},
+	}
+	rows2 := buildRows(storeAdapter{store2})
+
+	if len(rows2) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows2))
+	}
+	if rows2[0].displayName != "myapp" {
+		t.Errorf("first should be 'myapp', got %q", rows2[0].displayName)
+	}
+	if rows2[1].displayName != "myapp #2" {
+		t.Errorf("second should be 'myapp #2', got %q", rows2[1].displayName)
+	}
+}
+
+func TestSortKeyCyclesColumn(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/proj")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/proj",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 120
+	m.height = 40
+
+	if m.sortCol != sortByAgent {
+		t.Fatalf("expected default sort column agent, got %d", m.sortCol)
+	}
+
+	// Press s to cycle to harness
+	updated, _ := m.Update(keyMsg("s"))
+	um := modelFrom(updated)
+	if um.sortCol != sortByHarness {
+		t.Errorf("expected sortByHarness after one s press, got %d", um.sortCol)
+	}
+
+	// Press S to reverse direction
+	updated, _ = um.Update(keyMsg("S"))
+	um = modelFrom(updated)
+	if !um.sortDesc {
+		t.Error("expected sortDesc=true after S press")
+	}
+	if um.sortCol != sortByHarness {
+		t.Errorf("expected sortByHarness unchanged, got %d", um.sortCol)
+	}
+}
+
+func TestColumnHeaderSortIndicator(t *testing.T) {
+	header := renderColumnHeaders(20, 10, 20, 100, sortByAgent, false)
+	if !strings.Contains(header, "agent▲") {
+		t.Errorf("expected agent▲ in header, got %q", header)
+	}
+	if strings.Contains(header, "harness▲") || strings.Contains(header, "harness▼") {
+		t.Error("non-active column should not have sort indicator")
+	}
+
+	header = renderColumnHeaders(20, 10, 20, 100, sortByAgent, true)
+	if !strings.Contains(header, "agent▼") {
+		t.Errorf("expected agent▼ in header for descending, got %q", header)
+	}
+
+	header = renderColumnHeaders(20, 10, 20, 100, sortByStatus, false)
+	if !strings.Contains(header, "status▲") {
+		t.Errorf("expected status▲ in header, got %q", header)
 	}
 }
 
