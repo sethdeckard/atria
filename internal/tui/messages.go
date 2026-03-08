@@ -1,0 +1,78 @@
+package tui
+
+import (
+	"github.com/sethdeckard/atria/internal/model"
+	"github.com/sethdeckard/atria/internal/terminal"
+)
+
+// SessionsRefreshedMsg is sent when the session list has been refreshed.
+type SessionsRefreshedMsg struct {
+	Sessions []terminal.Session
+	Err      error
+}
+
+// AgentLaunchedMsg is sent after launching an agent in a new session.
+type AgentLaunchedMsg struct {
+	ProjectDir string
+	SessionID  string
+	AgentType  model.AgentType
+	Err        error
+}
+
+// PromptSentMsg is sent after sending a prompt to an agent.
+type PromptSentMsg struct {
+	ProjectDir string
+	Err        error
+}
+
+// StatusUpdatedMsg is sent when agent status has been checked.
+type StatusUpdatedMsg struct {
+	ProjectDir string
+	Status     model.AgentStatus
+	Activity   string
+	Attention  string
+}
+
+// MonitorStartedMsg is sent after starting a monitor process.
+type MonitorStartedMsg struct {
+	ProjectDir string
+	PID        int
+	LogPath    string
+	Err        error
+}
+
+// FocusedMsg is sent after focusing a session.
+type FocusedMsg struct {
+	Err error
+}
+
+// TickMsg triggers periodic session refresh and status polling.
+type TickMsg struct{}
+
+// StatusMsg is a transient message shown in the status bar.
+type StatusMsg struct {
+	Text string
+}
+
+// DirBrowserItem represents a directory in the add-project browser.
+type DirBrowserItem struct {
+	Path string
+	Name string
+}
+
+// DirBrowserMsg contains directories for the browser view.
+type DirBrowserMsg struct {
+	Dirs []DirBrowserItem
+}
+
+// BackendAvailableMsg indicates whether the backend is usable.
+type BackendAvailableMsg struct {
+	Err error
+}
+
+// ScreenReadMsg contains screen content read from a session.
+type ScreenReadMsg struct {
+	ProjectDir string
+	Content    string
+	Err        error
+}

@@ -1,0 +1,8 @@
+atria
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/dist/
