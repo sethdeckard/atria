@@ -32,6 +32,14 @@ const (
 	viewBatchPrompt
 )
 
+type browserIntent int
+
+const (
+	browserAddProject browserIntent = iota
+	browserLaunchClaude
+	browserLaunchCodex
+)
+
 type Model struct {
 	// Config
 	watchDirs  []string
@@ -55,8 +63,8 @@ type Model struct {
 	showHelp   bool
 
 	// Chat view
-	chat        chatView
-	chatProject string // project dir for active chat
+	chat          chatView
+	chatSessionID string // session ID for active chat
 
 	// Spinner & attention
 	spinnerFrame  int
@@ -66,6 +74,7 @@ type Model struct {
 	// Directory browser
 	browserDirs   []DirBrowserItem
 	browserCursor int
+	browserMode   browserIntent
 
 	// Batch prompt
 	batchInput textarea.Model
@@ -228,18 +237,12 @@ func (m Model) viewProjectList() string {
 	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionSessions)
 	sb.WriteString(list)
 
-	activeCount := 0
-	for _, r := range m.rows {
-		if r.session != nil {
-			activeCount++
-		}
-	}
 	var selected *projectRow
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
 		selected = &m.rows[m.cursor]
 	}
 	sb.WriteString("\n")
-	sb.WriteString(renderFooter(len(m.rows), activeCount, selected))
+	sb.WriteString(renderFooter(len(m.rows), selected))
 
 	if m.statusText != "" {
 		sb.WriteString("\n")
@@ -252,16 +255,25 @@ func (m Model) viewProjectList() string {
 func (m Model) viewChat() string {
 	var session *model.AgentSession
 	var project *model.Project
-	if m.chatProject != "" {
-		session = m.store.GetSession(m.chatProject)
-		project = m.store.FindProject(m.chatProject)
+	if m.chatSessionID != "" {
+		session = m.store.SessionByID(m.chatSessionID)
+		if session != nil {
+			project = m.store.FindProject(session.ProjectDir)
+		}
 	}
 	return m.chat.render(session, project, m.width)
 }
 
 func (m Model) viewDirBrowser() string {
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Add Project"))
+	title := "Add Project"
+	switch m.browserMode {
+	case browserLaunchClaude:
+		title = "Launch Claude"
+	case browserLaunchCodex:
+		title = "Launch Codex"
+	}
+	sb.WriteString(titleStyle.Render(title))
 	sb.WriteString("\n\n")
 	if len(m.browserDirs) == 0 {
 		sb.WriteString(dimStyle.Render("  No directories found in watch_dirs."))
@@ -349,10 +361,20 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, keys.LaunchClaude):
-		return m.launchForSelected(model.AgentClaude)
+		if !m.backendOK {
+			m.statusText = "Backend unavailable"
+			return m, nil
+		}
+		m.browserMode = browserLaunchClaude
+		return m, listDirs(m.watchDirs)
 
 	case key.Matches(msg, keys.LaunchCodex):
-		return m.launchForSelected(model.AgentCodex)
+		if !m.backendOK {
+			m.statusText = "Backend unavailable"
+			return m, nil
+		}
+		m.browserMode = browserLaunchCodex
+		return m, listDirs(m.watchDirs)
 
 	case key.Matches(msg, keys.Send):
 		return m.openChat()
@@ -361,6 +383,7 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.focusSelected()
 
 	case key.Matches(msg, keys.Add):
+		m.browserMode = browserAddProject
 		return m, listDirs(m.watchDirs)
 
 	case key.Matches(msg, keys.Delete):
@@ -376,14 +399,7 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, keys.Enter):
-		if m.cursor >= 0 && m.cursor < len(m.rows) {
-			r := m.rows[m.cursor]
-			if r.session != nil {
-				return m.openChat()
-			}
-			m.statusText = r.project.Dir
-		}
-		return m, nil
+		return m.openChat()
 	}
 	return m, nil
 }
@@ -409,13 +425,13 @@ func (m Model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.chat.addEntry(entry)
 
-		session := m.store.GetSession(m.chatProject)
+		session := m.store.SessionByID(m.chatSessionID)
 		if session == nil {
 			m.statusText = "No agent session"
 			return m, nil
 		}
 		session.LastSent = time.Now()
-		return m, sendPrompt(m.backend, session.SessionID, text, m.chatProject)
+		return m, sendPrompt(m.backend, session.SessionID, text, session.ProjectDir)
 	}
 
 	// Pass to textarea
@@ -448,7 +464,19 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.store.AddProject(dir.Path)
 			_ = m.store.SaveProjects()
 			m.rows = buildRows(storeAdapter{m.store})
-			m.statusText = fmt.Sprintf("Added %s", dir.Name)
+
+			switch m.browserMode {
+			case browserLaunchClaude:
+				m.view = viewProjectList
+				m.statusText = fmt.Sprintf("Launching Claude for %s...", dir.Name)
+				return m, launchAgent(m.backend, dir.Path, model.AgentClaude)
+			case browserLaunchCodex:
+				m.view = viewProjectList
+				m.statusText = fmt.Sprintf("Launching Codex for %s...", dir.Name)
+				return m, launchAgent(m.backend, dir.Path, model.AgentCodex)
+			default:
+				m.statusText = fmt.Sprintf("Added %s", dir.Name)
+			}
 		}
 		m.view = viewProjectList
 		return m, nil
@@ -478,34 +506,13 @@ func (m Model) handleBatchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) launchForSelected(agentType model.AgentType) (Model, tea.Cmd) {
-	if !m.backendOK {
-		m.statusText = "Backend unavailable"
-		return m, nil
-	}
-	if m.cursor < 0 || m.cursor >= len(m.rows) {
-		return m, nil
-	}
-	r := m.rows[m.cursor]
-	if r.session != nil {
-		m.statusText = fmt.Sprintf("%s already has an agent", r.project.Name)
-		return m, nil
-	}
-	m.statusText = fmt.Sprintf("Launching %s for %s...", agentType, r.project.Name)
-	return m, launchAgent(m.backend, r.project.Dir, agentType)
-}
-
 func (m Model) openChat() (Model, tea.Cmd) {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
 		return m, nil
 	}
 	r := m.rows[m.cursor]
-	if r.session == nil {
-		m.statusText = "No agent running for this project"
-		return m, nil
-	}
-	if m.chatProject != r.project.Dir {
-		m.chatProject = r.project.Dir
+	if m.chatSessionID != r.session.SessionID {
+		m.chatSessionID = r.session.SessionID
 		m.chat = newChatView()
 		m.chat.setSize(m.width, m.height)
 	}
@@ -522,10 +529,6 @@ func (m Model) focusSelected() (Model, tea.Cmd) {
 		return m, nil
 	}
 	r := m.rows[m.cursor]
-	if r.session == nil {
-		m.statusText = "No agent running for this project"
-		return m, nil
-	}
 	return m, focusSession(m.backend, r.session.SessionID)
 }
 
@@ -534,6 +537,13 @@ func (m Model) deleteSelected() (Model, tea.Cmd) {
 		return m, nil
 	}
 	r := m.rows[m.cursor]
+	// Remove sessions for this project before removing the project,
+	// so they don't linger as orphans consuming tick polls.
+	for _, s := range m.store.GetSessions(r.project.Dir) {
+		delete(m.attentionSessions, s.SessionID)
+		m.store.RemoveSession(s.SessionID)
+	}
+	_ = m.store.SaveSessions()
 	m.store.RemoveProject(r.project.Dir)
 	_ = m.store.SaveProjects()
 	m.rows = buildRows(storeAdapter{m.store})
@@ -735,8 +745,8 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 		as.Attention = msg.Attention
 	}
 
-	// Add received text to chat if viewing this project
-	if m.view == viewChat && m.chatProject == msg.ProjectDir && msg.Attention != "" {
+	// Add received text to chat if viewing this session
+	if m.view == viewChat && m.chatSessionID == as.SessionID && msg.Attention != "" {
 		entry := model.ChatEntry{
 			Timestamp: time.Now(),
 			Direction: "received",
@@ -841,8 +851,8 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		as.Attention = matchLine
 	}
 
-	// Add to chat if viewing this project
-	if m.view == viewChat && m.chatProject == msg.ProjectDir && status == model.StatusNeedsInput && as.Attention != "" {
+	// Add to chat if viewing this session
+	if m.view == viewChat && m.chatSessionID == msg.SessionID && status == model.StatusNeedsInput && as.Attention != "" {
 		m.chat.addEntry(model.ChatEntry{
 			Timestamp: time.Now(),
 			Direction: "received",

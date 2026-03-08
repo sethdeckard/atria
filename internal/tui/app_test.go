@@ -136,6 +136,15 @@ func TestHelpToggle(t *testing.T) {
 func TestCursorNavigation(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/alpha", "/a/beta", "/a/gamma")
+	// Agents dashboard only shows rows with sessions
+	for _, p := range store.Projects {
+		store.SetSession(&model.AgentSession{
+			ProjectDir: p.Dir,
+			SessionID:  "sess-" + p.Name,
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+		})
+	}
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 
@@ -230,7 +239,7 @@ func TestLaunchBlockedWithoutBackend(t *testing.T) {
 	}
 }
 
-func TestLaunchWithBackend(t *testing.T) {
+func TestLaunchOpensProjectPicker(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	mb := &mockBackend{newSessionID: "sess-1"}
@@ -238,32 +247,10 @@ func TestLaunchWithBackend(t *testing.T) {
 	m.width = 80
 	m.backendOK = true
 
+	// c key should open the project picker (listDirs command)
 	_, cmd := m.Update(keyMsg("c"))
 	if cmd == nil {
-		t.Fatal("expected a launch command")
-	}
-}
-
-func TestLaunchBlockedWhenAgentExists(t *testing.T) {
-	store := makeStore(t)
-	store.Projects = makeProjects("/a/myproject")
-	store.SetSession(&model.AgentSession{
-		ProjectDir: "/a/myproject",
-		SessionID:  "existing",
-		Type:       model.AgentClaude,
-		Status:     model.StatusWorking,
-	})
-	m := newTestModelWithStore(&mockBackend{}, store)
-	m.width = 80
-	m.backendOK = true
-
-	updated, cmd := m.Update(keyMsg("c"))
-	um := modelFrom(updated)
-	if cmd != nil {
-		t.Error("expected no command when agent already exists")
-	}
-	if !strings.Contains(um.statusText, "already has an agent") {
-		t.Errorf("expected already-has-agent message, got %q", um.statusText)
+		t.Fatal("expected a listDirs command")
 	}
 }
 
@@ -319,6 +306,14 @@ func TestAgentLaunchedMsgError(t *testing.T) {
 func TestDeleteProject(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/alpha", "/a/beta")
+	for _, p := range store.Projects {
+		store.SetSession(&model.AgentSession{
+			ProjectDir: p.Dir,
+			SessionID:  "sess-" + p.Name,
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+		})
+	}
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 
@@ -335,6 +330,14 @@ func TestDeleteProject(t *testing.T) {
 func TestDeleteLastProjectAdjustsCursor(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/alpha", "/a/beta")
+	for _, p := range store.Projects {
+		store.SetSession(&model.AgentSession{
+			ProjectDir: p.Dir,
+			SessionID:  "sess-" + p.Name,
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+		})
+	}
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 	m.cursor = 1 // select last
@@ -346,19 +349,41 @@ func TestDeleteLastProjectAdjustsCursor(t *testing.T) {
 	}
 }
 
-func TestOpenChatNoAgent(t *testing.T) {
+func TestDeleteProjectRemovesSessions(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+	})
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-2",
+		Type:       model.AgentCodex,
+		Status:     model.StatusIdle,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+
+	updated, _ := m.Update(keyMsg("d"))
+	um := modelFrom(updated)
+	if len(um.store.Sessions) != 0 {
+		t.Errorf("expected 0 sessions after delete, got %d", len(um.store.Sessions))
+	}
+}
+
+func TestOpenChatNoRows(t *testing.T) {
+	store := makeStore(t)
+	// No projects/sessions — empty dashboard
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 
 	updated, _ := m.Update(keyMsg("s"))
 	um := modelFrom(updated)
 	if um.view != viewProjectList {
-		t.Error("expected to stay on project list when no agent")
-	}
-	if !strings.Contains(um.statusText, "No agent running") {
-		t.Errorf("expected no agent message, got %q", um.statusText)
+		t.Error("expected to stay on project list when no rows")
 	}
 }
 
@@ -380,8 +405,8 @@ func TestOpenChatWithAgent(t *testing.T) {
 	if um.view != viewChat {
 		t.Errorf("expected chat view, got %d", um.view)
 	}
-	if um.chatProject != "/a/myproject" {
-		t.Errorf("expected chatProject /a/myproject, got %q", um.chatProject)
+	if um.chatSessionID != "sess-1" {
+		t.Errorf("expected chatSessionID sess-1, got %q", um.chatSessionID)
 	}
 }
 
@@ -413,20 +438,16 @@ func TestChatEscapeReturnsToProjectList(t *testing.T) {
 	}
 }
 
-func TestFocusNoAgent(t *testing.T) {
+func TestFocusNoRows(t *testing.T) {
 	store := makeStore(t)
-	store.Projects = makeProjects("/a/myproject")
+	// No sessions — empty dashboard
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 	m.backendOK = true
 
-	updated, cmd := m.Update(keyMsg("f"))
-	um := modelFrom(updated)
+	_, cmd := m.Update(keyMsg("f"))
 	if cmd != nil {
-		t.Error("expected no command when no agent")
-	}
-	if !strings.Contains(um.statusText, "No agent running") {
-		t.Errorf("expected no agent message, got %q", um.statusText)
+		t.Error("expected no command when no rows")
 	}
 }
 
@@ -567,16 +588,23 @@ func TestBatchOpenAndEscape(t *testing.T) {
 	}
 }
 
-func TestEnterShowsPath(t *testing.T) {
+func TestEnterOpensChat(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
+	m.height = 40
 
 	updated, _ := m.Update(ctrlKeyMsg(tea.KeyEnter))
 	um := modelFrom(updated)
-	if um.statusText != "/a/myproject" {
-		t.Errorf("expected path in status, got %q", um.statusText)
+	if um.view != viewChat {
+		t.Errorf("expected chat view, got %d", um.view)
 	}
 }
 
@@ -782,7 +810,7 @@ func TestStatusUpdatedAddsToChat(t *testing.T) {
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.view = viewChat
-	m.chatProject = "/a/myproject"
+	m.chatSessionID = "sess-1"
 	m.chat.setSize(80, 40)
 
 	updated, _ := m.Update(StatusUpdatedMsg{
@@ -931,8 +959,8 @@ func TestViewProjectListEmpty(t *testing.T) {
 	m.width = 80
 	m.height = 40
 	v := m.View()
-	if !strings.Contains(v, "Projects") {
-		t.Error("expected Projects title")
+	if !strings.Contains(v, "Agents") {
+		t.Error("expected Agents title")
 	}
 	if !strings.Contains(v, "Agent orchestration") {
 		t.Error("expected tagline in empty state")
@@ -942,9 +970,17 @@ func TestViewProjectListEmpty(t *testing.T) {
 	}
 }
 
-func TestViewProjectListWithProjects(t *testing.T) {
+func TestViewProjectListWithAgents(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/alpha", "/a/beta")
+	for _, p := range store.Projects {
+		store.SetSession(&model.AgentSession{
+			ProjectDir: p.Dir,
+			SessionID:  "sess-" + p.Name,
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+		})
+	}
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 	m.height = 40
@@ -955,8 +991,12 @@ func TestViewProjectListWithProjects(t *testing.T) {
 	if !strings.Contains(v, "beta") {
 		t.Error("expected beta in view")
 	}
-	if !strings.Contains(v, "2 projects") {
-		t.Error("expected project count")
+	if !strings.Contains(v, "2 agents") {
+		t.Error("expected agent count")
+	}
+	// Should show path lines
+	if !strings.Contains(v, "/a/alpha") {
+		t.Error("expected path for alpha")
 	}
 }
 
@@ -975,7 +1015,7 @@ func TestViewHelp(t *testing.T) {
 
 func TestSortRows(t *testing.T) {
 	rows := []projectRow{
-		{project: &model.Project{Name: "delta"}, session: nil},
+		{project: &model.Project{Name: "delta"}, session: &model.AgentSession{Status: model.StatusIdle}},
 		{project: &model.Project{Name: "alpha"}, session: &model.AgentSession{Status: model.StatusIdle}},
 		{project: &model.Project{Name: "beta"}, session: &model.AgentSession{Status: model.StatusNeedsInput}},
 		{project: &model.Project{Name: "gamma"}, session: &model.AgentSession{Status: model.StatusWorking}},

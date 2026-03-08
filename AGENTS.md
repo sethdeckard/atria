@@ -11,6 +11,12 @@ Atria is a Go TUI tool for managing multiple AI coding agents (Claude Code, Code
 - Error handling: return errors, don't panic. Wrap errors with context using `fmt.Errorf("context: %w", err)`
 - No `log.Fatal` in library code (internal packages). Only `main.go` may exit the process
 
+## Commit Messages
+
+- Subject: max 50 chars, capitalized, imperative mood (e.g. "Add feature" not "Added feature")
+- Blank line between subject and body
+- Body: wrapped at 72 chars, describe what and why, not how
+
 ## Project Structure
 
 ```
@@ -31,8 +37,10 @@ internal/
   tui/commands.go                # tea.Cmd factories
   tui/keys.go                    # Key bindings
   tui/styles.go                  # Lip Gloss styles
-  tui/projectlist.go             # Project list view
+  tui/projectlist.go             # Agent list view (agents dashboard)
   tui/chatview.go                # Chat/send view
+  tui/paths.go                   # Path display utilities (contractHome)
+  tui/gitinfo.go                 # Git worktree detection
 ```
 
 ## Testing

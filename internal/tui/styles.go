@@ -19,6 +19,9 @@ var (
 	dimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"})
 
+	pathStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#aaaaaa", Dark: "#555555"})
+
 	statusWorkingStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.AdaptiveColor{Light: "#2d7d46", Dark: "#4ec969"})
 

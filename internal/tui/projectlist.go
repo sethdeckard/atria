@@ -23,12 +23,8 @@ func buildRows(store interface {
 	var rows []projectRow
 	for _, p := range projects {
 		sessions := store.GetSessions(p.Dir)
-		if len(sessions) == 0 {
-			rows = append(rows, projectRow{project: p, session: nil})
-		} else {
-			for _, s := range sessions {
-				rows = append(rows, projectRow{project: p, session: s})
-			}
+		for _, s := range sessions {
+			rows = append(rows, projectRow{project: p, session: s})
 		}
 	}
 	sortRows(rows)
@@ -66,7 +62,7 @@ func statusPriority(s *model.AgentSession) int {
 
 func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionSessions map[string]time.Time) string {
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Projects"))
+	sb.WriteString(titleStyle.Render("Agents"))
 	sb.WriteString("\n\n")
 
 	if len(rows) == 0 {
@@ -87,22 +83,27 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 	}
 
 	for i, r := range rows {
-		line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame)
-		sessionID := ""
-		if r.session != nil {
-			sessionID = r.session.SessionID
-		}
-		_, hasAttention := attentionSessions[sessionID]
+		pathLine := formatPathLine(r.project.Dir, nameWidth)
+		_, hasAttention := attentionSessions[r.session.SessionID]
 		if i == cursor {
+			style := selectedStyle
 			if hasAttention {
-				sb.WriteString(attentionSelectedStyle.Render(line))
-			} else {
-				sb.WriteString(selectedStyle.Render(line))
+				style = attentionSelectedStyle
 			}
+			line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame, true)
+			sb.WriteString(style.Render(padToWidth(line, width)))
+			sb.WriteString("\n")
+			sb.WriteString(style.Render(padToWidth(pathLine, width)))
 		} else if hasAttention {
-			sb.WriteString(attentionRowStyle.Render(line))
+			line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame, true)
+			sb.WriteString(attentionRowStyle.Render(padToWidth(line, width)))
+			sb.WriteString("\n")
+			sb.WriteString(attentionRowStyle.Render(padToWidth(pathLine, width)))
 		} else {
+			line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame, false)
 			sb.WriteString(line)
+			sb.WriteString("\n")
+			sb.WriteString(pathStyle.Render(pathLine))
 		}
 		sb.WriteString("\n")
 	}
@@ -110,42 +111,77 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 	return sb.String()
 }
 
-func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, totalWidth int, spinnerFrame int) string {
+// padToWidth pads a string with spaces to reach the target visual width.
+func padToWidth(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
+}
+
+func formatPathLine(dir string, nameWidth int) string {
+	displayPath := contractHome(dir)
+	gitInfo := detectGitWorktree(dir)
+	line := displayPath
+	if gitInfo.IsWorktree {
+		ann := "worktree"
+		if gitInfo.ParentRepo != "" {
+			ann = "worktree of " + gitInfo.ParentRepo
+		}
+		if gitInfo.Branch != "" {
+			ann += " \u00b7 " + gitInfo.Branch
+		}
+		line += "  " + ann
+	}
+	return "     " + line
+}
+
+// formatRow builds a row line. When plain is true, no inner styles are
+// applied so a row-level style can wrap the whole line cleanly.
+func formatRow(r projectRow, allProjects []*model.Project, nameWidth, typeWidth, totalWidth int, spinnerFrame int, plain bool) string {
 	name := r.project.DisplayName(allProjects)
 	if len(name) > nameWidth-2 {
 		name = name[:nameWidth-3] + "\u2026"
 	}
 	name = fmt.Sprintf("  %-*s", nameWidth, name)
 
-	if r.session == nil {
-		dash := dimStyle.Render(fmt.Sprintf("%-*s", typeWidth, "\u2014"))
-		return name + dash
-	}
-
 	agentStr := string(r.session.Type)
 	agentStr = strings.ToUpper(agentStr[:1]) + agentStr[1:]
 	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
 
 	statusStr, style := formatStatus(r.session, spinnerFrame)
-	statusCol := style.Render(statusStr)
 
 	timeStr := ""
+	timeVisual := ""
 	if !r.session.LastActivity.IsZero() {
-		timeStr = dimStyle.Render(relativeTime(r.session.LastActivity))
+		timeVisual = relativeTime(r.session.LastActivity)
+		if plain {
+			timeStr = timeVisual
+		} else {
+			timeStr = dimStyle.Render(timeVisual)
+		}
 	}
 
 	// Build the line
-	remaining := totalWidth - lipgloss.Width(name) - typeWidth - lipgloss.Width(timeStr) - 4
+	remaining := totalWidth - lipgloss.Width(name) - typeWidth - len(timeVisual) - 4
 	if remaining < 0 {
 		remaining = 20
 	}
 	if lipgloss.Width(statusStr) > remaining {
 		statusStr = statusStr[:remaining-1] + "\u2026"
+	}
+
+	statusCol := statusStr
+	if !plain {
 		statusCol = style.Render(statusStr)
 	}
 
-	padded := fmt.Sprintf("%-*s", remaining, statusCol)
-	return name + agentCol + padded + timeStr
+	pad := remaining - lipgloss.Width(statusStr)
+	if pad < 0 {
+		pad = 0
+	}
+	return name + agentCol + statusCol + strings.Repeat(" ", pad) + timeStr
 }
 
 func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Style) {
@@ -212,6 +248,10 @@ func renderEmptyState() string {
 	sb.WriteString("\n\n")
 	sb.WriteString(emptyHintStyle.Render("  Agent orchestration for your terminal."))
 	sb.WriteString("\n\n")
+	sb.WriteString("  " + emptyKeyStyle.Render("c") + emptyHintStyle.Render("  Launch Claude in a project"))
+	sb.WriteString("\n")
+	sb.WriteString("  " + emptyKeyStyle.Render("x") + emptyHintStyle.Render("  Launch Codex in a project"))
+	sb.WriteString("\n")
 	sb.WriteString("  " + emptyKeyStyle.Render("a") + emptyHintStyle.Render("  Add a project from your watch directories"))
 	sb.WriteString("\n")
 	sb.WriteString("  " + emptyKeyStyle.Render("?") + emptyHintStyle.Render("  Show all key bindings"))
@@ -222,18 +262,14 @@ func renderEmptyState() string {
 	return sb.String()
 }
 
-func renderFooter(rowCount, activeCount int, selected *projectRow) string {
-	left := fmt.Sprintf(" %d projects  %d active", rowCount, activeCount)
+func renderFooter(rowCount int, selected *projectRow) string {
+	left := fmt.Sprintf(" %d agents", rowCount)
 
 	var hints []string
 	if selected != nil {
-		if selected.session != nil {
-			hints = append(hints, "enter send", "f focus")
-		} else {
-			hints = append(hints, "c claude", "x codex")
-		}
+		hints = append(hints, "enter send", "f focus")
 	}
-	hints = append(hints, "a add", "? help", "q quit")
+	hints = append(hints, "c claude", "x codex", "a add", "? help", "q quit")
 
 	right := strings.Join(hints, "  ")
 	return footerStyle.Render(left + "    " + right)
