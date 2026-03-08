@@ -9,11 +9,15 @@ import (
 )
 
 var (
-	needsInputPattern = regexp.MustCompile(`(?i)(Allow|Permission|\?$|Continue|Waiting for|Do you want to proceed|Esc to cancel)`)
+	needsInputPattern = regexp.MustCompile(`(?i)(Do you want to proceed|Allow .+\?|Esc to cancel|Waiting for .+ input)`)
 	bellPattern       = regexp.MustCompile("\x07")
 	errorPattern      = regexp.MustCompile(`Error:`)
-	workingPattern    = regexp.MustCompile(`[✻✶·] \S+…|esc to interrupt`)
-	idlePattern       = regexp.MustCompile(`❯|›|\? for shortcuts|(\$ $)`)
+	workingPattern    = regexp.MustCompile(`[✻✶·] \S+…|[•●] Working`)
+	// Matches "esc to interrupt" only when NOT in a background task line (⏵⏵).
+	escToInterrupt = regexp.MustCompile(`esc to interrupt`)
+	backgroundTask = regexp.MustCompile(`⏵`)
+
+	idlePattern       = regexp.MustCompile(`❯|›|\? for shortcuts|(\$ $)|gpt-\S+-codex`)
 	completedPattern  = regexp.MustCompile(`✓|completed|No findings`)
 )
 
@@ -55,6 +59,12 @@ func ClassifyOutput(text string) model.AgentStatus {
 		return model.StatusWorking
 	}
 
+	// "esc to interrupt" means working, but not when it appears in a
+	// background task status line (⏵⏵ ... esc to interrupt).
+	if escToInterrupt.MatchString(text) && !backgroundTask.MatchString(text) {
+		return model.StatusWorking
+	}
+
 	if completedPattern.MatchString(text) {
 		return model.StatusIdle
 	}
@@ -82,21 +92,48 @@ func statusPriority(s model.AgentStatus) int {
 	}
 }
 
+// bottomLineCount is the number of lines from the bottom of the screen
+// where active status patterns (needs_input, error, working) are trusted.
+// Conversation history higher up may contain quoted text that triggers
+// false matches. Only idle/completed match anywhere since they're harmless.
+const bottomLineCount = 8
+
 // ClassifyScreen checks each line of multi-line screen content and returns
-// the highest priority status found. This prevents idle prompts (always
-// visible) from masking needs_input or error states on other lines.
+// the highest priority status found. Active statuses (needs_input, error,
+// working) are only matched in the bottom region where the live UI appears.
+// The bottom region is measured from the last non-blank line (not the
+// absolute bottom) to handle blank padding below dialog prompts.
+// Idle/completed can match anywhere.
 func ClassifyScreen(content string) (model.AgentStatus, string) {
 	lines := strings.Split(content, "\n")
 	bestStatus := model.AgentStatus("")
 	bestLine := ""
 
-	for _, line := range lines {
+	// Find last non-blank line to anchor the bottom region
+	lastNonBlank := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			lastNonBlank = i
+			break
+		}
+	}
+
+	bottomStart := lastNonBlank - bottomLineCount + 1
+	if bottomStart < 0 {
+		bottomStart = 0
+	}
+
+	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 		status := ClassifyOutput(line)
 		if status == "" {
+			continue
+		}
+		// Only trust active statuses from the bottom region
+		if i < bottomStart && status != model.StatusIdle {
 			continue
 		}
 		if bestStatus == "" || statusPriority(status) < statusPriority(bestStatus) {

@@ -61,7 +61,7 @@ type Model struct {
 	// Spinner & attention
 	spinnerFrame  int
 	spinnerActive bool
-	attentionDirs map[string]time.Time // projects needing attention, with timestamp
+	attentionSessions map[string]time.Time // session IDs needing attention, with timestamp
 
 	// Directory browser
 	browserDirs   []DirBrowserItem
@@ -225,7 +225,7 @@ func (m Model) View() string {
 func (m Model) viewProjectList() string {
 	var sb strings.Builder
 	allProjects := m.store.Projects
-	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionDirs)
+	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionSessions)
 	sb.WriteString(list)
 
 	activeCount := 0
@@ -586,7 +586,7 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 				if prevActivity != "" {
 					as.Status = model.StatusWorking
 					as.Attention = ""
-					delete(m.attentionDirs, as.ProjectDir)
+					delete(m.attentionSessions, as.SessionID)
 				}
 			}
 		}
@@ -612,11 +612,17 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		cmds = append(cmds, discoverAgent(m.backend, sess, agentType, m.watchDirs, projectDirs))
 	}
 
-	// Remove sessions for dead iTerm sessions
+	// Remove sessions for dead iTerm sessions.
+	// Collect IDs first to avoid mutating the slice during iteration.
+	var deadIDs []string
 	for _, s := range m.store.Sessions {
 		if !liveIDs[s.SessionID] {
-			m.store.RemoveSession(s.SessionID)
+			deadIDs = append(deadIDs, s.SessionID)
 		}
+	}
+	for _, id := range deadIDs {
+		delete(m.attentionSessions, id)
+		m.store.RemoveSession(id)
 	}
 
 	m.rows = buildRows(storeAdapter{m.store})
@@ -743,10 +749,10 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 
 	// Bell + attention highlight when status changes to needs_input
 	if msg.Status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
-		if m.attentionDirs == nil {
-			m.attentionDirs = make(map[string]time.Time)
+		if m.attentionSessions == nil {
+			m.attentionSessions = make(map[string]time.Time)
 		}
-		m.attentionDirs[msg.ProjectDir] = time.Now()
+		m.attentionSessions[as.SessionID] = time.Now()
 		cmds := []tea.Cmd{bellCmd()}
 		if cmd := m.ensureSpinner(); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -757,7 +763,7 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 	if prevStatus == model.StatusNeedsInput && msg.Status != model.StatusNeedsInput && msg.Status != "" {
 		as.Attention = ""
 		m.statusText = ""
-		delete(m.attentionDirs, msg.ProjectDir)
+		delete(m.attentionSessions, as.SessionID)
 	}
 
 	if cmd := m.ensureSpinner(); cmd != nil {
@@ -848,10 +854,10 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 
 	// Bell on needs_input transition
 	if status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
-		if m.attentionDirs == nil {
-			m.attentionDirs = make(map[string]time.Time)
+		if m.attentionSessions == nil {
+			m.attentionSessions = make(map[string]time.Time)
 		}
-		m.attentionDirs[msg.ProjectDir] = time.Now()
+		m.attentionSessions[msg.SessionID] = time.Now()
 		cmds := []tea.Cmd{bellCmd()}
 		if cmd := m.ensureSpinner(); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -861,7 +867,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	if prevStatus == model.StatusNeedsInput && status != model.StatusNeedsInput {
 		as.Attention = ""
 		m.statusText = ""
-		delete(m.attentionDirs, msg.ProjectDir)
+		delete(m.attentionSessions, msg.SessionID)
 	}
 
 	if cmd := m.ensureSpinner(); cmd != nil {
@@ -917,7 +923,7 @@ func (m Model) hasActiveAnimations() bool {
 			return true
 		}
 	}
-	return len(m.attentionDirs) > 0
+	return len(m.attentionSessions) > 0
 }
 
 func (m *Model) ensureSpinner() tea.Cmd {

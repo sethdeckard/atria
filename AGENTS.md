@@ -54,5 +54,64 @@ internal/
 
 - Two-step send for raw-mode TUI agents: `SendText(text)`, 50ms sleep, `SendText("\r")`
 - Session list cached with 5s TTL, invalidated after mutations
-- Agent detection: `\u2733` prefix or "claude" -> Claude; "codex" -> Codex
+- Agent detection: `✳` prefix or "claude" -> Claude; "codex" -> Codex
 - Config uses TOML at `~/.config/atria/config.toml`
+- Multiple agents per directory: sessions keyed by SessionID, not ProjectDir
+- Bell notification: write `\a` to `/dev/tty` (not stderr) to work through Bubble Tea
+
+## Status Detection
+
+Status is determined by reading the bottom 25 lines of each agent's terminal session via `it2 session read` every 3 seconds. Each line is classified independently, and the highest-priority match wins (needs_input > error > working > idle).
+
+### Bottom-Region Anchoring
+
+Active statuses (working, needs_input, error) are only trusted in the **bottom 8 lines**, measured from the last non-blank line. This prevents false positives from conversation history in scrollback that may contain quoted prompt text or working indicators. Idle/completed patterns match anywhere since they're low-priority and harmless.
+
+### Claude Code Patterns
+
+| Status | Pattern | Example |
+|--------|---------|---------|
+| Working | `[✻✶·] \S+…` | `✻ Reading…`, `✶ Doodling… (48s · ↓ 1.4k tokens)` |
+| Working | `esc to interrupt` (not in `⏵⏵` lines) | `esc to interrupt` |
+| Idle | `❯` prompt | `❯ ` |
+| Idle | `? for shortcuts` | `? for shortcuts` |
+| Needs input | `Do you want to proceed` | `Do you want to proceed?` |
+| Needs input | `Allow .+\?` | `Allow file edit?` |
+| Needs input | `Esc to cancel` | `Esc to cancel · Tab to amend` |
+
+Notes:
+- `✻` alone (no trailing activity text with `…`) means Claude is **done**, not working.
+- Background task lines (`⏵⏵ ... esc to interrupt`) are excluded from working detection.
+- Permission dialogs have ~10 blank lines of padding below them; the non-blank anchor handles this.
+
+### Codex Patterns
+
+| Status | Pattern | Example |
+|--------|---------|---------|
+| Working | `[•●] Working` | `• Working (30s • esc to interrupt)` |
+| Idle | `›` prompt | `› Write tests for @filename` |
+| Idle | `gpt-\S+-codex` | `gpt-5.3-codex default · 73% left · ~/projects/foo` |
+
+Notes:
+- Codex pads the bottom of its screen with many blank lines; 25-line reads are needed to capture content.
+- Codex session names are typically static ("codex"), unlike Claude which updates dynamically.
+
+### Session Name Activity
+
+Session names are checked on each tick via `ListSessions()`. `ExtractActivity()` strips the `✳` prefix and parenthesized suffixes. Activity text is displayed in all states (including idle). A session name *change* (not the first read) triggers a working transition, since the first read is just a static title.
+
+### Debug Logging
+
+Run with `--debug` to write screen read diagnostics to `/tmp/atria-debug.log`. Each entry shows: project name, previous status, new status, whether content changed, the matched line, and full screen content.
+
+### Lessons Learned
+
+1. **5 screen lines is not enough.** Codex pads heavily; its prompt can be 20+ lines from the bottom. Use 25 lines.
+2. **Anchor from last non-blank line.** Claude's permission dialogs have ~10 blank lines below them. Measuring "bottom 8" from the absolute screen bottom misses the actual prompt entirely.
+3. **Conversation history pollutes detection.** With 25 lines, scrollback contains quoted patterns ("Do you want to proceed?", `✶ Doodling…`, etc.). Restricting active-status matching to the bottom region solves this.
+4. **Background task bars look like working.** Claude shows `⏵⏵ ... esc to interrupt` for background tasks even when idle. Must exclude `⏵` lines from `esc to interrupt` matching.
+5. **Broad patterns cause cascading false positives.** `(?i)Continue` matched "spinner ticks continue indefinitely" in Codex review output. `\?$` matched any question in text. Keep patterns specific to actual prompt UI text.
+6. **Session names are often static.** The first activity extracted from a session name is usually just a title (e.g., "Atria Agent Orchestration"), not a working signal. Only treat *changes* as working transitions.
+7. **Bell character needs `/dev/tty`.** Writing `\a` to stderr doesn't reach the terminal through Bubble Tea's alternate screen. Write directly to `/dev/tty`.
+8. **Multiple agents per directory need session-scoped state.** Keying by ProjectDir causes agents to overwrite each other's sessions and share attention highlights. Key everything (store, attention map) by SessionID.
+9. **Slice mutation during iteration skips entries.** Removing dead sessions with `RemoveSession` inside `for range store.Sessions` can skip adjacent entries. Collect IDs first, then remove.

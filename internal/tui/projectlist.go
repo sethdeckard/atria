@@ -64,7 +64,7 @@ func statusPriority(s *model.AgentSession) int {
 	}
 }
 
-func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionDirs map[string]time.Time) string {
+func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Project, width int, spinnerFrame int, attentionSessions map[string]time.Time) string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Projects"))
 	sb.WriteString("\n\n")
@@ -88,7 +88,11 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 
 	for i, r := range rows {
 		line := formatRow(r, allProjects, nameWidth, typeWidth, width, spinnerFrame)
-		_, hasAttention := attentionDirs[r.project.Dir]
+		sessionID := ""
+		if r.session != nil {
+			sessionID = r.session.SessionID
+		}
+		_, hasAttention := attentionSessions[sessionID]
 		if i == cursor {
 			if hasAttention {
 				sb.WriteString(attentionSelectedStyle.Render(line))

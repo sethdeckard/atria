@@ -85,7 +85,7 @@ func startMonitor(backend terminal.Backend, sessionID, logPath, patterns string,
 
 func readScreen(backend terminal.Backend, sessionID, projectDir string) tea.Cmd {
 	return func() tea.Msg {
-		content, err := backend.ReadScreen(sessionID, 5)
+		content, err := backend.ReadScreen(sessionID, 25)
 		return ScreenReadMsg{
 			SessionID:  sessionID,
 			ProjectDir: projectDir,
