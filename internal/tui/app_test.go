@@ -346,6 +346,10 @@ func TestAgentLaunchedMsg(t *testing.T) {
 	if cmd == nil {
 		t.Error("expected monitor start command")
 	}
+	proj := um.store.FindProject("/a/myproject")
+	if proj == nil || proj.LastLaunchedAt.IsZero() {
+		t.Error("expected LastLaunchedAt to be set on successful launch")
+	}
 }
 
 func TestAgentLaunchedMsgError(t *testing.T) {
@@ -556,50 +560,251 @@ func TestDirBrowserMsg(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, makeStore(t))
 
 	dirs := []DirBrowserItem{
-		{Path: "/watch/alpha", Name: "alpha"},
-		{Path: "/watch/beta", Name: "beta"},
+		{Path: "/watch", Name: "..", IsParent: true},
+		{Path: "/watch/sub/alpha", Name: "alpha"},
+		{Path: "/watch/sub/beta", Name: "beta"},
 	}
-	updated, _ := m.Update(DirBrowserMsg{Dirs: dirs})
+	updated, _ := m.Update(DirBrowserMsg{Dirs: dirs, CurrentDir: "/watch/sub"})
 	um := modelFrom(updated)
 	if um.view != viewDirBrowser {
 		t.Errorf("expected dir browser view, got %d", um.view)
 	}
-	if len(um.browserDirs) != 2 {
-		t.Errorf("expected 2 browser dirs, got %d", len(um.browserDirs))
+	if len(um.browserDirs) != 3 {
+		t.Errorf("expected 3 browser dirs, got %d", len(um.browserDirs))
 	}
 	if um.browserCursor != 0 {
 		t.Errorf("expected browser cursor at 0, got %d", um.browserCursor)
 	}
+	if um.browserPath != "/watch/sub" {
+		t.Errorf("expected browserPath /watch/sub, got %q", um.browserPath)
+	}
 }
 
-func TestDirBrowserNavAndSelect(t *testing.T) {
+func TestDirBrowserEnterOnDirDescends(t *testing.T) {
 	store := makeStore(t)
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
 	m.view = viewDirBrowser
+	m.browserPath = "/watch"
 	m.browserDirs = []DirBrowserItem{
+		{Path: "/", Name: "..", IsParent: true},
 		{Path: "/watch/alpha", Name: "alpha"},
-		{Path: "/watch/beta", Name: "beta"},
 	}
+	m.browserCursor = 1 // on "alpha"
 
-	// Navigate down
-	updated, _ := m.Update(keyMsg("j"))
+	// Enter on regular dir should descend, not launch
+	_, cmd := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	if cmd == nil {
+		t.Fatal("expected listDir command for descend")
+	}
+}
+
+func TestDirBrowserLaunchAction(t *testing.T) {
+	store := makeStore(t)
+	mb := &mockBackend{newSessionID: "sess-1"}
+	m := newTestModelWithStore(mb, store)
+	m.width = 80
+	m.backendOK = true
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	m.view = viewDirBrowser
+	m.browserPath = "/watch/alpha"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/watch", Name: "..", IsParent: true},
+	}
+	// Launch action is last item: 0 dirs entries + 1 = index 1
+	m.browserCursor = 1
+
+	// Enter on launch action launches in current browserPath
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyEnter))
 	um := modelFrom(updated)
-	if um.browserCursor != 1 {
-		t.Errorf("expected browser cursor at 1, got %d", um.browserCursor)
-	}
-
-	// Select with Enter
-	updated, _ = um.Update(ctrlKeyMsg(tea.KeyEnter))
-	um = modelFrom(updated)
 	if um.view != viewProjectList {
 		t.Errorf("expected return to project list, got %d", um.view)
 	}
-	if um.store.FindProject("/watch/beta") == nil {
-		t.Error("expected beta project to be added")
+	if um.store.FindProject("/watch/alpha") == nil {
+		t.Error("expected alpha project to be added")
 	}
-	if !strings.Contains(um.statusText, "Added beta") {
-		t.Errorf("expected added message, got %q", um.statusText)
+	if !strings.Contains(um.statusText, "Launching Claude for alpha") {
+		t.Errorf("expected launching message, got %q", um.statusText)
+	}
+	if cmd == nil {
+		t.Error("expected launch command")
+	}
+	// LastLaunchedAt is not set yet — it's set on AgentLaunchedMsg success
+	proj := um.store.FindProject("/watch/alpha")
+	if !proj.LastLaunchedAt.IsZero() {
+		t.Error("expected LastLaunchedAt to not be set before launch succeeds")
+	}
+}
+
+func TestDirBrowserEnterOnParentDescends(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.view = viewDirBrowser
+	m.browserPath = "/watch/sub"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/watch", Name: "..", IsParent: true},
+		{Path: "/watch/sub/alpha", Name: "alpha"},
+	}
+
+	// Enter on ".." should navigate up
+	_, cmd := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	if cmd == nil {
+		t.Fatal("expected listDir command for parent navigation")
+	}
+}
+
+func TestDirBrowserDescendWithL(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.view = viewDirBrowser
+	m.browserPath = "/watch"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/", Name: "..", IsParent: true},
+		{Path: "/watch/alpha", Name: "alpha"},
+	}
+	m.browserCursor = 1 // on "alpha"
+
+	// l should descend into alpha
+	_, cmd := m.Update(keyMsg("l"))
+	if cmd == nil {
+		t.Fatal("expected listDir command for descend")
+	}
+}
+
+func TestDirBrowserBackWithH(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.view = viewDirBrowser
+	m.browserPath = "/watch/sub"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/watch", Name: "..", IsParent: true},
+	}
+
+	// h should navigate up
+	_, cmd := m.Update(keyMsg("h"))
+	if cmd == nil {
+		t.Fatal("expected listDir command for back navigation")
+	}
+}
+
+func TestDirBrowserRootBoundary(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.view = viewDirBrowser
+	m.browserPath = "/"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/usr", Name: "usr"},
+	}
+
+	// h at root should do nothing
+	_, cmd := m.Update(keyMsg("h"))
+	if cmd != nil {
+		t.Error("expected no command at root boundary")
+	}
+}
+
+func TestDirBrowserRecentProjects(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = append(store.Projects, &model.Project{
+		Name:           "recent-proj",
+		Dir:            "/a/recent-proj",
+		AddedAt:        time.Now(),
+		LastLaunchedAt: time.Now(),
+	})
+	mb := &mockBackend{newSessionID: "sess-1"}
+	m := newTestModelWithStore(mb, store)
+	m.width = 80
+	m.backendOK = true
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	m.view = viewDirBrowser
+	m.browserPath = "/watch"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/", Name: "..", IsParent: true},
+		{Path: "/watch/alpha", Name: "alpha"},
+	}
+
+	// Cursor 0 is the recent project. Enter should launch it
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	um := modelFrom(updated)
+	if um.view != viewProjectList {
+		t.Errorf("expected return to project list, got %d", um.view)
+	}
+	if !strings.Contains(um.statusText, "Launching Claude for recent-proj") {
+		t.Errorf("expected launching message, got %q", um.statusText)
+	}
+	if cmd == nil {
+		t.Error("expected launch command")
+	}
+}
+
+func TestDirBrowserToggleAgent(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.view = viewDirBrowser
+	m.browserPath = "/watch"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/", Name: "..", IsParent: true},
+	}
+	m.availableAgents = []model.AgentType{model.AgentClaude, model.AgentCodex}
+	m.defaultAgent = model.AgentClaude
+
+	updated, _ := m.Update(keyMsg("t"))
+	um := modelFrom(updated)
+	if um.defaultAgent != model.AgentCodex {
+		t.Errorf("expected codex after toggle, got %q", um.defaultAgent)
+	}
+	if um.view != viewDirBrowser {
+		t.Error("expected to stay in browser after toggle")
+	}
+}
+
+func TestDirBrowserScroll(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.height = 12 // small terminal
+	m.view = viewDirBrowser
+	m.browserPath = "/watch"
+
+	// Create many directories to exceed visible area
+	var dirs []DirBrowserItem
+	dirs = append(dirs, DirBrowserItem{Path: "/", Name: "..", IsParent: true})
+	for i := 0; i < 20; i++ {
+		dirs = append(dirs, DirBrowserItem{
+			Path: fmt.Sprintf("/watch/dir%02d", i),
+			Name: fmt.Sprintf("dir%02d", i),
+		})
+	}
+	m.browserDirs = dirs
+
+	if m.browserScroll != 0 {
+		t.Fatalf("expected initial scroll 0, got %d", m.browserScroll)
+	}
+
+	// Navigate to the bottom
+	var updated tea.Model
+	for i := 0; i < 21; i++ { // 21 dirs + 1 launch = 22 items
+		updated, _ = m.Update(keyMsg("j"))
+		m = modelFrom(updated)
+	}
+	if m.browserScroll == 0 {
+		t.Error("expected scroll to increase when cursor passes visible area")
+	}
+
+	// Navigate back to top
+	for m.browserCursor > 0 {
+		updated, _ = m.Update(keyMsg("k"))
+		m = modelFrom(updated)
+	}
+	if m.browserScroll != 0 {
+		t.Errorf("expected scroll 0 at top, got %d", m.browserScroll)
 	}
 }
 

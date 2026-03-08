@@ -18,6 +18,7 @@ type Config struct {
 	MonitorDir   string   `toml:"monitor_dir"`
 	CacheTTL     int      `toml:"cache_ttl"`
 	DefaultAgent string   `toml:"default_agent"`
+	LaunchDir    string   `toml:"launch_dir"`
 }
 
 // DefaultPath returns the default configuration file path.
@@ -44,6 +45,7 @@ func Load(path string) (*Config, error) {
 	cfg.DataDir = expandHome(cfg.DataDir)
 	cfg.MonitorDir = expandHome(cfg.MonitorDir)
 	cfg.IT2Path = expandHome(cfg.IT2Path)
+	cfg.LaunchDir = expandHome(cfg.LaunchDir)
 
 	for i, dir := range cfg.WatchDirs {
 		cfg.WatchDirs[i] = expandHome(dir)

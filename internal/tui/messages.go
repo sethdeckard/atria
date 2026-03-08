@@ -59,13 +59,15 @@ type StatusMsg struct {
 
 // DirBrowserItem represents a directory in the add-project browser.
 type DirBrowserItem struct {
-	Path string
-	Name string
+	Path     string
+	Name     string
+	IsParent bool // true for ".." entry
 }
 
 // DirBrowserMsg contains directories for the browser view.
 type DirBrowserMsg struct {
-	Dirs []DirBrowserItem
+	Dirs       []DirBrowserItem
+	CurrentDir string
 }
 
 // BackendAvailableMsg indicates whether the backend is usable.

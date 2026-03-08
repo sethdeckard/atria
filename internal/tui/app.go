@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 )
@@ -32,17 +34,12 @@ const (
 	viewBatchPrompt
 )
 
-type browserIntent int
-
-const (
-	browserAddProject browserIntent = iota
-	browserLaunch
-)
 
 type Model struct {
 	// Config
 	watchDirs  []string
 	monitorDir string
+	launchDir  string
 
 	// Backend
 	backend    terminal.Backend
@@ -78,7 +75,8 @@ type Model struct {
 	// Directory browser
 	browserDirs   []DirBrowserItem
 	browserCursor int
-	browserMode   browserIntent
+	browserScroll int
+	browserPath   string
 
 	// Batch prompt
 	batchInput textarea.Model
@@ -103,10 +101,10 @@ func (a storeAdapter) GetSessions(dir string) []*model.AgentSession {
 }
 
 func NewModel(backend terminal.Backend, store *model.Store, watchDirs []string, monitorDir string) Model {
-	return NewModelWithConfig(backend, store, watchDirs, monitorDir, "")
+	return NewModelWithConfig(backend, store, watchDirs, monitorDir, "", "")
 }
 
-func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs []string, monitorDir string, defaultAgentCfg string) Model {
+func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs []string, monitorDir string, defaultAgentCfg string, launchDir string) Model {
 	ba := textarea.New()
 	ba.Placeholder = "Batch prompt ({name} for project name)..."
 	ba.ShowLineNumbers = false
@@ -150,6 +148,7 @@ func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs 
 	return Model{
 		watchDirs:       watchDirs,
 		monitorDir:      monitorDir,
+		launchDir:       launchDir,
 		backend:         backend,
 		store:           store,
 		rows:            buildRows(storeAdapter{store}),
@@ -174,6 +173,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.chat.setSize(msg.Width, msg.Height)
 		m.adjustScroll()
+		m.adjustBrowserScroll()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -234,6 +234,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case DirBrowserMsg:
 		m.browserDirs = msg.Dirs
 		m.browserCursor = 0
+		m.browserScroll = 0
+		m.browserPath = msg.CurrentDir
 		m.view = viewDirBrowser
 		return m, nil
 
@@ -356,32 +358,158 @@ func (m Model) viewChat() string {
 
 func (m Model) viewDirBrowser() string {
 	var sb strings.Builder
-	title := "Add Project"
-	if m.browserMode == browserLaunch {
-		agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
-		title = "Launch " + agentName
-	}
-	sb.WriteString(titleStyle.Render(title))
-	sb.WriteString("\n\n")
-	if len(m.browserDirs) == 0 {
-		sb.WriteString(dimStyle.Render("  No directories found in watch_dirs."))
-	}
-	for i, d := range m.browserDirs {
-		prefix := "  "
-		if i == m.browserCursor {
-			prefix = selectedStyle.Render("> ")
-		}
-		name := d.Name
-		path := dimStyle.Render(" " + d.Path)
-		if i == m.browserCursor {
-			sb.WriteString(selectedStyle.Render(prefix + name))
-		} else {
-			sb.WriteString(prefix + name)
-		}
-		sb.WriteString(path + "\n")
+	agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
+
+	// Header: "launch Claude" left, contracted path right
+	left := titleStyle.Render("  launch " + agentName)
+	right := dimStyle.Render(contractHome(m.browserPath) + "  ")
+	leftW := lipgloss.Width(left)
+	rightW := lipgloss.Width(right)
+	gap := m.width - leftW - rightW
+	if gap < 0 {
+		sb.WriteString(left)
+	} else {
+		sb.WriteString(left + strings.Repeat(" ", gap) + right)
 	}
 	sb.WriteString("\n")
-	sb.WriteString(footerStyle.Render(" Enter: add  Esc: cancel"))
+
+	// Separator
+	sepWidth := m.width - 2
+	if sepWidth < 1 {
+		sepWidth = 1
+	}
+	sb.WriteString(dimStyle.Render("  " + strings.Repeat("\u2500", sepWidth)))
+	sb.WriteString("\n")
+
+	// Build flat list of items for scrolling
+	type browserLine struct {
+		idx   int    // selectable index (-1 for labels/blanks)
+		label string // section label, empty for selectable items
+	}
+	var lines []browserLine
+	idx := 0
+
+	recent := m.browserRecentProjects()
+	if len(recent) > 0 {
+		lines = append(lines, browserLine{idx: -1, label: "recent"})
+		for range recent {
+			lines = append(lines, browserLine{idx: idx})
+			idx++
+		}
+		lines = append(lines, browserLine{idx: -1}) // blank separator
+	}
+
+	for range m.browserDirs {
+		lines = append(lines, browserLine{idx: idx})
+		idx++
+	}
+
+	// Blank + launch action
+	lines = append(lines, browserLine{idx: -1}) // blank separator
+	launchIdx := idx
+	lines = append(lines, browserLine{idx: launchIdx})
+
+	// Compute scroll window over selectable items, then map to lines
+	maxVisible := m.browserMaxVisible()
+	scrollOffset := m.browserScroll
+	totalItems := m.browserRecentCount() + len(m.browserDirs) + 1
+	if totalItems <= maxVisible {
+		scrollOffset = 0
+	} else {
+		if m.browserCursor < scrollOffset {
+			scrollOffset = m.browserCursor
+		} else if m.browserCursor >= scrollOffset+maxVisible {
+			scrollOffset = m.browserCursor - maxVisible + 1
+		}
+	}
+
+	// Find line range to display: from first line containing scrollOffset
+	// to last line containing scrollOffset+maxVisible-1
+	firstLine := 0
+	lastLine := len(lines) - 1
+	if totalItems > maxVisible {
+		// Find the line containing the first visible selectable item
+		for i, l := range lines {
+			if l.idx == scrollOffset {
+				// Include preceding label if it's right before
+				if i > 0 && lines[i-1].idx == -1 && lines[i-1].label != "" {
+					firstLine = i - 1
+				} else {
+					firstLine = i
+				}
+				break
+			}
+		}
+		endIdx := scrollOffset + maxVisible - 1
+		if endIdx >= totalItems {
+			endIdx = totalItems - 1
+		}
+		for i := len(lines) - 1; i >= 0; i-- {
+			if lines[i].idx == endIdx {
+				// Include trailing blank/launch after last visible
+				lastLine = i
+				// Include any non-selectable lines right after (blank before launch)
+				for lastLine+1 < len(lines) && lines[lastLine+1].idx == -1 {
+					lastLine++
+				}
+				break
+			}
+		}
+	}
+
+	// Render visible lines
+	recentItems := recent
+	dirItems := m.browserDirs
+	recentCount := len(recentItems)
+	for i := firstLine; i <= lastLine && i < len(lines); i++ {
+		l := lines[i]
+		if l.idx == -1 {
+			if l.label != "" {
+				sb.WriteString(dimStyle.Render("  " + l.label))
+			}
+			sb.WriteString("\n")
+			continue
+		}
+
+		selected := l.idx == m.browserCursor
+		if l.idx < recentCount {
+			// Recent item
+			p := recentItems[l.idx]
+			if selected {
+				sb.WriteString(selectedStyle.Render("> " + p.Name))
+				sb.WriteString(dimStyle.Render(" " + contractHome(p.Dir)))
+			} else {
+				sb.WriteString("  " + p.Name)
+				sb.WriteString(dimStyle.Render(" " + contractHome(p.Dir)))
+			}
+		} else if l.idx < recentCount+len(dirItems) {
+			// Directory entry
+			d := dirItems[l.idx-recentCount]
+			if selected {
+				sb.WriteString(selectedStyle.Render("> " + d.Name))
+			} else {
+				sb.WriteString("  " + d.Name)
+			}
+		} else {
+			// Launch action
+			launchLabel := "\u25b6 launch " + agentName + " here"
+			if selected {
+				sb.WriteString(selectedStyle.Render("> " + launchLabel))
+			} else {
+				sb.WriteString("  " + launchLabel)
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Footer
+	var hints []string
+	hints = append(hints, "enter:select", "l/\u2192:open", "h/\u2190:back")
+	if len(m.availableAgents) > 1 {
+		hints = append(hints, "t:toggle")
+	}
+	hints = append(hints, "esc:cancel")
+	sb.WriteString(footerStyle.Render(" " + strings.Join(hints, "  ")))
 	return sb.String()
 }
 
@@ -404,7 +532,6 @@ func (m Model) viewHelp() string {
   t              Toggle agent type (Claude/Codex)
   s              Send prompt (opens chat view)
   f              Focus agent's terminal tab
-  a              Add project (directory browser)
   d              Remove project from list
   B              Batch send to multiple agents
   Enter          Expand/collapse project details
@@ -456,8 +583,20 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusText = "Backend unavailable"
 			return m, nil
 		}
-		m.browserMode = browserLaunch
-		return m, listDirs(m.watchDirs)
+		startDir := m.launchDir
+		if startDir == "" && len(m.watchDirs) > 0 {
+			startDir = m.watchDirs[0]
+		}
+		if startDir == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				m.statusText = "Cannot determine home directory"
+				return m, nil
+			}
+			startDir = home
+		}
+		m.showHelp = false
+		return m, listDir(startDir)
 
 	case key.Matches(msg, keys.Toggle):
 		if len(m.availableAgents) <= 1 {
@@ -478,10 +617,6 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, keys.Focus):
 		return m.focusSelected()
-
-	case key.Matches(msg, keys.Add):
-		m.browserMode = browserAddProject
-		return m, listDirs(m.watchDirs)
 
 	case key.Matches(msg, keys.Delete):
 		return m.deleteSelected()
@@ -538,44 +673,136 @@ func (m Model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	recentCount := m.browserRecentCount()
+	// Total items: recent + dirs + 1 launch action
+	total := recentCount + len(m.browserDirs) + 1
+	launchIdx := total - 1
+
 	switch {
 	case key.Matches(msg, keys.Escape):
 		m.view = viewProjectList
 		return m, nil
 
+	case key.Matches(msg, keys.Toggle):
+		if len(m.availableAgents) <= 1 {
+			return m, nil
+		}
+		for i, a := range m.availableAgents {
+			if a == m.defaultAgent {
+				m.defaultAgent = m.availableAgents[(i+1)%len(m.availableAgents)]
+				break
+			}
+		}
+		return m, nil
+
 	case key.Matches(msg, keys.Down):
-		if m.browserCursor < len(m.browserDirs)-1 {
+		if m.browserCursor < total-1 {
 			m.browserCursor++
+			m.adjustBrowserScroll()
 		}
 		return m, nil
 
 	case key.Matches(msg, keys.Up):
 		if m.browserCursor > 0 {
 			m.browserCursor--
+			m.adjustBrowserScroll()
 		}
 		return m, nil
 
-	case key.Matches(msg, keys.Enter):
-		if m.browserCursor >= 0 && m.browserCursor < len(m.browserDirs) {
-			dir := m.browserDirs[m.browserCursor]
-			m.store.AddProject(dir.Path)
-			_ = m.store.SaveProjects()
-			m.rows = buildRows(storeAdapter{m.store})
-
-			switch m.browserMode {
-			case browserLaunch:
-				m.view = viewProjectList
-				agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
-				m.statusText = fmt.Sprintf("Launching %s for %s...", agentName, dir.Name)
-				return m, launchAgent(m.backend, dir.Path, m.defaultAgent)
-			default:
-				m.statusText = fmt.Sprintf("Added %s", dir.Name)
-			}
+	case key.Matches(msg, keys.Launch), key.Matches(msg, keys.Right):
+		// l/→: descend into directory
+		if m.browserCursor < recentCount {
+			recent := m.browserRecentProjects()
+			p := recent[m.browserCursor]
+			return m, listDir(p.Dir)
 		}
-		m.view = viewProjectList
+		dirIdx := m.browserCursor - recentCount
+		if dirIdx >= 0 && dirIdx < len(m.browserDirs) {
+			dir := m.browserDirs[dirIdx]
+			return m, listDir(dir.Path)
+		}
+		return m, nil
+
+	case key.Matches(msg, keys.Left):
+		parent := filepath.Dir(m.browserPath)
+		if parent == m.browserPath {
+			return m, nil
+		}
+		return m, listDir(parent)
+
+	case key.Matches(msg, keys.Enter):
+		// Launch action at bottom
+		if m.browserCursor == launchIdx {
+			return m.launchFromBrowser(m.browserPath, filepath.Base(m.browserPath))
+		}
+		// Recent item — launch immediately
+		if m.browserCursor < recentCount {
+			recent := m.browserRecentProjects()
+			p := recent[m.browserCursor]
+			return m.launchFromBrowser(p.Dir, p.Name)
+		}
+		// Directory entry — descend
+		dirIdx := m.browserCursor - recentCount
+		if dirIdx >= 0 && dirIdx < len(m.browserDirs) {
+			dir := m.browserDirs[dirIdx]
+			return m, listDir(dir.Path)
+		}
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m Model) launchFromBrowser(dirPath, name string) (Model, tea.Cmd) {
+	m.store.AddProject(dirPath)
+	_ = m.store.SaveProjects()
+	m.rows = buildRows(storeAdapter{m.store})
+	m.view = viewProjectList
+	agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
+	m.statusText = fmt.Sprintf("Launching %s for %s...", agentName, name)
+	return m, launchAgent(m.backend, dirPath, m.defaultAgent)
+}
+
+func (m Model) browserRecentProjects() []*model.Project {
+	var recent []*model.Project
+	for _, p := range m.store.Projects {
+		if !p.LastLaunchedAt.IsZero() {
+			recent = append(recent, p)
+		}
+	}
+	sort.Slice(recent, func(i, j int) bool {
+		return recent[i].LastLaunchedAt.After(recent[j].LastLaunchedAt)
+	})
+	return recent
+}
+
+func (m Model) browserRecentCount() int {
+	return len(m.browserRecentProjects())
+}
+
+// browserMaxVisible returns how many selectable items fit in the browser.
+// Overhead: header (2) + section labels + launch action line + blank lines + footer (2).
+func (m Model) browserMaxVisible() int {
+	overhead := 6 // header(2) + launch blank + launch line + footer margin + footer
+	if len(m.browserRecentProjects()) > 0 {
+		overhead += 2 // "recent" label + blank line after
+	}
+	max := m.height - overhead
+	if max < 1 {
+		max = 1
+	}
+	return max
+}
+
+func (m *Model) adjustBrowserScroll() {
+	max := m.browserMaxVisible()
+	if m.browserCursor < m.browserScroll {
+		m.browserScroll = m.browserCursor
+	} else if m.browserCursor >= m.browserScroll+max {
+		m.browserScroll = m.browserCursor - max + 1
+	}
+	if m.browserScroll < 0 {
+		m.browserScroll = 0
+	}
 }
 
 func (m Model) handleBatchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -785,10 +1012,12 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	p := m.store.AddProject(msg.ProjectDir)
-	if p != nil {
-		_ = m.store.SaveProjects()
+	m.store.AddProject(msg.ProjectDir)
+	proj := m.store.FindProject(msg.ProjectDir)
+	if proj != nil {
+		proj.LastLaunchedAt = time.Now()
 	}
+	_ = m.store.SaveProjects()
 
 	as := &model.AgentSession{
 		ProjectDir: msg.ProjectDir,

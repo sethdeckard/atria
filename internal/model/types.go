@@ -22,9 +22,10 @@ const (
 )
 
 type Project struct {
-	Name    string    `json:"name"`
-	Dir     string    `json:"dir"`
-	AddedAt time.Time `json:"added_at"`
+	Name           string    `json:"name"`
+	Dir            string    `json:"dir"`
+	AddedAt        time.Time `json:"added_at"`
+	LastLaunchedAt time.Time `json:"last_launched_at,omitempty"`
 }
 
 // DisplayName returns a unique name. If multiple projects share the same

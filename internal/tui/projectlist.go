@@ -366,8 +366,6 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool) string {
 		sb.WriteString("  " + emptyKeyStyle.Render("t") + emptyHintStyle.Render("  Toggle agent type (Claude/Codex)"))
 		sb.WriteString("\n")
 	}
-	sb.WriteString("  " + emptyKeyStyle.Render("a") + emptyHintStyle.Render("  Add a project from your watch directories"))
-	sb.WriteString("\n")
 	sb.WriteString("  " + emptyKeyStyle.Render("?") + emptyHintStyle.Render("  Show all key bindings"))
 	sb.WriteString("\n")
 	sb.WriteString("  " + emptyKeyStyle.Render("q") + emptyHintStyle.Render("  Quit"))
@@ -392,7 +390,7 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 	if canToggle {
 		global = append(global, "t:toggle")
 	}
-	global = append(global, "a:add", "?:help", "q:quit")
+	global = append(global, "?:help", "q:quit")
 	parts = append(parts, strings.Join(global, "  "))
 
 	all := append([]string{left}, parts...)

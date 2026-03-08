@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -117,28 +116,30 @@ func bellCmd() tea.Cmd {
 	}
 }
 
-func listDirs(watchDirs []string) tea.Cmd {
+func listDir(path string) tea.Cmd {
 	return func() tea.Msg {
 		var dirs []DirBrowserItem
-		for _, wd := range watchDirs {
-			entries, err := os.ReadDir(wd)
-			if err != nil {
-				continue
-			}
+		// ".." unless at root
+		if filepath.Dir(path) != path {
+			dirs = append(dirs, DirBrowserItem{
+				Path:     filepath.Dir(path),
+				Name:     "..",
+				IsParent: true,
+			})
+		}
+		entries, err := os.ReadDir(path)
+		if err == nil {
 			for _, e := range entries {
 				if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 					continue
 				}
 				dirs = append(dirs, DirBrowserItem{
-					Path: filepath.Join(wd, e.Name()),
+					Path: filepath.Join(path, e.Name()),
 					Name: e.Name(),
 				})
 			}
 		}
-		sort.Slice(dirs, func(i, j int) bool {
-			return dirs[i].Name < dirs[j].Name
-		})
-		return DirBrowserMsg{Dirs: dirs}
+		return DirBrowserMsg{Dirs: dirs, CurrentDir: path}
 	}
 }
 

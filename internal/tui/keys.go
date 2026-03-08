@@ -9,12 +9,13 @@ type keyMap struct {
 	Toggle key.Binding
 	Send   key.Binding
 	Focus  key.Binding
-	Add    key.Binding
 	Delete key.Binding
 	Batch  key.Binding
 	Enter  key.Binding
 	Help   key.Binding
 	Quit   key.Binding
+	Right  key.Binding
+	Left   key.Binding
 	Escape key.Binding
 	CtrlD  key.Binding
 }
@@ -44,10 +45,6 @@ var keys = keyMap{
 		key.WithKeys("f"),
 		key.WithHelp("f", "focus agent tab"),
 	),
-	Add: key.NewBinding(
-		key.WithKeys("a"),
-		key.WithHelp("a", "add project"),
-	),
 	Delete: key.NewBinding(
 		key.WithKeys("d"),
 		key.WithHelp("d", "remove project"),
@@ -67,6 +64,12 @@ var keys = keyMap{
 	Quit: key.NewBinding(
 		key.WithKeys("q", "ctrl+c"),
 		key.WithHelp("q", "quit"),
+	),
+	Right: key.NewBinding(
+		key.WithKeys("right"),
+	),
+	Left: key.NewBinding(
+		key.WithKeys("left", "h"),
 	),
 	Escape: key.NewBinding(
 		key.WithKeys("esc"),
