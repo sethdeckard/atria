@@ -63,8 +63,8 @@ func renderProjectList(rows []projectRow, cursor int, allProjects []*model.Proje
 	sb.WriteString("\n\n")
 
 	if len(rows) == 0 {
-		sb.WriteString(dimStyle.Render("  No projects yet. Press 'a' to add one."))
-		sb.WriteString("\n")
+		sb.WriteString(renderEmptyState())
+		return sb.String()
 	}
 
 	nameWidth := 20
@@ -174,6 +174,28 @@ func relativeTime(t time.Time) string {
 		days := int(d.Hours() / 24)
 		return fmt.Sprintf("%dd ago", days)
 	}
+}
+
+func renderEmptyState() string {
+	var sb strings.Builder
+
+	logo := logoStyle.Render(`         _        _
+   __ _ | |_  _ _(_) __ _
+  / _` + "`" + ` ||  _|| '_| |/ _` + "`" + ` |
+  \__,_| \__||_| |_|\__,_|`)
+
+	sb.WriteString(logo)
+	sb.WriteString("\n\n")
+	sb.WriteString(emptyHintStyle.Render("  Agent orchestration for your terminal."))
+	sb.WriteString("\n\n")
+	sb.WriteString("  " + emptyKeyStyle.Render("a") + emptyHintStyle.Render("  Add a project from your watch directories"))
+	sb.WriteString("\n")
+	sb.WriteString("  " + emptyKeyStyle.Render("?") + emptyHintStyle.Render("  Show all key bindings"))
+	sb.WriteString("\n")
+	sb.WriteString("  " + emptyKeyStyle.Render("q") + emptyHintStyle.Render("  Quit"))
+	sb.WriteString("\n")
+
+	return sb.String()
 }
 
 func renderFooter(rowCount, activeCount int) string {

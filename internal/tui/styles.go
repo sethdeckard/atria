@@ -62,4 +62,14 @@ var (
 
 	statusBarStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "#cc6600", Dark: "#ffaa33"})
+
+	logoStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#5555aa", Dark: "#7777cc"})
+
+	emptyHintStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#666666", Dark: "#888888"})
+
+	emptyKeyStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.AdaptiveColor{Light: "#4444aa", Dark: "#9999dd"})
 )

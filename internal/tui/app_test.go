@@ -846,8 +846,11 @@ func TestViewProjectListEmpty(t *testing.T) {
 	if !strings.Contains(v, "Projects") {
 		t.Error("expected Projects title")
 	}
-	if !strings.Contains(v, "No projects yet") {
-		t.Error("expected empty state message")
+	if !strings.Contains(v, "Agent orchestration") {
+		t.Error("expected tagline in empty state")
+	}
+	if !strings.Contains(v, "Add a project") {
+		t.Error("expected hint in empty state")
 	}
 }
 
