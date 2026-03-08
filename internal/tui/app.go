@@ -515,6 +515,7 @@ func (m Model) openChat() (Model, tea.Cmd) {
 		m.chatSessionID = r.session.SessionID
 		m.chat = newChatView()
 		m.chat.setSize(m.width, m.height)
+		m.chat.setContext(r.session.LastScreen)
 	}
 	m.view = viewChat
 	return m, nil

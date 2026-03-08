@@ -14,6 +14,7 @@ type chatView struct {
 	viewport viewport.Model
 	input    textarea.Model
 	entries  []model.ChatEntry
+	context  string // dim screen context shown before entries
 	ready    bool
 }
 
@@ -47,6 +48,27 @@ func (c *chatView) setSize(width, height int) {
 	c.ready = true
 }
 
+// setContext seeds the viewport with recent screen lines as initial
+// context, so the user sees what the agent is doing before sending.
+func (c *chatView) setContext(screen string) {
+	if screen == "" {
+		return
+	}
+	lines := strings.Split(screen, "\n")
+	// Trim trailing blank lines
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > 15 {
+		lines = lines[len(lines)-15:]
+	}
+	if len(lines) == 0 {
+		return
+	}
+	c.context = dimStyle.Render(strings.Join(lines, "\n")) + "\n"
+	c.updateViewport()
+}
+
 func (c *chatView) addEntry(entry model.ChatEntry) {
 	c.entries = append(c.entries, entry)
 	c.updateViewport()
@@ -54,6 +76,7 @@ func (c *chatView) addEntry(entry model.ChatEntry) {
 
 func (c *chatView) updateViewport() {
 	var sb strings.Builder
+	sb.WriteString(c.context)
 	for _, e := range c.entries {
 		ts := e.Timestamp.Format("15:04")
 		switch e.Direction {
