@@ -1294,7 +1294,8 @@ func TestScreenReadAgentExitedTransitionsToIdle(t *testing.T) {
 
 	shellContent := "myhost% \n"
 
-	// First unmatched read — should stay working (could be transient output)
+	// Read 1: screen changed (from codex prompt to shell) — counter resets,
+	// stays working because changing content means something is happening
 	updated, _ := m.Update(ScreenReadMsg{
 		SessionID:  "sess-1",
 		ProjectDir: "/a/myproject",
@@ -1303,31 +1304,58 @@ func TestScreenReadAgentExitedTransitionsToIdle(t *testing.T) {
 	m = modelFrom(updated)
 	session := m.store.SessionByID("sess-1")
 	if session.Status != model.StatusWorking {
-		t.Errorf("expected working after 1 unmatched read, got %q", session.Status)
+		t.Errorf("expected working after changed unmatched read, got %q", session.Status)
+	}
+	if session.UnmatchedReads != 0 {
+		t.Errorf("expected counter=0 after changed read, got %d", session.UnmatchedReads)
 	}
 
-	// Second unmatched read — still working
-	updated, _ = m.Update(ScreenReadMsg{
-		SessionID:  "sess-1",
-		ProjectDir: "/a/myproject",
-		Content:    shellContent,
-	})
-	m = modelFrom(updated)
-	session = m.store.SessionByID("sess-1")
-	if session.Status != model.StatusWorking {
-		t.Errorf("expected working after 2 unmatched reads, got %q", session.Status)
+	// Reads 2-4: stable (same content), counter increments to 1, 2, 3
+	for i := 1; i <= 3; i++ {
+		updated, _ = m.Update(ScreenReadMsg{
+			SessionID:  "sess-1",
+			ProjectDir: "/a/myproject",
+			Content:    shellContent,
+		})
+		m = modelFrom(updated)
+		session = m.store.SessionByID("sess-1")
+		if i < 3 && session.Status != model.StatusWorking {
+			t.Errorf("read %d: expected working, got %q", i+1, session.Status)
+		}
 	}
-
-	// Third unmatched read — now transitions to idle
-	updated, _ = m.Update(ScreenReadMsg{
-		SessionID:  "sess-1",
-		ProjectDir: "/a/myproject",
-		Content:    shellContent,
-	})
-	m = modelFrom(updated)
-	session = m.store.SessionByID("sess-1")
 	if session.Status != model.StatusIdle {
-		t.Errorf("expected idle after 3 unmatched reads, got %q", session.Status)
+		t.Errorf("expected idle after 3 stable unmatched reads, got %q", session.Status)
+	}
+}
+
+func TestScreenReadChangingOutputStaysWorking(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+		LastScreen: "initial\n",
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Many reads with changing content but no agent patterns — agent is
+	// producing output, should stay working (counter resets each time)
+	for i := 0; i < 10; i++ {
+		updated, _ := m.Update(ScreenReadMsg{
+			SessionID:  "sess-1",
+			ProjectDir: "/a/myproject",
+			Content:    fmt.Sprintf("plain output line %d\n", i),
+		})
+		m = modelFrom(updated)
+	}
+	session := m.store.SessionByID("sess-1")
+	if session.Status != model.StatusWorking {
+		t.Errorf("expected working with changing output, got %q", session.Status)
+	}
+	if session.UnmatchedReads != 0 {
+		t.Errorf("expected counter=0 with changing output, got %d", session.UnmatchedReads)
 	}
 }
 
@@ -1339,13 +1367,21 @@ func TestScreenReadUnmatchedCounterResetsOnMatch(t *testing.T) {
 		SessionID:  "sess-1",
 		Type:       model.AgentClaude,
 		Status:     model.StatusWorking,
-		LastScreen: "✻ Reading file…\n",
+		LastScreen: "✻ Reading…\n",
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
-	// Two unmatched reads (plain output)
+	// Read 1: changed content (from initial), no pattern — counter stays 0
+	updated, _ := m.Update(ScreenReadMsg{
+		SessionID:  "sess-1",
+		ProjectDir: "/a/myproject",
+		Content:    "some plain output\n",
+	})
+	m = modelFrom(updated)
+
+	// Reads 2-3: stable, counter goes to 1 then 2
 	for i := 0; i < 2; i++ {
-		updated, _ := m.Update(ScreenReadMsg{
+		updated, _ = m.Update(ScreenReadMsg{
 			SessionID:  "sess-1",
 			ProjectDir: "/a/myproject",
 			Content:    "some plain output\n",
@@ -1358,7 +1394,7 @@ func TestScreenReadUnmatchedCounterResetsOnMatch(t *testing.T) {
 	}
 
 	// Matched read resets counter
-	updated, _ := m.Update(ScreenReadMsg{
+	updated, _ = m.Update(ScreenReadMsg{
 		SessionID:  "sess-1",
 		ProjectDir: "/a/myproject",
 		Content:    "✻ Editing…\n",

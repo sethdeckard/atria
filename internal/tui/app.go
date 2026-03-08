@@ -1252,15 +1252,21 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	}
 
 	if status == "" {
-		as.UnmatchedReads++
+		// Only count stable (unchanged) unmatched reads. If content is
+		// still changing, the agent is active — just producing output
+		// that doesn't match our patterns.
+		if screenChanged {
+			as.UnmatchedReads = 0
+		} else {
+			as.UnmatchedReads++
+		}
 		// Screen changed but no pattern match while in needs_input →
 		// the agent moved on, transition to working
 		if screenChanged && as.Status == model.StatusNeedsInput {
 			status = model.StatusWorking
-		} else if as.Status == model.StatusWorking && as.UnmatchedReads >= 3 {
-			// Multiple consecutive reads with no agent patterns — the
-			// agent likely exited (e.g. killed) and the pane shows a
-			// shell. A single unmatched read is normal during output.
+		} else if as.Status == model.StatusWorking && !screenChanged && as.UnmatchedReads >= 3 {
+			// Multiple consecutive stable reads with no agent patterns —
+			// the agent likely exited and the pane shows a shell.
 			status = model.StatusIdle
 		} else if !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) {
 			// Consecutive blank screen reads while "working" — it2 can't
