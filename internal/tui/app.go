@@ -63,6 +63,9 @@ type Model struct {
 	chat          chatView
 	chatSessionID string // session ID for active chat
 
+	// Stream panel
+	streamOpen bool
+
 	// Spinner & attention
 	spinnerFrame  int
 	spinnerActive bool
@@ -300,17 +303,94 @@ func (m Model) viewProjectList() string {
 	list := renderProjectList(m.rows, m.cursor, allProjects, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, len(m.availableAgents) > 1, maxRows, scrollOffset)
 	sb.WriteString(list)
 
+	if m.streamOpen {
+		var session *model.AgentSession
+		if m.cursor >= 0 && m.cursor < len(m.rows) {
+			session = m.rows[m.cursor].session
+		}
+		panelH := streamPanelHeight(m.height)
+		sb.WriteString(renderStreamPanel(session, m.width, panelH))
+	}
+
 	var selected *projectRow
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
 		selected = &m.rows[m.cursor]
 	}
 	sb.WriteString("\n")
-	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, len(m.availableAgents) > 1))
+	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, len(m.availableAgents) > 1, m.streamOpen))
 
 	if m.statusText != "" {
 		sb.WriteString("\n")
 		sb.WriteString(statusBarStyle.Render(m.statusText))
 	}
+
+	return sb.String()
+}
+
+// renderStreamPanel renders the live screen output panel for the selected agent.
+func renderStreamPanel(session *model.AgentSession, width, height int) string {
+	var sb strings.Builder
+
+	// Top separator
+	sepWidth := width - 2
+	if sepWidth < 1 {
+		sepWidth = 1
+	}
+	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("  " + strings.Repeat("\u2500", sepWidth)))
+	sb.WriteString("\n")
+
+	contentLines := height - 2 // account for top/bottom separators
+	if contentLines < 1 {
+		contentLines = 1
+	}
+
+	if session == nil || strings.TrimSpace(session.LastScreen) == "" {
+		// Placeholder
+		sb.WriteString(dimStyle.Render("  no output"))
+		sb.WriteString("\n")
+		for i := 1; i < contentLines; i++ {
+			sb.WriteString("\n")
+		}
+	} else {
+		// Split screen content, trim trailing blank lines, take from bottom
+		lines := strings.Split(session.LastScreen, "\n")
+		// Trim trailing blank lines
+		for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+			lines = lines[:len(lines)-1]
+		}
+		// Take last contentLines lines
+		if len(lines) > contentLines {
+			lines = lines[len(lines)-contentLines:]
+		}
+		maxLineWidth := width - 2 // account for 2-char indent
+		if maxLineWidth < 1 {
+			maxLineWidth = 1
+		}
+		for _, line := range lines {
+			if lipgloss.Width(line) > maxLineWidth {
+				// Truncate to fit terminal width (rune-safe)
+				truncated := ""
+				for _, r := range line {
+					if lipgloss.Width(truncated+string(r)) > maxLineWidth-1 {
+						truncated += "\u2026"
+						break
+					}
+					truncated += string(r)
+				}
+				line = truncated
+			}
+			sb.WriteString("  " + line)
+			sb.WriteString("\n")
+		}
+		// Pad remaining lines
+		for i := len(lines); i < contentLines; i++ {
+			sb.WriteString("\n")
+		}
+	}
+
+	// Bottom separator
+	sb.WriteString(dimStyle.Render("  " + strings.Repeat("\u2500", sepWidth)))
 
 	return sb.String()
 }
@@ -324,11 +404,26 @@ func (m Model) maxVisibleRows() int {
 	if m.showHelp {
 		overhead += strings.Count(m.viewHelp(), "\n") + 2
 	}
+	if m.streamOpen {
+		overhead += streamPanelHeight(m.height) + 1 // +1 for spacer line above top separator
+	}
 	max := m.height - overhead
 	if max < 1 {
 		max = 1
 	}
 	return max
+}
+
+// streamPanelHeight returns the height of the stream panel in lines.
+func streamPanelHeight(termHeight int) int {
+	h := termHeight * 2 / 5
+	if h < 5 {
+		h = 5
+	}
+	if h > 25 {
+		h = 25
+	}
+	return h
 }
 
 // adjustScroll ensures the cursor is visible within the scroll window.
@@ -528,6 +623,7 @@ func (m Model) viewBatchPrompt() string {
 func (m Model) viewHelp() string {
 	help := `Key Bindings:
   j/k, arrows   Navigate project list
+  v              Toggle agent screen stream
   l              Launch agent in a project
   t              Toggle agent type (Claude/Codex)
   s              Send prompt (opens chat view)
@@ -628,6 +724,11 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.view = viewBatchPrompt
 		m.batchInput.Focus()
+		return m, nil
+
+	case key.Matches(msg, keys.Stream):
+		m.streamOpen = !m.streamOpen
+		m.adjustScroll()
 		return m, nil
 
 	case key.Matches(msg, keys.Enter):

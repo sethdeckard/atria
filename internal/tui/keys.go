@@ -11,6 +11,7 @@ type keyMap struct {
 	Focus  key.Binding
 	Delete key.Binding
 	Batch  key.Binding
+	Stream key.Binding
 	Enter  key.Binding
 	Help   key.Binding
 	Quit   key.Binding
@@ -52,6 +53,10 @@ var keys = keyMap{
 	Batch: key.NewBinding(
 		key.WithKeys("B"),
 		key.WithHelp("B", "batch send"),
+	),
+	Stream: key.NewBinding(
+		key.WithKeys("v"),
+		key.WithHelp("v", "toggle stream panel"),
 	),
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),

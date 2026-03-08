@@ -1576,3 +1576,193 @@ func TestViewHeaderBranding(t *testing.T) {
 		t.Error("expected horizontal separator")
 	}
 }
+
+func TestStreamToggle(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backendOK = true
+
+	if m.streamOpen {
+		t.Fatal("streamOpen should default to false")
+	}
+
+	// Press v to open
+	updated, _ := m.Update(keyMsg("v"))
+	m = modelFrom(updated)
+	if !m.streamOpen {
+		t.Error("expected streamOpen=true after pressing v")
+	}
+
+	// Press v again to close
+	updated, _ = m.Update(keyMsg("v"))
+	m = modelFrom(updated)
+	if m.streamOpen {
+		t.Error("expected streamOpen=false after pressing v again")
+	}
+}
+
+func TestMaxVisibleRowsShrinksWithStream(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backendOK = true
+
+	without := m.maxVisibleRows()
+
+	m.streamOpen = true
+	with := m.maxVisibleRows()
+
+	if with >= without {
+		t.Errorf("maxVisibleRows with stream (%d) should be less than without (%d)", with, without)
+	}
+
+	expected := streamPanelHeight(m.height) + 1 // +1 for spacer line
+	if without-with != expected {
+		t.Errorf("difference should be streamPanelHeight+1 (%d), got %d", expected, without-with)
+	}
+}
+
+func TestStreamPanelShowsSelectedScreen(t *testing.T) {
+	store := makeStore(t)
+	store.AddProject("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+		LastScreen: "Reading file...\n\n❯\n",
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backendOK = true
+	m.streamOpen = true
+
+	v := m.View()
+	if !strings.Contains(v, "Reading file...") {
+		t.Error("expected stream panel to contain LastScreen content")
+	}
+}
+
+func TestStreamPanelNoOutput(t *testing.T) {
+	store := makeStore(t)
+	store.AddProject("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+		LastScreen: "",
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backendOK = true
+	m.streamOpen = true
+
+	v := m.View()
+	if !strings.Contains(v, "no output") {
+		t.Error("expected 'no output' placeholder when LastScreen is empty")
+	}
+}
+
+func TestStreamPanelUpdatesWithCursor(t *testing.T) {
+	store := makeStore(t)
+	store.AddProject("/proj/alpha")
+	store.AddProject("/proj/beta")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+		LastScreen: "alpha screen content",
+	})
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/beta",
+		SessionID:  "s2",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+		LastScreen: "beta screen content",
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backendOK = true
+	m.streamOpen = true
+
+	// First row selected
+	v := m.View()
+	// Move cursor down
+	updated, _ := m.Update(keyMsg("j"))
+	m = modelFrom(updated)
+	v = m.View()
+
+	// The second session's screen should now be visible
+	// (both sessions are in the list; exact order depends on sort)
+	if !strings.Contains(v, "alpha screen content") && !strings.Contains(v, "beta screen content") {
+		t.Error("expected stream panel to show some session's screen content after cursor move")
+	}
+}
+
+func TestFooterShowsStreamHint(t *testing.T) {
+	store := makeStore(t)
+	store.AddProject("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backendOK = true
+
+	v := m.View()
+	if !strings.Contains(v, "v:stream") {
+		t.Error("expected footer to contain v:stream hint")
+	}
+
+	m.streamOpen = true
+	v = m.View()
+	if !strings.Contains(v, "v:close") {
+		t.Error("expected footer to contain v:close when stream is open")
+	}
+}
+
+func TestStreamPanelTruncatesLongLines(t *testing.T) {
+	longLine := strings.Repeat("x", 200)
+	store := makeStore(t)
+	store.AddProject("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+		LastScreen: longLine,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.backendOK = true
+	m.streamOpen = true
+
+	v := m.View()
+	// The full 200-char line should not appear; it should be truncated
+	if strings.Contains(v, longLine) {
+		t.Error("expected long line to be truncated, but it appeared in full")
+	}
+	if !strings.Contains(v, "\u2026") {
+		t.Error("expected truncation ellipsis in stream panel")
+	}
+}
+
+func TestStreamPanelHeight(t *testing.T) {
+	// Small terminal
+	h := streamPanelHeight(10)
+	if h < 5 {
+		t.Errorf("streamPanelHeight(10) = %d, want >= 5", h)
+	}
+
+	// Normal terminal
+	h = streamPanelHeight(40)
+	if h != 16 {
+		t.Errorf("streamPanelHeight(40) = %d, want 16", h)
+	}
+
+	// Large terminal — capped at 25
+	h = streamPanelHeight(80)
+	if h != 25 {
+		t.Errorf("streamPanelHeight(80) = %d, want 25 (capped)", h)
+	}
+}

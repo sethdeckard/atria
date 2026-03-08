@@ -374,7 +374,7 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool) string {
 	return sb.String()
 }
 
-func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, canToggle bool) string {
+func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, canToggle bool, streamOpen bool) string {
 	left := fmt.Sprintf(" %d agents", rowCount)
 
 	var parts []string
@@ -383,6 +383,11 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 	}
 
 	var global []string
+	if streamOpen {
+		global = append(global, "v:close")
+	} else {
+		global = append(global, "v:stream")
+	}
 	if defaultAgent != "" {
 		agentName := strings.ToUpper(string(defaultAgent)[:1]) + string(defaultAgent)[1:]
 		global = append(global, fmt.Sprintf("l:launch (%s)", agentName))
