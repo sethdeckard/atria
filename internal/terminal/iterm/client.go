@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sethdeckard/atria/internal/terminal"
@@ -114,21 +115,47 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 	return sessions, nil
 }
 
-// NewSession runs "it2 tab new", waits 300ms, then returns the ID of the newest session.
+// NewSession runs "it2 tab new", parses the tab ID from its output,
+// then matches it to the session with that tab_id.
 func (c *Client) NewSession() (string, error) {
-	_, err := c.run("tab", "new")
+	out, err := c.run("tab", "new")
 	if err != nil {
 		return "", err
+	}
+	tabID := parseTabID(string(out))
+	if tabID == "" {
+		return "", fmt.Errorf("could not parse tab ID from: %s", string(out))
 	}
 	time.Sleep(300 * time.Millisecond)
-	sessions, err := c.ListSessions()
+	return c.sessionForTab(tabID)
+}
+
+// parseTabID extracts the tab ID from "Created new tab: 69\n".
+func parseTabID(output string) string {
+	output = strings.TrimSpace(output)
+	const prefix = "Created new tab: "
+	if strings.HasPrefix(output, prefix) {
+		return output[len(prefix):]
+	}
+	return ""
+}
+
+// sessionForTab finds the session ID for a given tab ID.
+func (c *Client) sessionForTab(tabID string) (string, error) {
+	out, err := c.run("session", "list", "--json")
 	if err != nil {
 		return "", err
 	}
-	if len(sessions) == 0 {
-		return "", fmt.Errorf("no sessions found after creating new tab")
+	var raw []it2Session
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return "", fmt.Errorf("failed to parse session list: %w", err)
 	}
-	return sessions[len(sessions)-1].ID, nil
+	for _, s := range raw {
+		if s.TabID == tabID {
+			return s.ID, nil
+		}
+	}
+	return "", fmt.Errorf("no session found for tab %s", tabID)
 }
 
 // SendText runs "it2 session send -s <id> <text>".

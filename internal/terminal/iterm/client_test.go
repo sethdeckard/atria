@@ -27,6 +27,25 @@ func TestAvailableErrorWhenNotFound(t *testing.T) {
 	}
 }
 
+func TestParseTabID(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Created new tab: 69\n", "69"},
+		{"Created new tab: 123", "123"},
+		{"Created new tab: 0\n", "0"},
+		{"unexpected output", ""},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		got := parseTabID(tc.input)
+		if got != tc.expected {
+			t.Errorf("parseTabID(%q) = %q, want %q", tc.input, got, tc.expected)
+		}
+	}
+}
+
 func TestAvailableErrorWhenEmptyPathAndNotInPATH(t *testing.T) {
 	// Set PATH to empty and HOME to nonexistent to ensure it2 is not found
 	// via PATH or venv fallback paths.
