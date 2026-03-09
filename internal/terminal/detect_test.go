@@ -20,6 +20,9 @@ func TestDetectAgent(t *testing.T) {
 		{"codex lowercase", "codex-session", model.AgentCodex},
 		{"codex uppercase", "CODEX", model.AgentCodex},
 		{"codex mixed case", "OpenAI Codex", model.AgentCodex},
+		{"opencode lowercase", "opencode", model.AgentOpenCode},
+		{"opencode in title", "OC | Reading file (opencode)", model.AgentOpenCode},
+		{"opencode in session name", "my-opencode-session", model.AgentOpenCode},
 		{"plain session", "my-project", ""},
 		{"empty string", "", ""},
 		{"bash session", "bash", ""},
@@ -50,6 +53,8 @@ func TestExtractActivity(t *testing.T) {
 		{"empty string", "", ""},
 		{"sparkle with space", "✳ Idle", "Idle"},
 		{"nested parens stripped last", "✳ Foo (bar) (baz)", "Foo (bar)"},
+		{"opencode title", "OC | Reading file (opencode)", "Reading file"},
+		{"opencode title no suffix", "OC | Editing code", "Editing code"},
 	}
 
 	for _, tt := range tests {

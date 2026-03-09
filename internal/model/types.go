@@ -8,8 +8,9 @@ import (
 type AgentType string
 
 const (
-	AgentClaude AgentType = "claude"
-	AgentCodex  AgentType = "codex"
+	AgentClaude   AgentType = "claude"
+	AgentCodex    AgentType = "codex"
+	AgentOpenCode AgentType = "opencode"
 )
 
 type AgentStatus string

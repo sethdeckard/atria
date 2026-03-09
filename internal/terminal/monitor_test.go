@@ -42,6 +42,10 @@ func TestClassifyOutput(t *testing.T) {
 		{"codex working bullet", "• Working (30s • esc to interrupt)", model.StatusWorking},
 		{"codex working simple", "• Working", model.StatusWorking},
 		{"codex status bar idle", "gpt-5.3-codex default · 73% left · ~/projects/foo", model.StatusIdle},
+		{"opencode idle footer", "ctrl+t variants  tab agents  ctrl+p commands", model.StatusIdle},
+		{"opencode permission required", "△ Permission required", model.StatusNeedsInput},
+		{"opencode allow once button", "Allow once   Allow always   Reject", model.StatusNeedsInput},
+		{"opencode working", "■ ..... esc interrupt", model.StatusWorking},
 		{"claude done static", "✻", ""},
 		{"generic working output", "Compiling main.go...", ""},
 		{"empty string", "", ""},
@@ -175,6 +179,12 @@ func TestClassifyScreen(t *testing.T) {
 			"line1\nline2\nline3\nline4\n❯ \nDo you want to proceed?\n1. Yes\n2. No\nEsc to cancel",
 			model.StatusNeedsInput,
 			"Do you want to proceed?",
+		},
+		{
+			"opencode permission prompt layout",
+			"Build · big-pickle · 9.2s\n\nread the file ../RESEARCH.md\n\nThinking: user wants to read a file\n\nRead /Users/seth/projects/go/RESEARCH.md\n\nBuild · big-pickle\n\n△ Permission required\nAccess external directory ~/projects/go\n\nPatterns\n\n- /Users/seth/projects/go/*\n\n\nAllow once   Allow always   Reject   ctrl+f fullscreen  enter confirm\n• OpenCode 1.2.21\n",
+			model.StatusNeedsInput,
+			"Allow once",
 		},
 		{
 			"working in scrollback ignored",

@@ -16,6 +16,10 @@ func DetectAgent(name string) model.AgentType {
 		return model.AgentClaude
 	}
 
+	if strings.Contains(lower, "opencode") {
+		return model.AgentOpenCode
+	}
+
 	if strings.Contains(lower, "codex") {
 		return model.AgentCodex
 	}
@@ -35,7 +39,12 @@ func ExtractActivity(name string) string {
 		s = strings.TrimLeft(s, " ")
 	}
 
-	// Remove a trailing parenthesized suffix, e.g. " (sourcekit-lsp)".
+	// Strip "OC | " prefix for OpenCode sessions.
+	if strings.HasPrefix(s, "OC | ") {
+		s = strings.TrimPrefix(s, "OC | ")
+	}
+
+	// Remove a trailing parenthesized suffix, e.g. " (sourcekit-lsp)" or " (opencode)".
 	if idx := strings.LastIndex(s, "("); idx > 0 {
 		if strings.HasSuffix(s, ")") {
 			s = s[:idx]

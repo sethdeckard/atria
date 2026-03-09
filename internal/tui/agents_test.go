@@ -11,7 +11,7 @@ func TestDetectAvailableAgents(t *testing.T) {
 	// We can't predict what's installed, but the function should not panic
 	// and should return a valid slice.
 	for _, a := range agents {
-		if a != model.AgentClaude && a != model.AgentCodex {
+		if a != model.AgentClaude && a != model.AgentCodex && a != model.AgentOpenCode {
 			t.Errorf("unexpected agent type: %q", a)
 		}
 	}

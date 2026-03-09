@@ -34,8 +34,11 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType model.Ag
 		}
 		time.Sleep(300 * time.Millisecond)
 		cmd := "claude"
-		if agentType == model.AgentCodex {
+		switch agentType {
+		case model.AgentCodex:
 			cmd = "codex"
+		case model.AgentOpenCode:
+			cmd = "opencode"
 		}
 		shellCmd := fmt.Sprintf("cd %s && %s", shellEscape(projectDir), cmd)
 		err = backend.RunCommand(sessionID, shellCmd)

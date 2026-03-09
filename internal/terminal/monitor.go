@@ -9,15 +9,15 @@ import (
 )
 
 var (
-	needsInputPattern = regexp.MustCompile(`(?i)(Do you want to proceed|Allow .+\?|Esc to cancel|Waiting for .+ input)`)
+	needsInputPattern = regexp.MustCompile(`(?i)(Do you want to proceed|Allow .+\?|Esc to cancel|Waiting for .+ input|Permission required|Allow once)`)
 	bellPattern       = regexp.MustCompile("\x07")
 	errorPattern      = regexp.MustCompile(`Error:`)
 	workingPattern    = regexp.MustCompile(`[✻✶·] \S+…|[•●] Working`)
 	// Matches "esc to interrupt" only when NOT in a background task line (⏵⏵).
-	escToInterrupt = regexp.MustCompile(`esc to interrupt`)
+	escToInterrupt = regexp.MustCompile(`esc\s+(?:to\s+)?interrupt`)
 	backgroundTask = regexp.MustCompile(`⏵`)
 
-	idlePattern       = regexp.MustCompile(`❯|›|\? for shortcuts|(\$ $)|gpt-\S+-codex`)
+	idlePattern       = regexp.MustCompile(`❯|›|\? for shortcuts|(\$ $)|gpt-\S+-codex|ctrl\+p commands`)
 	completedPattern  = regexp.MustCompile(`✓|completed|No findings`)
 )
 

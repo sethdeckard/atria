@@ -283,6 +283,14 @@ func (m Model) View() string {
 		content = m.viewHelp() + "\n\n" + content
 	}
 
+	// Pad output to exactly m.height lines so Bubble Tea's alternate screen
+	// doesn't leave ghost lines when the output shrinks between frames
+	// (e.g. statusText appearing/disappearing, status transitions).
+	lines := strings.Count(content, "\n")
+	if lines < m.height-1 {
+		content += strings.Repeat("\n", m.height-1-lines)
+	}
+
 	return content
 }
 

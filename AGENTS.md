@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Atria is a Go TUI tool for managing multiple AI coding agents (Claude Code, Codex) running in terminal tabs/panes. Built with Bubble Tea (bubbletea, lipgloss, bubbles).
+Atria is a Go TUI tool for managing multiple AI coding agents (Claude Code, Codex, OpenCode) running in terminal tabs/panes. Built with Bubble Tea (bubbletea, lipgloss, bubbles).
 
 ## Code Style
 
@@ -63,7 +63,7 @@ internal/
 
 - Two-step send for raw-mode TUI agents: `SendText(text)`, 50ms sleep, `SendText("\r")`
 - Session list cached with 5s TTL, invalidated after mutations
-- Agent detection: `✳` prefix or "claude" -> Claude; "codex" -> Codex
+- Agent detection: `✳` prefix or "claude" -> Claude; "opencode" -> OpenCode; "codex" -> Codex
 - Config uses TOML at `~/.config/atria/config.toml`
 - Multiple agents per directory: sessions keyed by SessionID, not ProjectDir
 - Bell notification: write `\a` to `/dev/tty` (not stderr) to work through Bubble Tea
@@ -135,6 +135,19 @@ Notes:
 Notes:
 - Codex pads the bottom of its screen with many blank lines; 25-line reads are needed to capture content.
 - Codex session names are typically static ("codex"), unlike Claude which updates dynamically.
+
+### OpenCode Patterns
+
+| Status | Pattern | Example |
+|--------|---------|---------|
+| Working | `esc interrupt` (matched by `esc\s+(?:to\s+)?interrupt`) | `■ ..... esc interrupt` |
+| Idle | `ctrl\+p commands` | `ctrl+t variants  tab agents  ctrl+p commands` |
+| Needs input | `Permission required` | `△ Permission required` |
+
+Notes:
+- OpenCode's working indicator uses `esc interrupt` (no "to"), matched by the shared regex.
+- Session names follow `OC | <description> (opencode)` format; `ExtractActivity()` strips both prefix and suffix.
+- OpenCode is also a Bubble Tea TUI, so two-step send applies.
 
 ### Session Name Activity
 
