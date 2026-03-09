@@ -14,6 +14,8 @@ type Config struct {
 	WatchDirs    []string `toml:"watch_dirs"`
 	Backend      string   `toml:"backend"`
 	IT2Path      string   `toml:"it2_path"`
+	TmuxPath     string   `toml:"tmux_path"`
+	TmuxSession  string   `toml:"tmux_session"`
 	DataDir      string   `toml:"data_dir"`
 	MonitorDir   string   `toml:"monitor_dir"`
 	CacheTTL     int      `toml:"cache_ttl"`
@@ -30,7 +32,6 @@ func DefaultPath() string {
 // exist, a Config with default values is returned without an error.
 func Load(path string) (*Config, error) {
 	cfg := &Config{
-		Backend:    "iterm2",
 		DataDir:    "~/.config/atria",
 		MonitorDir: "/tmp/atria-monitors",
 		CacheTTL:   5,
@@ -45,6 +46,7 @@ func Load(path string) (*Config, error) {
 	cfg.DataDir = expandHome(cfg.DataDir)
 	cfg.MonitorDir = expandHome(cfg.MonitorDir)
 	cfg.IT2Path = expandHome(cfg.IT2Path)
+	cfg.TmuxPath = expandHome(cfg.TmuxPath)
 	cfg.LaunchDir = expandHome(cfg.LaunchDir)
 
 	for i, dir := range cfg.WatchDirs {

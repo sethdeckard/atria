@@ -11,6 +11,7 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/internal/terminal/iterm"
+	"github.com/sethdeckard/atria/internal/terminal/tmux"
 	"github.com/sethdeckard/atria/internal/tui"
 )
 
@@ -44,6 +45,17 @@ func main() {
 	_ = store.LoadProjects()
 	_ = store.LoadSessions()
 
+	// Auto-detect backend when not configured
+	if cfg.Backend == "" {
+		if os.Getenv("TMUX") != "" {
+			cfg.Backend = "tmux"
+		} else if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
+			cfg.Backend = "iterm2"
+		} else {
+			cfg.Backend = "iterm2"
+		}
+	}
+
 	var backend terminal.Backend
 	switch cfg.Backend {
 	case "iterm2":
@@ -52,8 +64,11 @@ func main() {
 			os.Exit(1)
 		}
 		backend = iterm.NewClient(it2Path)
+	case "tmux":
+		backend = tmux.NewClient(cfg.TmuxPath, cfg.TmuxSession)
 	default:
-		backend = iterm.NewClient(cfg.IT2Path)
+		fmt.Fprintf(os.Stderr, "unknown backend: %s\n", cfg.Backend)
+		os.Exit(1)
 	}
 	cached := terminal.NewCachedBackend(backend, cfg.CacheTTL)
 

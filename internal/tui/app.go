@@ -1307,7 +1307,9 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 
 func (m Model) handleMonitorStarted(msg MonitorStartedMsg) (Model, tea.Cmd) {
 	if msg.Err != nil {
-		m.statusText = "Monitor failed: " + msg.Err.Error()
+		if !strings.Contains(msg.Err.Error(), "does not support") {
+			m.statusText = "Monitor failed: " + msg.Err.Error()
+		}
 		return m, nil
 	}
 	as := m.store.GetSession(msg.ProjectDir)

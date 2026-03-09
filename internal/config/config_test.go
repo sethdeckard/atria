@@ -11,8 +11,8 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error for missing file, got %v", err)
 	}
-	if cfg.Backend != "iterm2" {
-		t.Errorf("expected backend 'iterm2', got %q", cfg.Backend)
+	if cfg.Backend != "" {
+		t.Errorf("expected empty backend (auto-detect), got %q", cfg.Backend)
 	}
 	home, _ := os.UserHomeDir()
 	expectedDataDir := filepath.Join(home, ".config/atria")
@@ -130,8 +130,8 @@ cache_ttl = 30
 	}
 
 	// Default fields
-	if cfg.Backend != "iterm2" {
-		t.Errorf("expected default backend 'iterm2', got %q", cfg.Backend)
+	if cfg.Backend != "" {
+		t.Errorf("expected empty backend (auto-detect), got %q", cfg.Backend)
 	}
 	if cfg.MonitorDir != "/tmp/atria-monitors" {
 		t.Errorf("expected default monitor_dir '/tmp/atria-monitors', got %q", cfg.MonitorDir)
