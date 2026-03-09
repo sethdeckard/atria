@@ -8,17 +8,80 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 )
 
-var (
-	needsInputPattern = regexp.MustCompile(`(?i)(Do you want to proceed|Allow .+\?|Esc to cancel|Waiting for .+ input|Permission required|Allow once)`)
-	bellPattern       = regexp.MustCompile("\x07")
-	errorPattern      = regexp.MustCompile(`Error:`)
-	workingPattern    = regexp.MustCompile(`[✻✶·] \S+…|[•●] Working`)
-	// Matches "esc to interrupt" only when NOT in a background task line (⏵⏵).
-	escToInterrupt = regexp.MustCompile(`esc\s+(?:to\s+)?interrupt`)
-	backgroundTask = regexp.MustCompile(`⏵`)
+// AgentPatterns holds compiled regexes for a specific agent type.
+type AgentPatterns struct {
+	NeedsInput     []*regexp.Regexp
+	Working        []*regexp.Regexp
+	WorkingExclude []*regexp.Regexp // lines matching these skip working detection
+	Idle           []*regexp.Regexp
+}
 
-	idlePattern       = regexp.MustCompile(`❯|›|\? for shortcuts|(\$ $)|gpt-\S+-codex|ctrl\+p commands`)
-	completedPattern  = regexp.MustCompile(`✓|completed|No findings`)
+// Per-agent pattern definitions.
+
+var claudePatterns = &AgentPatterns{
+	NeedsInput: []*regexp.Regexp{
+		regexp.MustCompile(`Do you want to proceed`),
+		regexp.MustCompile(`Allow .+\?`),
+		regexp.MustCompile(`Esc to cancel`),
+	},
+	Working: []*regexp.Regexp{
+		regexp.MustCompile(`[✻✶·] \S+…`),
+		regexp.MustCompile(`esc\s+to\s+interrupt`),
+	},
+	WorkingExclude: []*regexp.Regexp{
+		regexp.MustCompile(`⏵`),
+	},
+	Idle: []*regexp.Regexp{
+		regexp.MustCompile(`❯`),
+		regexp.MustCompile(`\? for shortcuts`),
+	},
+}
+
+var codexPatterns = &AgentPatterns{
+	NeedsInput: []*regexp.Regexp{
+		regexp.MustCompile(`Waiting for .+ input`),
+	},
+	Working: []*regexp.Regexp{
+		regexp.MustCompile(`[•●] Working`),
+		regexp.MustCompile(`esc\s+to\s+interrupt`),
+	},
+	WorkingExclude: []*regexp.Regexp{
+		regexp.MustCompile(`⏵`),
+	},
+	Idle: []*regexp.Regexp{
+		regexp.MustCompile(`›`),
+		regexp.MustCompile(`gpt-\S+-codex`),
+	},
+}
+
+var openCodePatterns = &AgentPatterns{
+	NeedsInput: []*regexp.Regexp{
+		regexp.MustCompile(`Permission required`),
+		regexp.MustCompile(`Allow once`),
+	},
+	Working: []*regexp.Regexp{
+		regexp.MustCompile(`esc\s+interrupt`),
+	},
+	WorkingExclude: []*regexp.Regexp{
+		regexp.MustCompile(`⏵`),
+	},
+	Idle: []*regexp.Regexp{
+		regexp.MustCompile(`ctrl\+p commands`),
+	},
+}
+
+var agentPatternRegistry = map[model.AgentType]*AgentPatterns{
+	model.AgentClaude:   claudePatterns,
+	model.AgentCodex:    codexPatterns,
+	model.AgentOpenCode: openCodePatterns,
+}
+
+// Shared patterns that apply to all agent types.
+var (
+	sharedBellPattern      = regexp.MustCompile("\x07")
+	sharedErrorPattern     = regexp.MustCompile(`Error:`)
+	sharedCompletedPattern = regexp.MustCompile(`✓|completed|No findings`)
+	sharedShellPrompt      = regexp.MustCompile(`\$ $`)
 )
 
 // ReadLastLine reads the last non-empty line from a log file.
@@ -42,35 +105,62 @@ func ReadLastLine(logPath string) string {
 }
 
 // ClassifyOutput determines agent status from a single line of output text.
-func ClassifyOutput(text string) model.AgentStatus {
-	if bellPattern.MatchString(text) {
+// Agent-specific patterns are checked first, then shared fallbacks.
+func ClassifyOutput(text string, agentType model.AgentType) model.AgentStatus {
+	// 1. Shared bell → needs_input
+	if sharedBellPattern.MatchString(text) {
 		return model.StatusNeedsInput
 	}
 
-	if needsInputPattern.MatchString(text) {
-		return model.StatusNeedsInput
+	patterns := agentPatternRegistry[agentType]
+
+	// 2. Agent-specific needs_input
+	if patterns != nil {
+		for _, re := range patterns.NeedsInput {
+			if re.MatchString(text) {
+				return model.StatusNeedsInput
+			}
+		}
 	}
 
-	if errorPattern.MatchString(text) {
+	// 3. Shared error
+	if sharedErrorPattern.MatchString(text) {
 		return model.StatusError
 	}
 
-	if workingPattern.MatchString(text) {
-		return model.StatusWorking
+	// 4. Agent-specific working (with exclusion check)
+	if patterns != nil {
+		excluded := false
+		for _, re := range patterns.WorkingExclude {
+			if re.MatchString(text) {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
+			for _, re := range patterns.Working {
+				if re.MatchString(text) {
+					return model.StatusWorking
+				}
+			}
+		}
 	}
 
-	// "esc to interrupt" means working, but not when it appears in a
-	// background task status line (⏵⏵ ... esc to interrupt).
-	if escToInterrupt.MatchString(text) && !backgroundTask.MatchString(text) {
-		return model.StatusWorking
+	// 5. Shared idle (completed, shell prompt)
+	if sharedCompletedPattern.MatchString(text) {
+		return model.StatusIdle
 	}
-
-	if completedPattern.MatchString(text) {
+	if sharedShellPrompt.MatchString(text) {
 		return model.StatusIdle
 	}
 
-	if idlePattern.MatchString(text) {
-		return model.StatusIdle
+	// 6. Agent-specific idle
+	if patterns != nil {
+		for _, re := range patterns.Idle {
+			if re.MatchString(text) {
+				return model.StatusIdle
+			}
+		}
 	}
 
 	return ""
@@ -104,7 +194,7 @@ const bottomLineCount = 8
 // The bottom region is measured from the last non-blank line (not the
 // absolute bottom) to handle blank padding below dialog prompts.
 // Idle/completed can match anywhere.
-func ClassifyScreen(content string) (model.AgentStatus, string) {
+func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatus, string) {
 	lines := strings.Split(content, "\n")
 	bestStatus := model.AgentStatus("")
 	bestLine := ""
@@ -128,7 +218,7 @@ func ClassifyScreen(content string) (model.AgentStatus, string) {
 		if line == "" {
 			continue
 		}
-		status := ClassifyOutput(line)
+		status := ClassifyOutput(line, agentType)
 		if status == "" {
 			continue
 		}

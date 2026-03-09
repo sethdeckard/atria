@@ -997,6 +997,88 @@ func TestSessionsRefreshedKeepsActiveAgentWithChangedName(t *testing.T) {
 	}
 }
 
+func TestSessionsRefreshedRetypesAgent(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-retyped",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Session name now indicates codex instead of claude
+	updated, _ := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "sess-retyped", Name: "codex"},
+		},
+	})
+	um := modelFrom(updated)
+	as := um.store.SessionByID("sess-retyped")
+	if as == nil {
+		t.Fatal("expected session to still exist")
+	}
+	if as.Type != model.AgentCodex {
+		t.Errorf("expected type %q after retype, got %q", model.AgentCodex, as.Type)
+	}
+}
+
+func TestSessionsRefreshedRetypeKeepsTypeWhenNameUnchanged(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-stable",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Session name still indicates claude — type should not change
+	updated, _ := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "sess-stable", Name: "✳ Editing main.go (claude)"},
+		},
+	})
+	um := modelFrom(updated)
+	as := um.store.SessionByID("sess-stable")
+	if as == nil {
+		t.Fatal("expected session to still exist")
+	}
+	if as.Type != model.AgentClaude {
+		t.Errorf("expected type to remain %q, got %q", model.AgentClaude, as.Type)
+	}
+}
+
+func TestSessionsRefreshedRetypeIgnoresNonAgentName(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-noagent",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Session name is now "zsh" — not an agent, so type should NOT change
+	// (orphan removal handles this separately)
+	updated, _ := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "sess-noagent", Name: "zsh"},
+		},
+	})
+	um := modelFrom(updated)
+	as := um.store.SessionByID("sess-noagent")
+	if as == nil {
+		t.Fatal("expected session to still exist")
+	}
+	if as.Type != model.AgentClaude {
+		t.Errorf("expected type to remain %q when name is non-agent, got %q", model.AgentClaude, as.Type)
+	}
+}
+
 func TestSessionsRefreshedDispatchesDiscovery(t *testing.T) {
 	store := makeStore(t)
 	// No existing projects — the agent should be discovered via CWD

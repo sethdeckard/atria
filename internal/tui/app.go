@@ -1096,7 +1096,7 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		trackedIDs[s.SessionID] = true
 	}
 
-	// Update activity text from session names for tracked sessions.
+	// Update activity text and agent type from session names for tracked sessions.
 	// Activity is informational only (shown in all states). Screen reads
 	// are the sole authority on status — session name changes should not
 	// override status since Claude updates its title even while idle.
@@ -1106,6 +1106,13 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 			if activity != "" && activity != as.Activity {
 				as.Activity = activity
 				as.LastActivity = time.Now()
+			}
+			// Re-type if the session name now indicates a different agent.
+			// This handles pane reuse (e.g. Claude exits, Codex starts in same pane).
+			// Only update when DetectAgent returns a valid agent type — a non-agent
+			// name (e.g. "zsh") is handled by orphan removal, not re-typing.
+			if detected := terminal.DetectAgent(sess.Name); detected != "" && detected != as.Type {
+				as.Type = detected
 			}
 		}
 	}
@@ -1342,7 +1349,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	content := strings.ReplaceAll(msg.Content, "\x00", " ")
 	screenChanged := content != as.LastScreen
 	as.LastScreen = content
-	status, matchLine := terminal.ClassifyScreen(content)
+	status, matchLine := terminal.ClassifyScreen(content, as.Type)
 
 	if m.debugLog != nil {
 		proj := filepath.Base(msg.ProjectDir)

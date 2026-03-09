@@ -103,6 +103,10 @@ When `backend` is not set in config:
 
 Status is determined by reading the bottom 25 lines of each agent's terminal session (via `it2 session read` or `tmux capture-pane`) every 3 seconds. Each line is classified independently, and the highest-priority match wins (needs_input > error > working > idle).
 
+### Per-Agent Pattern Architecture
+
+Patterns are organized per-agent via the `AgentPatterns` struct and `agentPatternRegistry` map in `monitor.go`. Each agent type has its own `NeedsInput`, `Working`, `WorkingExclude`, and `Idle` regex slices. Shared patterns (bell, `Error:`, completed, shell prompt) apply as fallbacks for all agents. This isolates agents so one agent's patterns cannot false-positive on another's screen output. Classification order: shared bell → agent needs_input → shared error → agent working (with exclusions) → shared idle → agent idle.
+
 ### Bottom-Region Anchoring
 
 Active statuses (working, needs_input, error) are only trusted in the **bottom 8 lines**, measured from the last non-blank line. This prevents false positives from conversation history in scrollback that may contain quoted prompt text or working indicators. Idle/completed patterns match anywhere since they're low-priority and harmless.
@@ -145,7 +149,7 @@ Notes:
 | Needs input | `Permission required` | `△ Permission required` |
 
 Notes:
-- OpenCode's working indicator uses `esc interrupt` (no "to"), matched by the shared regex.
+- OpenCode's working indicator uses `esc interrupt` (no "to"), matched by its own agent-specific regex.
 - Session names follow `OC | <description> (opencode)` format; `ExtractActivity()` strips both prefix and suffix.
 - OpenCode is also a Bubble Tea TUI, so two-step send applies.
 
@@ -168,4 +172,5 @@ Run with `--debug` to write screen read diagnostics to `/tmp/atria-debug.log`. E
 7. **Bell character needs `/dev/tty`.** Writing `\a` to stderr doesn't reach the terminal through Bubble Tea's alternate screen. Write directly to `/dev/tty`.
 8. **Multiple agents per directory need session-scoped state.** Keying by ProjectDir causes agents to overwrite each other's sessions and share attention highlights. Key everything (store, attention map) by SessionID.
 9. **Slice mutation during iteration skips entries.** Removing dead sessions with `RemoveSession` inside `for range store.Sessions` can skip adjacent entries. Collect IDs first, then remove.
-10. **Killed agents leave orphan panes.** When an agent process exits but the iTerm pane survives, the session ID stays live and the entry persists forever. Detect via: (a) consecutive *stable* (unchanged) unmatched screen reads transition status to idle (3 reads / ~9s); changing content resets the counter since it means the agent is still producing output, and (b) session refresh checks if the iTerm session name no longer matches an agent pattern while idle, and removes it.
+10. **Cross-agent pattern isolation prevents false positives.** With shared regexes, one agent's UI text (e.g. Claude's `❯` prompt) can match when reading a different agent's screen. Per-agent pattern registries ensure each agent's patterns only apply to that agent type. Shared patterns (bell, error, completed) are safe fallbacks.
+11. **Killed agents leave orphan panes.** When an agent process exits but the iTerm pane survives, the session ID stays live and the entry persists forever. Detect via: (a) consecutive *stable* (unchanged) unmatched screen reads transition status to idle (3 reads / ~9s); changing content resets the counter since it means the agent is still producing output, and (b) session refresh checks if the iTerm session name no longer matches an agent pattern while idle, and removes it.
