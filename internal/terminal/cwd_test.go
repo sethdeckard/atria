@@ -1,27 +1,25 @@
-package iterm
+package terminal
 
 import (
 	"fmt"
 	"testing"
-
-	"github.com/sethdeckard/atria/internal/terminal"
 )
 
-// mockBackend is a simple mock implementation of terminal.Backend for testing.
-type mockBackend struct {
+// cwdMockBackend is a mock implementation of Backend for CWD discovery tests.
+type cwdMockBackend struct {
 	getVarResult string
 	getVarErr    error
 }
 
-func (m *mockBackend) Available() error                                          { return nil }
-func (m *mockBackend) ListSessions() ([]terminal.Session, error)                { return nil, nil }
-func (m *mockBackend) NewSession() (string, error)                              { return "", nil }
-func (m *mockBackend) SendText(sessionID, text string) error                    { return nil }
-func (m *mockBackend) RunCommand(sessionID, cmd string) error                   { return nil }
-func (m *mockBackend) FocusSession(sessionID string) error                      { return nil }
-func (m *mockBackend) ReadScreen(sessionID string, lines int) (string, error)   { return "", nil }
-func (m *mockBackend) GetVar(sessionID, varName string) (string, error)         { return m.getVarResult, m.getVarErr }
-func (m *mockBackend) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
+func (m *cwdMockBackend) Available() error                                          { return nil }
+func (m *cwdMockBackend) ListSessions() ([]Session, error)                          { return nil, nil }
+func (m *cwdMockBackend) NewSession() (string, error)                               { return "", nil }
+func (m *cwdMockBackend) SendText(sessionID, text string) error                     { return nil }
+func (m *cwdMockBackend) RunCommand(sessionID, cmd string) error                    { return nil }
+func (m *cwdMockBackend) FocusSession(sessionID string) error                       { return nil }
+func (m *cwdMockBackend) ReadScreen(sessionID string, lines int) (string, error)    { return "", nil }
+func (m *cwdMockBackend) GetVar(sessionID, varName string) (string, error)          { return m.getVarResult, m.getVarErr }
+func (m *cwdMockBackend) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
 	return 0, nil
 }
 
@@ -87,10 +85,10 @@ func TestCwdFromNameMatchEmptyProjectDirs(t *testing.T) {
 }
 
 func TestCwdFromGetVarSuccess(t *testing.T) {
-	backend := &mockBackend{
+	backend := &cwdMockBackend{
 		getVarResult: "/home/user/projects/myapp\n",
 	}
-	session := terminal.Session{ID: "test-id", Name: "test", TTY: "/dev/ttys001"}
+	session := Session{ID: "test-id", Name: "test", TTY: "/dev/ttys001"}
 	watchDirs := []string{"/home/user/projects"}
 
 	got := cwdFromGetVar(backend, session, watchDirs)
@@ -100,10 +98,10 @@ func TestCwdFromGetVarSuccess(t *testing.T) {
 }
 
 func TestCwdFromGetVarNotUnderWatchDir(t *testing.T) {
-	backend := &mockBackend{
+	backend := &cwdMockBackend{
 		getVarResult: "/home/user\n",
 	}
-	session := terminal.Session{ID: "test-id", Name: "test", TTY: "/dev/ttys001"}
+	session := Session{ID: "test-id", Name: "test", TTY: "/dev/ttys001"}
 	watchDirs := []string{"/home/user/projects"}
 
 	got := cwdFromGetVar(backend, session, watchDirs)
@@ -113,10 +111,10 @@ func TestCwdFromGetVarNotUnderWatchDir(t *testing.T) {
 }
 
 func TestCwdFromGetVarError(t *testing.T) {
-	backend := &mockBackend{
+	backend := &cwdMockBackend{
 		getVarErr: fmt.Errorf("not available"),
 	}
-	session := terminal.Session{ID: "test-id", Name: "test", TTY: "/dev/ttys001"}
+	session := Session{ID: "test-id", Name: "test", TTY: "/dev/ttys001"}
 	watchDirs := []string{"/home/user/projects"}
 
 	got := cwdFromGetVar(backend, session, watchDirs)

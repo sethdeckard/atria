@@ -1,12 +1,10 @@
-package iterm
+package terminal
 
 import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/sethdeckard/atria/internal/terminal"
 )
 
 // DiscoverCWD tries to find the working directory of a session using multiple strategies.
@@ -17,7 +15,7 @@ import (
 //  1. get-var path - fast but often returns $HOME for TUI agents
 //  2. lsof on TTY - most reliable, gets CWD from processes on the TTY
 //  3. Name matching - last resort, matches project basenames in session name
-func DiscoverCWD(backend terminal.Backend, session terminal.Session, watchDirs []string, projectDirs []string) string {
+func DiscoverCWD(backend Backend, session Session, watchDirs []string, projectDirs []string) string {
 	if cwd := cwdFromGetVar(backend, session, watchDirs); cwd != "" {
 		return cwd
 	}
@@ -32,7 +30,7 @@ func DiscoverCWD(backend terminal.Backend, session terminal.Session, watchDirs [
 
 // cwdFromGetVar attempts to get the CWD using the backend's GetVar method.
 // It validates the result is under one of the watch directories.
-func cwdFromGetVar(backend terminal.Backend, session terminal.Session, watchDirs []string) string {
+func cwdFromGetVar(backend Backend, session Session, watchDirs []string) string {
 	val, err := backend.GetVar(session.ID, "path")
 	if err != nil {
 		return ""
