@@ -29,8 +29,9 @@ internal/
   terminal/detect.go             # Agent detection from session name
   terminal/monitor.go            # Log reading + status classification
   terminal/cache.go              # Cached session list with TTL
+  terminal/cwd.go                # CWD discovery strategies (shared)
   terminal/iterm/client.go       # iTerm2 backend (it2 CLI wrapper)
-  terminal/iterm/cwd.go          # CWD discovery strategies
+  terminal/tmux/client.go        # tmux backend
   project/discover.go            # Watch dir scanning
   tui/app.go                     # Root Bubble Tea model
   tui/messages.go                # tea.Msg types
@@ -67,9 +68,40 @@ internal/
 - Multiple agents per directory: sessions keyed by SessionID, not ProjectDir
 - Bell notification: write `\a` to `/dev/tty` (not stderr) to work through Bubble Tea
 
+## Backends
+
+### iTerm2 Backend (`backend = "iterm2"`)
+
+Uses the `it2` Python CLI wrapper. Auto-installed if missing. Requires iTerm2 with Python API enabled.
+
+### tmux Backend (`backend = "tmux"`)
+
+Agent sessions live as windows inside a dedicated tmux session (`atria`), created detached. Each agent gets its own window; the tmux pane ID (`%0`, `%1`, etc.) serves as the session ID.
+
+**Config options:**
+- `tmux_path` — path to tmux binary (default: found via `$PATH`)
+- `tmux_session` — tmux session name (default: `"atria"`)
+
+**Requirements:**
+- `allow-rename on` (tmux default) for Claude Code's terminal title escape sequences to work as `pane_title`
+
+**Focus behavior:**
+- `select-window -t <id>` + best-effort `switch-client -t atria`
+- Works automatically when Atria runs inside tmux
+- When not in tmux, silently no-ops — user must `tmux attach -t atria` themselves
+
+**MonitorOutput:** Unsupported (no-op with error). Screen reads every 3s are the primary status mechanism.
+
+### Auto-detection
+
+When `backend` is not set in config:
+- `$TMUX` set → `"tmux"`
+- `$TERM_PROGRAM == "iTerm.app"` → `"iterm2"`
+- otherwise → `"iterm2"` (preserve current default)
+
 ## Status Detection
 
-Status is determined by reading the bottom 25 lines of each agent's terminal session via `it2 session read` every 3 seconds. Each line is classified independently, and the highest-priority match wins (needs_input > error > working > idle).
+Status is determined by reading the bottom 25 lines of each agent's terminal session (via `it2 session read` or `tmux capture-pane`) every 3 seconds. Each line is classified independently, and the highest-priority match wins (needs_input > error > working > idle).
 
 ### Bottom-Region Anchoring
 
