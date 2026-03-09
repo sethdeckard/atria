@@ -3,23 +3,24 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Up          key.Binding
-	Down        key.Binding
-	Launch      key.Binding
-	Toggle      key.Binding
-	Sort        key.Binding
-	SortReverse key.Binding
-	Focus       key.Binding
-	Delete      key.Binding
-	Batch       key.Binding
-	Stream      key.Binding
-	Enter       key.Binding
-	Help        key.Binding
-	Quit        key.Binding
-	Right       key.Binding
-	Left        key.Binding
-	Escape      key.Binding
-	CtrlD       key.Binding
+	Up            key.Binding
+	Down          key.Binding
+	Launch        key.Binding
+	Toggle        key.Binding
+	Sort          key.Binding
+	SortReverse   key.Binding
+	Focus         key.Binding
+	Delete        key.Binding
+	Batch         key.Binding
+	Stream        key.Binding
+	Enter         key.Binding
+	Help          key.Binding
+	Quit          key.Binding
+	Right         key.Binding
+	Left          key.Binding
+	Escape        key.Binding
+	CtrlD         key.Binding
+	CtrlBackslash key.Binding
 }
 
 var keys = keyMap{
@@ -88,5 +89,9 @@ var keys = keyMap{
 	CtrlD: key.NewBinding(
 		key.WithKeys("ctrl+d"),
 		key.WithHelp("ctrl+d", "send prompt"),
+	),
+	CtrlBackslash: key.NewBinding(
+		key.WithKeys("ctrl+\\"),
+		key.WithHelp("ctrl+\\", "return from terminal"),
 	),
 }

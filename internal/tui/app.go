@@ -32,8 +32,8 @@ const (
 	viewChat
 	viewDirBrowser
 	viewBatchPrompt
+	viewTerminal
 )
-
 
 type Model struct {
 	// Config
@@ -69,8 +69,8 @@ type Model struct {
 	streamOpen bool
 
 	// Spinner & attention
-	spinnerFrame  int
-	spinnerActive bool
+	spinnerFrame      int
+	spinnerActive     bool
 	attentionSessions map[string]time.Time // session IDs needing attention, with timestamp
 
 	// Agent type
@@ -85,6 +85,10 @@ type Model struct {
 
 	// Batch prompt
 	batchInput textarea.Model
+
+	// Terminal view (PTY backend)
+	termView      termView
+	termSessionID string
 
 	// Monitor PIDs to clean up
 	monitorPIDs []int
@@ -182,6 +186,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chat.setSize(msg.Width, msg.Height)
 		m.adjustScroll()
 		m.adjustBrowserScroll()
+		if r, ok := m.backend.(interface{ Resize(int, int) }); ok {
+			r.Resize(msg.Width, msg.Height)
+		}
+		m.termView.width = msg.Width
+		m.termView.height = msg.Height
 		return m, nil
 
 	case tea.KeyMsg:
@@ -250,6 +259,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StatusMsg:
 		m.statusText = msg.Text
 		return m, nil
+
+	case termRefreshMsg:
+		if m.view != viewTerminal {
+			return m, nil
+		}
+		content, err := m.backend.ReadScreen(m.termSessionID, m.height)
+		if err == nil {
+			m.termView.content = content
+		}
+		return m, termRefreshCmd()
 	}
 
 	// Pass through to sub-components
@@ -277,6 +296,8 @@ func (m Model) View() string {
 		content = m.viewDirBrowser()
 	case viewBatchPrompt:
 		content = m.viewBatchPrompt()
+	case viewTerminal:
+		content = m.termView.render()
 	}
 
 	if m.showHelp {
@@ -711,6 +732,7 @@ func (m Model) viewHelp() string {
   d              Remove project from list
   B              Batch send to multiple agents
   Enter          Open chat view
+  Ctrl+\         Return from terminal view
   ?              Toggle this help
   q, Ctrl+C      Quit`
 	return helpStyle.Render(help)
@@ -726,6 +748,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleDirBrowserKey(msg)
 	case viewBatchPrompt:
 		return m.handleBatchKey(msg)
+	case viewTerminal:
+		return m.handleTerminalKey(msg)
 	}
 	return m, nil
 }
@@ -1020,6 +1044,22 @@ func (m Model) handleBatchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m Model) handleTerminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Ctrl+\ returns to the project list
+	if key.Matches(msg, keys.CtrlBackslash) {
+		m.view = viewProjectList
+		m.termSessionID = ""
+		return m, nil
+	}
+
+	// Forward all other keystrokes to the PTY
+	b := keyToBytes(msg)
+	if len(b) > 0 {
+		m.backend.SendText(m.termSessionID, string(b))
+	}
+	return m, nil
+}
+
 func (m Model) openChat() (Model, tea.Cmd) {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
 		return m, nil
@@ -1043,6 +1083,31 @@ func (m Model) focusSelected() (Model, tea.Cmd) {
 		return m, nil
 	}
 	r := m.rows[m.cursor]
+
+	// PTY sessions use the embedded terminal view; integration sessions
+	// delegate to their native focus mechanism (iTerm tab, tmux window).
+	// When Source is empty (persisted session before first refresh), derive
+	// it: prefixed IDs (e.g. "iterm:", "tmux:") are integrations; unprefixed
+	// IDs belong to the primary, so check the composite's primary source.
+	source := r.session.Source
+	if source == "" {
+		if strings.Contains(r.session.SessionID, ":") {
+			source = "" // integration — will skip embedded view
+		} else if cb, ok := m.backend.(*terminal.CachedBackend); ok {
+			if comp, ok := cb.Inner().(*terminal.CompositeBackend); ok {
+				source = comp.PrimarySource()
+			}
+		}
+	}
+	if source == "pty" {
+		m.termSessionID = r.session.SessionID
+		m.termView = newTermView(r.session.SessionID, m.backend)
+		m.termView.width = m.width
+		m.termView.height = m.height
+		m.view = viewTerminal
+		return m, termRefreshCmd()
+	}
+
 	return m, focusSession(m.backend, r.session.SessionID)
 }
 
@@ -1113,6 +1178,10 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 			// name (e.g. "zsh") is handled by orphan removal, not re-typing.
 			if detected := terminal.DetectAgent(sess.Name); detected != "" && detected != as.Type {
 				as.Type = detected
+			}
+			// Populate source from composite backend.
+			if sess.Source != "" {
+				as.Source = sess.Source
 			}
 		}
 	}
@@ -1237,12 +1306,21 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 	}
 	_ = m.store.SaveProjects()
 
+	// Determine source from the composite's primary backend.
+	source := "pty"
+	if cb, ok := m.backend.(*terminal.CachedBackend); ok {
+		if comp, ok := cb.Inner().(*terminal.CompositeBackend); ok {
+			source = comp.PrimarySource()
+		}
+	}
+
 	as := &model.AgentSession{
 		ProjectDir: msg.ProjectDir,
 		SessionID:  msg.SessionID,
 		Type:       msg.AgentType,
 		Status:     model.StatusWorking,
 		LastSent:   time.Now(),
+		Source:     source,
 	}
 	m.store.SetSession(as)
 	_ = m.store.SaveSessions()
@@ -1473,6 +1551,9 @@ func (m Model) Cleanup() {
 		if pid > 0 {
 			_ = syscall.Kill(pid, syscall.SIGTERM)
 		}
+	}
+	if cl, ok := m.backend.(interface{ Close() }); ok {
+		cl.Close()
 	}
 }
 

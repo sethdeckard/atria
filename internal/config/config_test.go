@@ -11,8 +11,8 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error for missing file, got %v", err)
 	}
-	if cfg.Backend != "" {
-		t.Errorf("expected empty backend (auto-detect), got %q", cfg.Backend)
+	if cfg.Integrations != nil {
+		t.Errorf("expected nil integrations, got %v", cfg.Integrations)
 	}
 	home, _ := os.UserHomeDir()
 	expectedDataDir := filepath.Join(home, ".config/atria")
@@ -36,7 +36,7 @@ func TestLoadFromFile(t *testing.T) {
 
 	content := `
 watch_dirs = ["~/wallpapers", "/usr/share/backgrounds"]
-backend = "sway"
+integrations = ["iterm2", "tmux"]
 it2_path = "~/bin/it2"
 data_dir = "~/atria-data"
 monitor_dir = "~/atria-monitors"
@@ -53,8 +53,8 @@ cache_ttl = 10
 
 	home, _ := os.UserHomeDir()
 
-	if cfg.Backend != "sway" {
-		t.Errorf("expected backend 'sway', got %q", cfg.Backend)
+	if len(cfg.Integrations) != 2 || cfg.Integrations[0] != "iterm2" || cfg.Integrations[1] != "tmux" {
+		t.Errorf("expected integrations [iterm2, tmux], got %v", cfg.Integrations)
 	}
 	if cfg.CacheTTL != 10 {
 		t.Errorf("expected cache_ttl 10, got %d", cfg.CacheTTL)
@@ -130,8 +130,8 @@ cache_ttl = 30
 	}
 
 	// Default fields
-	if cfg.Backend != "" {
-		t.Errorf("expected empty backend (auto-detect), got %q", cfg.Backend)
+	if cfg.Integrations != nil {
+		t.Errorf("expected nil integrations, got %v", cfg.Integrations)
 	}
 	if cfg.MonitorDir != "/tmp/atria-monitors" {
 		t.Errorf("expected default monitor_dir '/tmp/atria-monitors', got %q", cfg.MonitorDir)

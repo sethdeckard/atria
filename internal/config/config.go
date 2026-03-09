@@ -11,9 +11,8 @@ import (
 
 // Config holds the application configuration parsed from a TOML file.
 type Config struct {
-	WatchDirs    []string `toml:"watch_dirs"`
-	Backend      string   `toml:"backend"`
-	IT2Path      string   `toml:"it2_path"`
+	WatchDirs []string `toml:"watch_dirs"`
+	IT2Path   string   `toml:"it2_path"`
 	TmuxPath     string   `toml:"tmux_path"`
 	TmuxSession  string   `toml:"tmux_session"`
 	DataDir      string   `toml:"data_dir"`
@@ -21,6 +20,11 @@ type Config struct {
 	CacheTTL     int      `toml:"cache_ttl"`
 	DefaultAgent string   `toml:"default_agent"`
 	LaunchDir    string   `toml:"launch_dir"`
+	PtyCols      int      `toml:"pty_cols"`
+	PtyRows      int      `toml:"pty_rows"`
+	FocusMode    string   `toml:"focus_mode"`
+
+	Integrations []string `toml:"integrations"` // ["iterm2", "tmux"]
 }
 
 // DefaultPath returns the default configuration file path.

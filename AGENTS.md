@@ -28,10 +28,13 @@ internal/
   terminal/backend.go            # Backend interface
   terminal/detect.go             # Agent detection from session name
   terminal/monitor.go            # Log reading + status classification
+  terminal/composite.go          # Composite backend (PTY + integrations)
   terminal/cache.go              # Cached session list with TTL
   terminal/cwd.go                # CWD discovery strategies (shared)
   terminal/iterm/client.go       # iTerm2 backend (it2 CLI wrapper)
   terminal/tmux/client.go        # tmux backend
+  terminal/pty/client.go         # PTY backend (built-in multiplexer)
+  terminal/pty/session.go        # PTY session (process + vt10x emulator)
   project/discover.go            # Watch dir scanning
   tui/app.go                     # Root Bubble Tea model
   tui/messages.go                # tea.Msg types
@@ -40,6 +43,7 @@ internal/
   tui/styles.go                  # Lip Gloss styles
   tui/projectlist.go             # Agent list view (agents dashboard)
   tui/chatview.go                # Chat/send view
+  tui/termview.go                # Embedded terminal view (PTY backend)
   tui/paths.go                   # Path display utilities (contractHome)
   tui/gitinfo.go                 # Git worktree detection
 ```
@@ -92,16 +96,72 @@ Agent sessions live as windows inside a dedicated tmux session (`atria`), create
 
 **MonitorOutput:** Unsupported (no-op with error). Screen reads every 3s are the primary status mechanism.
 
+### PTY Backend (`backend = "pty"`)
+
+Built-in terminal multiplexer — no external dependencies. Each agent runs in its own pseudo-terminal with a vt10x emulator. Screen reads come directly from the in-memory buffer (sub-millisecond, no subprocesses).
+
+**Config options:**
+- `pty_cols` — terminal width (default: 120)
+- `pty_rows` — terminal height (default: 40)
+- `focus_mode` — `"embedded"` (default); `"terminal"` reserved for future external attachment
+
+**Architecture:** Each session = child process in PTY + vt10x terminal emulator + reader goroutine. The reader feeds raw PTY output to vt10x, intercepts bell characters (`\x07`) for attention detection, and captures OSC title changes for session names.
+
+**Focus behavior:**
+- Focus key switches to an embedded terminal view inside Atria
+- Full keystroke forwarding (all keys except `Ctrl+\` which returns to project list)
+- 100ms refresh rate when viewing terminal (vs 3s for background status detection)
+
+**Bell detection:** Reader goroutine sets `bellPending` flag when `\x07` is seen in raw PTY output. `ReadScreen` prepends `\x07` to output when pending, so `HasBell()` in the monitor works unchanged.
+
+**Session name (title):** vt10x parses OSC 0/1/2 escapes natively. `Title()` is read after each write to update the session name. Claude Code's terminal title updates work automatically.
+
+**Process exit:** Reader goroutine detects EOF on PTY master → marks session as exited. `ListSessions()` filters exited sessions. Existing orphan detection handles cleanup.
+
+**Cleanup:** `Close()` closes PTY fds (unblocks readers), sends SIGTERM, waits up to 2s per session (falls back to SIGKILL).
+
+**MonitorOutput:** Unsupported (no-op with error). Screen reads are the primary mechanism.
+
+### Composite Architecture
+
+Backends are non-mutually-exclusive. PTY is always the base, and iTerm2/tmux act as **discovery integrations** that find existing agent sessions.
+
+```
+CachedBackend → CompositeBackend
+  primary: pty.Client (launch + manage)
+  integrations:
+    - iterm.Client  (discover + read)
+    - tmux.Client   (discover + read)
+```
+
+- **Primary** backend handles `NewSession()` (launches). Derived from environment + available integrations: tmux in tmux, iTerm in iTerm, PTY otherwise.
+- **Integrations** contribute to `ListSessions()` and handle `ReadScreen/SendText/FocusSession/GetVar` for their own sessions.
+- **Session ID routing**: integration sessions get prefixed (`iterm:`, `tmux:`, `pty:`). The composite strips prefixes when delegating. When PTY is primary, its sessions are unprefixed (`pty-N`).
+- **Deduplication**: sessions sharing the same TTY are deduplicated (primary wins).
+- **Focus**: PTY sessions (`Source == "pty"`) open the embedded terminal view. Integration sessions delegate to native focus (iTerm tab switch, tmux select-window).
+
+**Config:**
+```toml
+integrations = ["iterm2", "tmux"]  # discovery backends to probe
+```
+
+**Launch target selection** (no config needed — derived automatically):
+- `$TMUX` set + tmux integration available → launch via tmux
+- `$TERM_PROGRAM == "iTerm.app"` + iterm2 integration available → launch via iTerm
+- Otherwise → launch via PTY
+
+When the primary is non-PTY, PTY is added as an integration (`pty:` prefix) so its sessions remain discoverable.
+
 ### Auto-detection
 
-When `backend` is not set in config:
-- `$TMUX` set → `"tmux"`
-- `$TERM_PROGRAM == "iTerm.app"` → `"iterm2"`
-- otherwise → `"iterm2"` (preserve current default)
+When `integrations` is not set in config:
+- `$TERM_PROGRAM == "iTerm.app"` → add `"iterm2"` integration
+- `$TMUX` set → add `"tmux"` integration
+- PTY is always available (no integration needed when it's the primary)
 
 ## Status Detection
 
-Status is determined by reading the bottom 25 lines of each agent's terminal session (via `it2 session read` or `tmux capture-pane`) every 3 seconds. Each line is classified independently, and the highest-priority match wins (needs_input > error > working > idle).
+Status is determined by reading the bottom 25 lines of each agent's terminal session (via `it2 session read`, `tmux capture-pane`, or vt10x `String()`) every 3 seconds. Each line is classified independently, and the highest-priority match wins (needs_input > error > working > idle).
 
 ### Per-Agent Pattern Architecture
 

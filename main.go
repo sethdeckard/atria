@@ -11,6 +11,7 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/internal/terminal/iterm"
+	ptybackend "github.com/sethdeckard/atria/internal/terminal/pty"
 	"github.com/sethdeckard/atria/internal/terminal/tmux"
 	"github.com/sethdeckard/atria/internal/tui"
 )
@@ -45,31 +46,72 @@ func main() {
 	_ = store.LoadProjects()
 	_ = store.LoadSessions()
 
-	// Auto-detect backend when not configured
-	if cfg.Backend == "" {
+	// Auto-detect integrations from environment when not configured.
+	if cfg.Integrations == nil {
+		if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
+			cfg.Integrations = append(cfg.Integrations, "iterm2")
+		}
 		if os.Getenv("TMUX") != "" {
-			cfg.Backend = "tmux"
-		} else if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
-			cfg.Backend = "iterm2"
-		} else {
-			cfg.Backend = "iterm2"
+			cfg.Integrations = append(cfg.Integrations, "tmux")
 		}
 	}
 
-	var backend terminal.Backend
-	switch cfg.Backend {
-	case "iterm2":
-		it2Path, ok := iterm.Preflight(cfg.IT2Path)
-		if !ok {
-			os.Exit(1)
+	// Always create PTY as the fallback.
+	ptyClient := ptybackend.NewClient(cfg.PtyCols, cfg.PtyRows)
+
+	// Probe integrations — failures are silently skipped.
+	var integrations []terminal.Integration
+	availableIntegrations := make(map[string]terminal.Backend)
+	for _, name := range cfg.Integrations {
+		switch name {
+		case "iterm2":
+			it2Path, ok := iterm.Preflight(cfg.IT2Path)
+			if !ok {
+				continue
+			}
+			it := iterm.NewClient(it2Path)
+			if it.Available() != nil {
+				continue
+			}
+			availableIntegrations["iterm2"] = it
+			integrations = append(integrations, terminal.Integration{
+				Prefix: "iterm:", Source: "iterm", Backend: it,
+			})
+		case "tmux":
+			tm := tmux.NewClient(cfg.TmuxPath, cfg.TmuxSession)
+			if tm.Available() != nil {
+				continue
+			}
+			availableIntegrations["tmux"] = tm
+			integrations = append(integrations, terminal.Integration{
+				Prefix: "tmux:", Source: "tmux", Backend: tm,
+			})
+		default:
+			fmt.Fprintf(os.Stderr, "unknown integration: %s\n", name)
 		}
-		backend = iterm.NewClient(it2Path)
-	case "tmux":
-		backend = tmux.NewClient(cfg.TmuxPath, cfg.TmuxSession)
-	default:
-		fmt.Fprintf(os.Stderr, "unknown backend: %s\n", cfg.Backend)
-		os.Exit(1)
 	}
+
+	// Derive launch target from environment + available integrations.
+	// Prefer tmux (most specific), then iTerm, then PTY.
+	var primary terminal.Backend = ptyClient
+	primarySource := "pty"
+	if b, ok := availableIntegrations["tmux"]; ok && os.Getenv("TMUX") != "" {
+		primary = b
+		primarySource = "tmux"
+	} else if b, ok := availableIntegrations["iterm2"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
+		primary = b
+		primarySource = "iterm"
+	}
+
+	// When primary is non-PTY, add PTY as an integration so its
+	// sessions remain discoverable and routable.
+	if primary != ptyClient {
+		integrations = append(integrations, terminal.Integration{
+			Prefix: "pty:", Source: "pty", Backend: ptyClient,
+		})
+	}
+
+	backend := terminal.NewCompositeBackend(primary, primarySource, integrations)
 	cached := terminal.NewCachedBackend(backend, cfg.CacheTTL)
 
 	if err := tui.EnsureMonitorDir(cfg.MonitorDir); err != nil {

@@ -52,20 +52,21 @@ func (p *Project) DisplayName(all []*Project) string {
 }
 
 type AgentSession struct {
-	ProjectDir    string      `json:"project_dir"`
-	SessionID     string      `json:"session_id"`
-	Type          AgentType   `json:"type"`
-	Status        AgentStatus `json:"-"`
-	Activity      string      `json:"-"`
-	Attention     string      `json:"-"`
-	MonitorPID    int         `json:"-"`
-	MonitorLog    string      `json:"-"`
-	LastSent      time.Time   `json:"last_sent"`
-	LastActivity  time.Time   `json:"-"`
+	ProjectDir     string      `json:"project_dir"`
+	SessionID      string      `json:"session_id"`
+	Type           AgentType   `json:"type"`
+	Status         AgentStatus `json:"-"`
+	Activity       string      `json:"-"`
+	Attention      string      `json:"-"`
+	MonitorPID     int         `json:"-"`
+	MonitorLog     string      `json:"-"`
+	LastSent       time.Time   `json:"last_sent"`
+	LastActivity   time.Time   `json:"-"`
 	ScreenChecked  bool        `json:"-"`
 	InitialStatus  AgentStatus `json:"-"`
 	LastScreen     string      `json:"-"`
 	UnmatchedReads int         `json:"-"` // consecutive screen reads with no agent pattern
+	Source         string      `json:"-"` // "pty", "iterm", "tmux"
 }
 
 type ChatEntry struct {

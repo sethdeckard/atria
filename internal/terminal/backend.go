@@ -2,9 +2,10 @@ package terminal
 
 // Session represents a terminal multiplexer session.
 type Session struct {
-	ID   string
-	Name string
-	TTY  string
+	ID     string
+	Name   string
+	TTY    string
+	Source string // "pty", "iterm", "tmux" — set by composite backend
 }
 
 // Backend defines the interface for interacting with a terminal multiplexer.

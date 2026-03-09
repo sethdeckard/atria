@@ -89,5 +89,24 @@ func (c *CachedBackend) MonitorOutput(sessionID, logPath, patterns string) (int,
 	return c.inner.MonitorOutput(sessionID, logPath, patterns)
 }
 
+// Resize forwards to the inner backend if it supports resizing (e.g. PTY backend).
+func (c *CachedBackend) Resize(cols, rows int) {
+	if r, ok := c.inner.(interface{ Resize(int, int) }); ok {
+		r.Resize(cols, rows)
+	}
+}
+
+// Close forwards to the inner backend if it supports closing (e.g. PTY backend).
+func (c *CachedBackend) Close() {
+	if cl, ok := c.inner.(interface{ Close() }); ok {
+		cl.Close()
+	}
+}
+
+// Inner returns the wrapped backend.
+func (c *CachedBackend) Inner() Backend {
+	return c.inner
+}
+
 // Compile-time check that CachedBackend implements Backend.
 var _ Backend = (*CachedBackend)(nil)
