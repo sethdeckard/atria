@@ -120,6 +120,7 @@ Active statuses (working, needs_input, error) are only trusted in the **bottom 8
 | Idle | `❯` prompt | `❯ ` |
 | Idle | `? for shortcuts` | `? for shortcuts` |
 | Needs input | `Do you want to proceed` | `Do you want to proceed?` |
+| Needs input | `Would you like to proceed` | `Would you like to proceed?` (plan mode) |
 | Needs input | `Allow .+\?` | `Allow file edit?` |
 | Needs input | `Esc to cancel` | `Esc to cancel · Tab to amend` |
 

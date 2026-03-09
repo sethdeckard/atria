@@ -21,6 +21,7 @@ func TestClassifyOutput(t *testing.T) {
 		{"claude allow edit", "Allow file edit?", model.AgentClaude, model.StatusNeedsInput},
 		{"claude proceed prompt", "Do you want to proceed?", model.AgentClaude, model.StatusNeedsInput},
 		{"claude esc to cancel", "Esc to cancel · Tab to amend", model.AgentClaude, model.StatusNeedsInput},
+		{"claude plan mode prompt", "Would you like to proceed?", model.AgentClaude, model.StatusNeedsInput},
 		{"claude working spinner", "✻ Reading…", model.AgentClaude, model.StatusWorking},
 		{"claude thinking", "✶ Doodling… (thought for 6s)", model.AgentClaude, model.StatusWorking},
 		{"claude dot spinner", "· Doodling… (48s)", model.AgentClaude, model.StatusWorking},
@@ -227,6 +228,13 @@ func TestClassifyScreen(t *testing.T) {
 			model.AgentOpenCode,
 			model.StatusNeedsInput,
 			"Allow once",
+		},
+		{
+			"claude plan mode prompt with selection cursor",
+			"Would you like to proceed?\n\n ❯ 1. Yes, clear context (62% used) and auto-accept edits (shift+tab)\n   2. Yes, auto-accept edits\n   3. Yes, manually approve edits\n   4. Type here to tell Claude what to change\n\n ctrl-g to edit in Mvim · ~/.claude/plans/...",
+			model.AgentClaude,
+			model.StatusNeedsInput,
+			"Would you like to proceed?",
 		},
 		{
 			"claude working in scrollback ignored",

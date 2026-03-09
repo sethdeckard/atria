@@ -21,6 +21,7 @@ type AgentPatterns struct {
 var claudePatterns = &AgentPatterns{
 	NeedsInput: []*regexp.Regexp{
 		regexp.MustCompile(`Do you want to proceed`),
+		regexp.MustCompile(`Would you like to proceed`),
 		regexp.MustCompile(`Allow .+\?`),
 		regexp.MustCompile(`Esc to cancel`),
 	},
