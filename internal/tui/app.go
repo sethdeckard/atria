@@ -519,7 +519,7 @@ func (m Model) viewChat() string {
 			project = m.store.FindProject(session.ProjectDir)
 		}
 	}
-	return m.chat.render(session, project, m.width)
+	return m.chat.render(session, project, m.width, m.spinnerFrame)
 }
 
 func (m Model) viewDirBrowser() string {
@@ -1021,7 +1021,6 @@ func (m Model) openChat() (Model, tea.Cmd) {
 		m.chatSessionID = r.session.SessionID
 		m.chat = newChatView()
 		m.chat.setSize(m.width, m.height)
-		m.chat.setContext(r.session.LastScreen)
 	}
 	m.view = viewChat
 	return m, nil
@@ -1440,10 +1439,9 @@ func (m Model) handleTick() (Model, tea.Cmd) {
 }
 
 func (m Model) updateChat(msg tea.Msg) (Model, tea.Cmd) {
-	var vpCmd, taCmd tea.Cmd
-	m.chat.viewport, vpCmd = m.chat.viewport.Update(msg)
-	m.chat.input, taCmd = m.chat.input.Update(msg)
-	return m, tea.Batch(vpCmd, taCmd)
+	var cmd tea.Cmd
+	m.chat.input, cmd = m.chat.input.Update(msg)
+	return m, cmd
 }
 
 func (m Model) updateBatch(msg tea.Msg) (Model, tea.Cmd) {

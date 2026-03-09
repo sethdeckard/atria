@@ -49,23 +49,11 @@ var (
 			Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}).
 			MarginTop(1)
 
-	chatHeaderStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#1a1a2e", Dark: "#e0e0e0"}).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderBottom(true).
-			BorderForeground(lipgloss.AdaptiveColor{Light: "#cccccc", Dark: "#444444"})
-
 	chatSentStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "#2d5fa1", Dark: "#6699ff"})
 
 	chatReceivedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.AdaptiveColor{Light: "#333333", Dark: "#cccccc"})
-
-	chatInputBorderStyle = lipgloss.NewStyle().
-				BorderStyle(lipgloss.NormalBorder()).
-				BorderTop(true).
-				BorderForeground(lipgloss.AdaptiveColor{Light: "#cccccc", Dark: "#444444"})
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "#666666", Dark: "#999999"}).
