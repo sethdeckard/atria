@@ -41,6 +41,7 @@ internal/
   tui/commands.go                # tea.Cmd factories
   tui/keys.go                    # Key bindings
   tui/styles.go                  # Lip Gloss styles
+  tui/settings.go                # Settings screen (config editor)
   tui/projectlist.go             # Agent list view (agents dashboard)
   tui/chatview.go                # Chat/send view
   tui/termview.go                # Embedded terminal view (PTY backend)
@@ -71,14 +72,15 @@ internal/
 - Config uses TOML at `~/.config/atria/config.toml`
 - Multiple agents per directory: sessions keyed by SessionID, not ProjectDir
 - Bell notification: write `\a` to `/dev/tty` (not stderr) to work through Bubble Tea
+- Settings screen: `I` key opens settings; integrations toggled immediately with probe, config persisted to TOML
 
-## Backends
+## Integrations
 
-### iTerm2 Backend (`backend = "iterm2"`)
+### iTerm2 (`integrations = ["iterm2"]`)
 
 Uses the `it2` Python CLI wrapper. Auto-installed if missing. Requires iTerm2 with Python API enabled.
 
-### tmux Backend (`backend = "tmux"`)
+### tmux (`integrations = ["tmux"]`)
 
 Agent sessions live as windows inside a dedicated tmux session (`atria`), created detached. Each agent gets its own window; the tmux pane ID (`%0`, `%1`, etc.) serves as the session ID.
 
@@ -96,7 +98,7 @@ Agent sessions live as windows inside a dedicated tmux session (`atria`), create
 
 **MonitorOutput:** Unsupported (no-op with error). Screen reads every 3s are the primary status mechanism.
 
-### PTY Backend (`backend = "pty"`)
+### PTY (built-in, always available)
 
 Built-in terminal multiplexer — no external dependencies. Each agent runs in its own pseudo-terminal with a vt10x emulator. Screen reads come directly from the in-memory buffer (sub-millisecond, no subprocesses).
 
@@ -124,7 +126,7 @@ Built-in terminal multiplexer — no external dependencies. Each agent runs in i
 
 ### Composite Architecture
 
-Backends are non-mutually-exclusive. PTY is always the base, and iTerm2/tmux act as **discovery integrations** that find existing agent sessions.
+PTY is always the base, and iTerm2/tmux act as **discovery integrations** that find existing agent sessions.
 
 ```
 CachedBackend → CompositeBackend
@@ -152,12 +154,22 @@ integrations = ["iterm2", "tmux"]  # discovery backends to probe
 
 When the primary is non-PTY, PTY is added as an integration (`pty:` prefix) so its sessions remain discoverable.
 
-### Auto-detection
+### Explicit Integrations
 
-When `integrations` is not set in config:
-- `$TERM_PROGRAM == "iTerm.app"` → add `"iterm2"` integration
-- `$TMUX` set → add `"tmux"` integration
-- PTY is always available (no integration needed when it's the primary)
+Integrations must be explicitly enabled via config or the settings screen (`I` key). No auto-detection — if `integrations` is not set, only the built-in PTY backend is used.
+
+**Integration states:**
+- **disabled** — not in config (default)
+- **enabled** — in config; binary found but environment doesn't match (e.g. tmux enabled but not running inside tmux)
+- **active** — enabled + probe OK + environment matches (e.g. tmux enabled and running inside tmux)
+
+**Settings screen (`I` key):**
+- Toggle integrations on/off with immediate effect
+- Add/remove watch directories via directory browser
+- Edit default agent, PTY dimensions, tmux session name
+- Changes persist to `~/.config/atria/config.toml`
+- Config is saved before runtime mutations — save failure leaves runtime unchanged
+- CompositeBackend mutations are thread-safe (`sync.RWMutex`)
 
 ## Status Detection
 

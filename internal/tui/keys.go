@@ -15,12 +15,14 @@ type keyMap struct {
 	Stream        key.Binding
 	Enter         key.Binding
 	Help          key.Binding
+	Info          key.Binding
 	Quit          key.Binding
 	Right         key.Binding
 	Left          key.Binding
 	Escape        key.Binding
 	CtrlD         key.Binding
 	CtrlBackslash key.Binding
+	Add           key.Binding
 }
 
 var keys = keyMap{
@@ -93,5 +95,13 @@ var keys = keyMap{
 	CtrlBackslash: key.NewBinding(
 		key.WithKeys("ctrl+\\"),
 		key.WithHelp("ctrl+\\", "return from terminal"),
+	),
+	Info: key.NewBinding(
+		key.WithKeys("I"),
+		key.WithHelp("I", "settings"),
+	),
+	Add: key.NewBinding(
+		key.WithKeys("a"),
+		key.WithHelp("a", "add"),
 	),
 }

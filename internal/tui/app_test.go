@@ -1626,8 +1626,8 @@ func TestViewProjectListWithAgents(t *testing.T) {
 	if !strings.Contains(v, "agent") {
 		t.Error("expected column header 'agent'")
 	}
-	if !strings.Contains(v, "harness") {
-		t.Error("expected column header 'harness'")
+	if !strings.Contains(v, "type") {
+		t.Error("expected column header 'type'")
 	}
 	// Branding
 	if !strings.Contains(v, "atria") {
@@ -1698,7 +1698,7 @@ func TestSortRows(t *testing.T) {
 		}
 	})
 
-	t.Run("by harness", func(t *testing.T) {
+	t.Run("by type", func(t *testing.T) {
 		rows := []projectRow{
 			{project: &model.Project{Name: "a"}, session: &model.AgentSession{Type: model.AgentCodex}, displayName: "a"},
 			{project: &model.Project{Name: "b"}, session: &model.AgentSession{Type: model.AgentClaude}, displayName: "b"},
@@ -1813,7 +1813,7 @@ func TestSortKeyCyclesColumn(t *testing.T) {
 		t.Fatalf("expected default sort column agent, got %d", m.sortCol)
 	}
 
-	// Press s to cycle to harness
+	// Press s to cycle to type
 	updated, _ := m.Update(keyMsg("s"))
 	um := modelFrom(updated)
 	if um.sortCol != sortByHarness {
@@ -1836,7 +1836,7 @@ func TestColumnHeaderSortIndicator(t *testing.T) {
 	if !strings.Contains(header, "agent▲") {
 		t.Errorf("expected agent▲ in header, got %q", header)
 	}
-	if strings.Contains(header, "harness▲") || strings.Contains(header, "harness▼") {
+	if strings.Contains(header, "type▲") || strings.Contains(header, "type▼") {
 		t.Error("non-active column should not have sort indicator")
 	}
 

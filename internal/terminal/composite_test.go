@@ -343,6 +343,64 @@ func TestComposite_PrimarySourceLabeledCorrectly(t *testing.T) {
 	}
 }
 
+func TestComposite_AddRemoveIntegration(t *testing.T) {
+	primary := &trackingBackend{
+		mockBackend: mockBackend{
+			sessions: []Session{{ID: "pty-0", Name: "claude"}},
+		},
+	}
+
+	comp := NewCompositeBackend(primary, "pty", nil)
+
+	// Initially no integrations.
+	sessions, _ := comp.ListSessions()
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	// Add an integration.
+	itermInteg := &trackingBackend{
+		mockBackend: mockBackend{
+			sessions: []Session{{ID: "s1", Name: "✳ agent1", TTY: "/dev/ttys001"}},
+		},
+	}
+	comp.AddIntegration(Integration{Prefix: "iterm:", Source: "iterm", Backend: itermInteg})
+
+	sessions, _ = comp.ListSessions()
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions after add, got %d", len(sessions))
+	}
+
+	// Remove the integration.
+	comp.RemoveIntegration("iterm:")
+
+	sessions, _ = comp.ListSessions()
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session after remove, got %d", len(sessions))
+	}
+
+	// Verify Integrations() returns a snapshot.
+	integs := comp.Integrations()
+	if len(integs) != 0 {
+		t.Errorf("expected 0 integrations, got %d", len(integs))
+	}
+}
+
+func TestComposite_SetPrimary(t *testing.T) {
+	pty := &trackingBackend{}
+	tmuxB := &trackingBackend{}
+
+	comp := NewCompositeBackend(pty, "pty", nil)
+	if comp.PrimarySource() != "pty" {
+		t.Errorf("expected pty, got %q", comp.PrimarySource())
+	}
+
+	comp.SetPrimary(tmuxB, "tmux")
+	if comp.PrimarySource() != "tmux" {
+		t.Errorf("expected tmux, got %q", comp.PrimarySource())
+	}
+}
+
 func TestComposite_MissingIntegrationReturnsError(t *testing.T) {
 	primary := &trackingBackend{}
 

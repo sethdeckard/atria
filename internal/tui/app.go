@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 )
@@ -33,6 +34,7 @@ const (
 	viewDirBrowser
 	viewBatchPrompt
 	viewTerminal
+	viewSettings
 )
 
 type Model struct {
@@ -76,6 +78,17 @@ type Model struct {
 	// Agent type
 	availableAgents []model.AgentType
 	defaultAgent    model.AgentType
+
+	// Settings
+	statusInfo      StatusInfo
+	settingsItems   []settingsItem
+	settingsCursor  int
+	settingsEditing bool
+	settingsEditBuf string
+	cfg             *config.Config
+	configPath      string
+	ptyClient       terminal.Backend
+	settingsDirPick bool // true when dir browser is for settings (add watch dir)
 
 	// Directory browser
 	browserDirs   []DirBrowserItem
@@ -171,6 +184,22 @@ func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs 
 	}
 }
 
+// SetStatusInfo sets the backend status info for the settings screen.
+func (m *Model) SetStatusInfo(info StatusInfo) {
+	m.statusInfo = info
+}
+
+// SetConfig sets the config and config path for the settings screen.
+func (m *Model) SetConfig(cfg *config.Config, path string) {
+	m.cfg = cfg
+	m.configPath = path
+}
+
+// SetPTYClient sets the PTY client reference for integration toggling.
+func (m *Model) SetPTYClient(pty terminal.Backend) {
+	m.ptyClient = pty
+}
+
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	cmds = append(cmds, checkBackend(m.backend))
@@ -260,6 +289,59 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusText = msg.Text
 		return m, nil
 
+	case IntegrationToggledMsg:
+		if msg.Err != nil {
+			m.statusText = "Toggle failed: " + msg.Err.Error()
+		} else {
+			// Remap session IDs if PTY was demoted from primary to integration.
+			// This keeps store, attention map, and chat/term references consistent.
+			if len(msg.RemappedIDs) > 0 {
+				for _, s := range m.store.Sessions {
+					if newID, ok := msg.RemappedIDs[s.SessionID]; ok {
+						oldID := s.SessionID
+						s.SessionID = newID
+						if t, has := m.attentionSessions[oldID]; has {
+							delete(m.attentionSessions, oldID)
+							m.attentionSessions[newID] = t
+						}
+						if m.chatSessionID == oldID {
+							m.chatSessionID = newID
+						}
+						if m.termSessionID == oldID {
+							m.termSessionID = newID
+						}
+					}
+				}
+				_ = m.store.SaveSessions()
+			}
+			// Update statusInfo.
+			for i, bs := range m.statusInfo.Backends {
+				if bs.Name == msg.Name {
+					m.statusInfo.Backends[i] = msg.Status
+					break
+				}
+			}
+			// Invalidate cache so next tick picks up new sessions.
+			if cb, ok := m.backend.(interface{ Invalidate() }); ok {
+				cb.Invalidate()
+			}
+			// Rebuild settings items.
+			if m.cfg != nil {
+				m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+			}
+		}
+		return m, nil
+
+	case ConfigSavedMsg:
+		if msg.Err != nil {
+			m.statusText = "Config save failed: " + msg.Err.Error()
+			if msg.Rollback != nil {
+				msg.Rollback(&m)
+				m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+			}
+		}
+		return m, nil
+
 	case termRefreshMsg:
 		if m.view != viewTerminal {
 			return m, nil
@@ -298,6 +380,8 @@ func (m Model) View() string {
 		content = m.viewBatchPrompt()
 	case viewTerminal:
 		content = m.termView.render()
+	case viewSettings:
+		content = renderSettings(m.settingsItems, m.settingsCursor, m.settingsEditing, m.settingsEditBuf, m.width, m.height)
 	}
 
 	if m.showHelp {
@@ -555,9 +639,16 @@ func (m Model) viewDirBrowser() string {
 	var sb strings.Builder
 	agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
 
-	// Header: "launch Claude" left, contracted path right
-	left := titleStyle.Render("  launch " + agentName)
-	right := dimStyle.Render(contractHome(m.browserPath) + "  ")
+	// Header
+	headerText := "launch " + agentName
+	var right string
+	if m.settingsDirPick {
+		headerText = "select watch directory"
+		right = brandingStyle.Render("atria  ")
+	} else {
+		right = dimStyle.Render(contractHome(m.browserPath) + "  ")
+	}
+	left := titleStyle.Render("  " + headerText)
 	leftW := lipgloss.Width(left)
 	rightW := lipgloss.Width(right)
 	gap := m.width - leftW - rightW
@@ -585,6 +676,9 @@ func (m Model) viewDirBrowser() string {
 	idx := 0
 
 	recent := m.browserRecentProjects()
+	if m.settingsDirPick {
+		recent = nil
+	}
 	if len(recent) > 0 {
 		lines = append(lines, browserLine{idx: -1, label: "recent"})
 		for range recent {
@@ -686,8 +780,11 @@ func (m Model) viewDirBrowser() string {
 				sb.WriteString("  " + d.Name)
 			}
 		} else {
-			// Launch action
+			// Action button
 			launchLabel := "\u25b6 launch " + agentName + " here"
+			if m.settingsDirPick {
+				launchLabel = "\u25b6 add this directory"
+			}
 			if selected {
 				sb.WriteString(selectedStyle.Render("> " + launchLabel))
 			} else {
@@ -699,8 +796,12 @@ func (m Model) viewDirBrowser() string {
 
 	// Footer
 	var hints []string
-	hints = append(hints, "enter:select", "l/\u2192:open", "h/\u2190:back")
-	if len(m.availableAgents) > 1 {
+	hints = append(hints, "enter:select")
+	if !m.settingsDirPick {
+		hints = append(hints, "l/\u2192:open")
+	}
+	hints = append(hints, "h/\u2190:back")
+	if !m.settingsDirPick && len(m.availableAgents) > 1 {
 		hints = append(hints, "t:toggle")
 	}
 	hints = append(hints, "esc:cancel")
@@ -750,6 +851,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleBatchKey(msg)
 	case viewTerminal:
 		return m.handleTerminalKey(msg)
+	case viewSettings:
+		return m.handleSettingsKey(msg)
 	}
 	return m, nil
 }
@@ -848,6 +951,19 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, keys.Enter):
 		return m.openChat()
+
+	case key.Matches(msg, keys.Info):
+		if m.cfg == nil {
+			m.statusText = "Config not available"
+			return m, nil
+		}
+		m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+		m.settingsCursor = m.firstEditableSettingsItem()
+		m.settingsEditing = false
+		m.settingsEditBuf = ""
+		m.view = viewSettings
+		m.showHelp = false
+		return m, nil
 	}
 	return m, nil
 }
@@ -896,7 +1012,13 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case key.Matches(msg, keys.Escape):
-		m.view = viewProjectList
+		if m.settingsDirPick {
+			m.settingsDirPick = false
+			m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+			m.view = viewSettings
+		} else {
+			m.view = viewProjectList
+		}
 		return m, nil
 
 	case key.Matches(msg, keys.Toggle):
@@ -947,6 +1069,24 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, listDir(parent)
 
 	case key.Matches(msg, keys.Enter):
+		// Settings: add watch dir
+		if m.settingsDirPick {
+			if m.browserCursor == launchIdx {
+				return m.addWatchDirFromBrowser(m.browserPath)
+			}
+			if m.browserCursor < recentCount {
+				recent := m.browserRecentProjects()
+				p := recent[m.browserCursor]
+				return m.addWatchDirFromBrowser(p.Dir)
+			}
+			dirIdx := m.browserCursor - recentCount
+			if dirIdx >= 0 && dirIdx < len(m.browserDirs) {
+				dir := m.browserDirs[dirIdx]
+				return m, listDir(dir.Path)
+			}
+			return m, nil
+		}
+
 		// Launch action at bottom
 		if m.browserCursor == launchIdx {
 			return m.launchFromBrowser(m.browserPath, filepath.Base(m.browserPath))
@@ -966,6 +1106,23 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m Model) addWatchDirFromBrowser(dirPath string) (Model, tea.Cmd) {
+	m.settingsDirPick = false
+	// Add if not already present.
+	prevWatchDirs := make([]string, len(m.cfg.WatchDirs))
+	copy(prevWatchDirs, m.cfg.WatchDirs)
+	if !containsString(m.cfg.WatchDirs, dirPath) {
+		m.cfg.WatchDirs = append(m.cfg.WatchDirs, dirPath)
+		m.watchDirs = m.cfg.WatchDirs
+	}
+	m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+	m.view = viewSettings
+	return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {
+		rm.cfg.WatchDirs = prevWatchDirs
+		rm.watchDirs = prevWatchDirs
+	})
 }
 
 func (m Model) launchFromBrowser(dirPath, name string) (Model, tea.Cmd) {
@@ -993,6 +1150,9 @@ func (m Model) browserRecentProjects() []*model.Project {
 }
 
 func (m Model) browserRecentCount() int {
+	if m.settingsDirPick {
+		return 0
+	}
 	return len(m.browserRecentProjects())
 }
 
@@ -1058,6 +1218,246 @@ func (m Model) handleTerminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.backend.SendText(m.termSessionID, string(b))
 	}
 	return m, nil
+}
+
+func (m Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.settingsEditing {
+		return m.handleSettingsEditKey(msg)
+	}
+
+	switch {
+	case key.Matches(msg, keys.Escape):
+		m.view = viewProjectList
+		return m, nil
+
+	case key.Matches(msg, keys.Quit):
+		m.view = viewProjectList
+		return m, nil
+
+	case key.Matches(msg, keys.Down):
+		m.settingsCursor = m.nextSettingsItem(m.settingsCursor, 1)
+		return m, nil
+
+	case key.Matches(msg, keys.Up):
+		m.settingsCursor = m.nextSettingsItem(m.settingsCursor, -1)
+		return m, nil
+
+	case key.Matches(msg, keys.Enter):
+		if m.settingsCursor < 0 || m.settingsCursor >= len(m.settingsItems) {
+			return m, nil
+		}
+		item := m.settingsItems[m.settingsCursor]
+		switch item.itemType {
+		case "toggle":
+			return m.toggleSettingsIntegration(item)
+		case "choice":
+			return m.cycleSettingsChoice(item)
+		case "string", "number":
+			m.settingsEditing = true
+			m.settingsEditBuf = item.value
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, keys.Add):
+		// Add watch dir (works from anywhere in settings)
+		startDir := ""
+		if len(m.watchDirs) > 0 {
+			startDir = m.watchDirs[0]
+		}
+		if startDir == "" {
+			home, _ := os.UserHomeDir()
+			startDir = home
+		}
+		m.settingsEditing = false
+		m.settingsDirPick = true
+		return m, listDir(startDir)
+
+	case key.Matches(msg, keys.Delete):
+		if m.settingsCursor < 0 || m.settingsCursor >= len(m.settingsItems) {
+			return m, nil
+		}
+		item := m.settingsItems[m.settingsCursor]
+		if item.itemType == "list-entry" && item.key == "watch_dirs" {
+			// Remove this watch dir from config
+			prevWatchDirs := make([]string, len(m.cfg.WatchDirs))
+			copy(prevWatchDirs, m.cfg.WatchDirs)
+			dir := item.value
+			filtered := make([]string, 0, len(m.cfg.WatchDirs))
+			for _, d := range m.cfg.WatchDirs {
+				if d != dir {
+					filtered = append(filtered, d)
+				}
+			}
+			m.cfg.WatchDirs = filtered
+			m.watchDirs = m.cfg.WatchDirs
+			m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+			if m.settingsCursor >= len(m.settingsItems) {
+				m.settingsCursor = len(m.settingsItems) - 1
+			}
+			// Skip to non-header
+			for m.settingsCursor < len(m.settingsItems) && m.settingsItems[m.settingsCursor].itemType == "header" {
+				m.settingsCursor++
+			}
+			return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {
+				rm.cfg.WatchDirs = prevWatchDirs
+				rm.watchDirs = prevWatchDirs
+			})
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) handleSettingsEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEscape:
+		m.settingsEditing = false
+		m.settingsEditBuf = ""
+		return m, nil
+
+	case tea.KeyEnter:
+		item := m.settingsItems[m.settingsCursor]
+		m.settingsEditing = false
+		val := m.settingsEditBuf
+		m.settingsEditBuf = ""
+
+		prevCols := m.cfg.PtyCols
+		prevRows := m.cfg.PtyRows
+		prevTmuxSession := m.cfg.TmuxSession
+
+		switch item.key {
+		case "pty_cols":
+			n := parsePositiveInt(val, 120)
+			m.cfg.PtyCols = n
+		case "pty_rows":
+			n := parsePositiveInt(val, 40)
+			m.cfg.PtyRows = n
+		case "tmux_session":
+			if val != "" {
+				m.cfg.TmuxSession = val
+			}
+		}
+
+		// Apply PTY dimension changes to the live backend.
+		if m.cfg.PtyCols != prevCols || m.cfg.PtyRows != prevRows {
+			if r, ok := m.ptyClient.(interface{ Resize(int, int) }); ok {
+				r.Resize(m.cfg.PtyCols, m.cfg.PtyRows)
+			}
+		}
+
+		m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+		return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {
+			rm.cfg.PtyCols = prevCols
+			rm.cfg.PtyRows = prevRows
+			rm.cfg.TmuxSession = prevTmuxSession
+			// Revert live PTY dimensions on save failure.
+			if r, ok := rm.ptyClient.(interface{ Resize(int, int) }); ok {
+				r.Resize(prevCols, prevRows)
+			}
+		})
+
+	case tea.KeyBackspace:
+		if len(m.settingsEditBuf) > 0 {
+			m.settingsEditBuf = m.settingsEditBuf[:len(m.settingsEditBuf)-1]
+		}
+		return m, nil
+
+	default:
+		if len(msg.Runes) > 0 {
+			m.settingsEditBuf += string(msg.Runes)
+		}
+		return m, nil
+	}
+}
+
+func (m *Model) firstEditableSettingsItem() int {
+	for i, item := range m.settingsItems {
+		if item.itemType != "header" {
+			return i
+		}
+	}
+	return 0
+}
+
+func (m *Model) nextSettingsItem(cur, dir int) int {
+	n := len(m.settingsItems)
+	if n == 0 {
+		return 0
+	}
+	next := cur + dir
+	for next >= 0 && next < n {
+		if m.settingsItems[next].itemType != "header" {
+			return next
+		}
+		next += dir
+	}
+	return cur
+}
+
+func (m Model) toggleSettingsIntegration(item settingsItem) (Model, tea.Cmd) {
+	// Find the backend status.
+	var bs BackendStatus
+	for _, b := range m.statusInfo.Backends {
+		if b.Name == item.key {
+			bs = b
+			break
+		}
+	}
+	enable := !bs.Enabled
+
+	// Get the composite backend.
+	var composite *terminal.CompositeBackend
+	if cb, ok := m.backend.(*terminal.CachedBackend); ok {
+		composite, _ = cb.Inner().(*terminal.CompositeBackend)
+	}
+	if composite == nil {
+		m.statusText = "Cannot modify backend"
+		return m, nil
+	}
+
+	return m, toggleIntegration(item.key, enable, m.cfg, m.configPath, composite, m.ptyClient)
+}
+
+func (m Model) cycleSettingsChoice(item settingsItem) (Model, tea.Cmd) {
+	if item.key != "default_agent" {
+		return m, nil
+	}
+	agents := m.availableAgents
+	if len(agents) == 0 {
+		return m, nil
+	}
+	cur := item.value
+	next := string(agents[0])
+	for i, a := range agents {
+		if string(a) == cur {
+			next = string(agents[(i+1)%len(agents)])
+			break
+		}
+	}
+	prevAgent := m.defaultAgent
+	prevCfgAgent := m.cfg.DefaultAgent
+	m.defaultAgent = model.AgentType(next)
+	m.cfg.DefaultAgent = next
+	m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+	return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {
+		rm.defaultAgent = prevAgent
+		rm.cfg.DefaultAgent = prevCfgAgent
+	})
+}
+
+func parsePositiveInt(s string, fallback int) int {
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return fallback
+		}
+		n = n*10 + int(c-'0')
+	}
+	if n <= 0 {
+		return fallback
+	}
+	return n
 }
 
 func (m Model) openChat() (Model, tea.Cmd) {

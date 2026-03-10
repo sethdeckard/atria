@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -144,6 +145,159 @@ cache_ttl = 30
 	expectedDataDir := filepath.Join(home, ".config/atria")
 	if cfg.DataDir != expectedDataDir {
 		t.Errorf("expected default data_dir %q, got %q", expectedDataDir, cfg.DataDir)
+	}
+}
+
+func TestSave(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := &Config{
+		WatchDirs:    []string{"/home/user/projects", "/tmp/work"},
+		Integrations: []string{"iterm2"},
+		DefaultAgent: "claude",
+		PtyCols:      200,
+		PtyRows:      40, // default, should be commented
+		TmuxSession:  "myatria",
+	}
+
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	s := string(content)
+
+	// watch_dirs should be present uncommented
+	if !strings.Contains(s, `watch_dirs = [`) {
+		t.Errorf("expected uncommented watch_dirs, got:\n%s", s)
+	}
+
+	// integrations should be present uncommented
+	if !strings.Contains(s, `integrations = ["iterm2"]`) {
+		t.Errorf("expected integrations = [\"iterm2\"], got:\n%s", s)
+	}
+
+	// default_agent uncommented
+	if !strings.Contains(s, `default_agent = "claude"`) {
+		t.Errorf("expected default_agent = \"claude\", got:\n%s", s)
+	}
+
+	// pty_cols non-default should be uncommented
+	if !strings.Contains(s, "pty_cols = 200") {
+		t.Errorf("expected pty_cols = 200, got:\n%s", s)
+	}
+
+	// pty_rows default should be commented
+	if !strings.Contains(s, "# pty_rows = 40") {
+		t.Errorf("expected commented pty_rows, got:\n%s", s)
+	}
+
+	// tmux_session non-default should be uncommented
+	if !strings.Contains(s, `tmux_session = "myatria"`) {
+		t.Errorf("expected tmux_session = \"myatria\", got:\n%s", s)
+	}
+
+	// Verify it round-trips
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load after Save failed: %v", err)
+	}
+	if len(loaded.Integrations) != 1 || loaded.Integrations[0] != "iterm2" {
+		t.Errorf("expected [iterm2], got %v", loaded.Integrations)
+	}
+	if loaded.DefaultAgent != "claude" {
+		t.Errorf("expected claude, got %q", loaded.DefaultAgent)
+	}
+	if loaded.PtyCols != 200 {
+		t.Errorf("expected 200, got %d", loaded.PtyCols)
+	}
+	if loaded.TmuxSession != "myatria" {
+		t.Errorf("expected myatria, got %q", loaded.TmuxSession)
+	}
+}
+
+func TestSaveDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := &Config{}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	s := string(content)
+
+	// All should be commented
+	if !strings.Contains(s, "# watch_dirs = []") {
+		t.Errorf("expected commented watch_dirs, got:\n%s", s)
+	}
+	if !strings.Contains(s, "# integrations = []") {
+		t.Errorf("expected commented integrations, got:\n%s", s)
+	}
+	if !strings.Contains(s, "# default_agent = \"claude\"") {
+		t.Errorf("expected commented default_agent, got:\n%s", s)
+	}
+}
+
+func TestSavePreservesAdvancedFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := &Config{
+		WatchDirs:    []string{"/projects"},
+		Integrations: []string{"tmux"},
+		DataDir:      "/custom/data",
+		MonitorDir:   "/custom/monitors",
+		CacheTTL:     15,
+		LaunchDir:    "/custom/launch",
+		FocusMode:    "terminal",
+	}
+
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load after Save failed: %v", err)
+	}
+
+	if loaded.DataDir != "/custom/data" {
+		t.Errorf("expected data_dir '/custom/data', got %q", loaded.DataDir)
+	}
+	if loaded.MonitorDir != "/custom/monitors" {
+		t.Errorf("expected monitor_dir '/custom/monitors', got %q", loaded.MonitorDir)
+	}
+	if loaded.CacheTTL != 15 {
+		t.Errorf("expected cache_ttl 15, got %d", loaded.CacheTTL)
+	}
+	if loaded.LaunchDir != "/custom/launch" {
+		t.Errorf("expected launch_dir '/custom/launch', got %q", loaded.LaunchDir)
+	}
+	if loaded.FocusMode != "terminal" {
+		t.Errorf("expected focus_mode 'terminal', got %q", loaded.FocusMode)
+	}
+}
+
+func TestSaveCreatesParentDirs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sub", "dir", "config.toml")
+
+	cfg := &Config{DefaultAgent: "codex"}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Error("expected file to exist")
 	}
 }
 

@@ -162,7 +162,7 @@ func sortIndicator(col, active sortColumn, desc bool) string {
 
 func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int, col sortColumn, desc bool) string {
 	name := fmt.Sprintf("  %-*s", nameWidth, "agent"+sortIndicator(sortByAgent, col, desc))
-	harness := fmt.Sprintf("%-*s", typeWidth, "harness"+sortIndicator(sortByHarness, col, desc))
+	harness := fmt.Sprintf("%-*s", typeWidth, "type"+sortIndicator(sortByHarness, col, desc))
 	dir := fmt.Sprintf("%-*s", dirWidth, "directory"+sortIndicator(sortByDir, col, desc))
 
 	// status + updated fill the rest
@@ -460,7 +460,7 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 	if canToggle {
 		global = append(global, "t:toggle")
 	}
-	global = append(global, "s:sort", "?:help", "q:quit")
+	global = append(global, "s:sort", "I:settings", "?:help", "q:quit")
 	parts = append(parts, strings.Join(global, "  "))
 
 	all := append([]string{left}, parts...)

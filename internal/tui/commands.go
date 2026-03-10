@@ -8,8 +8,11 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/internal/terminal/iterm"
+	"github.com/sethdeckard/atria/internal/terminal/tmux"
 )
 
 func checkBackend(backend terminal.Backend) tea.Cmd {
@@ -143,6 +146,180 @@ func listDir(path string) tea.Cmd {
 		}
 		return DirBrowserMsg{Dirs: dirs, CurrentDir: path}
 	}
+}
+
+// integrationMeta maps a config name (e.g. "iterm2") to the prefix and source
+// used by the composite backend. These must match the values used at startup.
+func integrationMeta(name string) (prefix, source string) {
+	switch name {
+	case "iterm2":
+		return "iterm:", "iterm"
+	case "tmux":
+		return "tmux:", "tmux"
+	default:
+		return name + ":", name
+	}
+}
+
+func toggleIntegration(name string, enable bool, cfg *config.Config, configPath string, composite *terminal.CompositeBackend, ptyClient terminal.Backend) tea.Cmd {
+	return func() tea.Msg {
+		prefix, source := integrationMeta(name)
+		status := BackendStatus{Name: name, Enabled: enable}
+
+		if !enable {
+			// Persist first — remove from config and save.
+			prevIntegrations := cfg.Integrations
+			filtered := make([]string, 0, len(cfg.Integrations))
+			for _, n := range cfg.Integrations {
+				if n != name {
+					filtered = append(filtered, n)
+				}
+			}
+			if len(filtered) == 0 {
+				cfg.Integrations = nil
+			} else {
+				cfg.Integrations = filtered
+			}
+
+			if err := cfg.Save(configPath); err != nil {
+				// Restore config on save failure.
+				cfg.Integrations = prevIntegrations
+				return IntegrationToggledMsg{Name: name, Status: status, Err: err}
+			}
+
+			// Save succeeded — apply runtime changes.
+			var remapped map[string]string
+			composite.RemoveIntegration(prefix)
+			if composite.PrimarySource() == source {
+				// Re-derive primary from remaining integrations.
+				newPrimary, newSource := derivePrimary(composite.Integrations(), ptyClient)
+				composite.SetPrimary(newPrimary, newSource)
+				if newPrimary == ptyClient {
+					// PTY promoted back to primary — remap pty:pty-N → pty-N.
+					ptySessions, _ := ptyClient.ListSessions()
+					if len(ptySessions) > 0 {
+						remapped = make(map[string]string, len(ptySessions))
+						for _, s := range ptySessions {
+							remapped["pty:"+s.ID] = s.ID
+						}
+					}
+					composite.RemoveIntegration("pty:")
+				}
+			}
+
+			return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped}
+		}
+
+		// Persist first — add to config and save.
+		prevIntegrations := cfg.Integrations
+		if !containsString(cfg.Integrations, name) {
+			cfg.Integrations = append(cfg.Integrations, name)
+		}
+
+		if err := cfg.Save(configPath); err != nil {
+			cfg.Integrations = prevIntegrations
+			return IntegrationToggledMsg{Name: name, Status: status, Err: err}
+		}
+
+		// Probe the backend (non-interactive only — never call Preflight
+		// at runtime as it can prompt on stdin and corrupt the TUI).
+		var backend terminal.Backend
+		var probeErr error
+
+		switch name {
+		case "iterm2":
+			it := iterm.NewClient(cfg.IT2Path)
+			probeErr = it.Available()
+			backend = it
+		case "tmux":
+			tm := tmux.NewClient(cfg.TmuxPath, cfg.TmuxSession)
+			probeErr = tm.Available()
+			backend = tm
+		}
+
+		if probeErr != nil {
+			status.Reason = probeErr.Error()
+			// Config saved (toggle remembered) but no runtime changes.
+			return IntegrationToggledMsg{Name: name, Status: status}
+		}
+
+		// Save succeeded and probe OK — apply runtime changes.
+		composite.AddIntegration(terminal.Integration{
+			Prefix:  prefix,
+			Source:  source,
+			Backend: backend,
+		})
+
+		// Mark active only when the environment matches.
+		if (name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app") ||
+			(name == "tmux" && os.Getenv("TMUX") != "") {
+			status.Active = true
+		}
+
+		// Re-derive primary based on environment.
+		// When PTY is demoted from primary to integration, existing PTY
+		// session IDs change from "pty-N" to "pty:pty-N". Build a remap
+		// so the store can migrate tracked sessions.
+		var remapped map[string]string
+		demotePTY := func() {
+			ptySessions, _ := ptyClient.ListSessions()
+			if len(ptySessions) > 0 {
+				remapped = make(map[string]string, len(ptySessions))
+				for _, s := range ptySessions {
+					remapped[s.ID] = "pty:" + s.ID
+				}
+			}
+			composite.AddIntegration(terminal.Integration{
+				Prefix: "pty:", Source: "pty", Backend: ptyClient,
+			})
+		}
+
+		if name == "tmux" && os.Getenv("TMUX") != "" {
+			if composite.PrimarySource() == "pty" {
+				demotePTY()
+			}
+			composite.SetPrimary(backend, "tmux")
+			status.Launch = true
+		} else if name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app" && composite.PrimarySource() == "pty" {
+			demotePTY()
+			composite.SetPrimary(backend, "iterm")
+			status.Launch = true
+		}
+
+		return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped}
+	}
+}
+
+func saveConfig(cfg *config.Config, path string, rollback func(m *Model)) tea.Cmd {
+	return func() tea.Msg {
+		err := cfg.Save(path)
+		return ConfigSavedMsg{Err: err, Rollback: rollback}
+	}
+}
+
+// derivePrimary selects the best launch backend from available integrations,
+// following documented precedence: tmux (if in tmux) > iterm (if in iTerm) > PTY.
+func derivePrimary(integrations []terminal.Integration, ptyClient terminal.Backend) (terminal.Backend, string) {
+	integMap := make(map[string]terminal.Backend)
+	for _, integ := range integrations {
+		integMap[integ.Source] = integ.Backend
+	}
+	if b, ok := integMap["tmux"]; ok && os.Getenv("TMUX") != "" {
+		return b, "tmux"
+	}
+	if b, ok := integMap["iterm"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
+		return b, "iterm"
+	}
+	return ptyClient, "pty"
+}
+
+func containsString(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func discoverAgent(backend terminal.Backend, sess terminal.Session, agentType model.AgentType, watchDirs []string, projectDirs []string) tea.Cmd {

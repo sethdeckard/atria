@@ -89,3 +89,19 @@ type AgentDiscoveredMsg struct {
 	AgentType model.AgentType
 	Dir       string // resolved working directory, empty if not found
 }
+
+// IntegrationToggledMsg is sent after toggling an integration on or off.
+type IntegrationToggledMsg struct {
+	Name       string
+	Status     BackendStatus
+	Err        error
+	RemappedIDs map[string]string // old session ID → new session ID (e.g. PTY demotion)
+}
+
+// ConfigSavedMsg is sent after persisting config to disk.
+// If Err is non-nil and Rollback is set, the handler calls Rollback
+// to revert in-memory mutations that were applied optimistically.
+type ConfigSavedMsg struct {
+	Err      error
+	Rollback func(m *Model) // reverts optimistic mutations on save failure
+}

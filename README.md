@@ -22,11 +22,9 @@ watch_dirs = ["~/projects"]
 # default_agent = "claude"
 ```
 
-### Backends
+### Integrations
 
-Atria uses a composite backend architecture. A **primary** backend handles launching new agents, while optional **integrations** discover agents already running in other terminals.
-
-The built-in PTY backend is always available as a fallback. When running inside iTerm2 or tmux with the corresponding integration enabled, that environment is used for launching instead — agents appear as native tabs/windows.
+The built-in PTY backend is always available. Optional **integrations** discover agents running in other terminals and, when the environment matches, handle launching too — agents appear as native tabs/windows.
 
 #### PTY (built-in)
 
@@ -40,7 +38,7 @@ The default when not running inside iTerm2 or tmux. Each agent runs in a built-i
 
 #### iTerm2
 
-Used for launching when running inside iTerm2 with the integration enabled. Requires iTerm2 with the Python API enabled (Settings > General > Magic > Enable Python API). The `it2` CLI is auto-installed on first run.
+Discovers existing agents in iTerm2 tabs. When running inside iTerm2, also launches new agents as native tabs. Requires iTerm2 with the Python API enabled (Settings > General > Magic > Enable Python API). The `it2` CLI is auto-installed on first run.
 
 ```toml
 integrations = ["iterm2"]
@@ -49,7 +47,7 @@ integrations = ["iterm2"]
 
 #### tmux
 
-Used for launching when running inside tmux with the integration enabled. Agent sessions run as windows inside a detached tmux session named `atria`.
+Discovers existing agents in tmux windows. When running inside tmux, also launches new agents as native windows in a detached tmux session named `atria`.
 
 ```toml
 integrations = ["tmux"]
@@ -61,23 +59,17 @@ To interact with agents directly: `tmux attach -t atria`.
 
 The tmux default `allow-rename on` is required for Claude Code's terminal title to propagate as `pane_title`.
 
-#### Discovery integrations
+#### Multiple integrations
 
-Integrations also discover agents already running in their environment. You can enable multiple integrations to discover agents across backends:
+You can enable multiple integrations to discover agents across environments:
 
 ```toml
 integrations = ["iterm2", "tmux"]
 ```
 
-Each discovered agent is managed through its native backend — focusing an iTerm-discovered agent switches to its iTerm tab, while focusing a PTY agent opens the embedded terminal view.
+Each discovered agent is managed through its native integration — focusing an iTerm-discovered agent switches to its iTerm tab, while focusing a PTY agent opens the embedded terminal view.
 
-### Auto-detection
-
-When `integrations` is not set:
-- Inside iTerm2 (`$TERM_PROGRAM` = `iTerm.app`) → enables `iterm2` integration
-- Inside tmux (`$TMUX` set) → enables `tmux` integration
-
-Launch target follows the same logic — the matching integration is used for launching, with PTY as the fallback.
+Integrations must be explicitly enabled. Without `integrations` configured, only the built-in PTY backend is used. You can also toggle integrations from the settings screen (`I` key) — changes take effect immediately and persist to config.
 
 ## Usage
 
@@ -92,7 +84,8 @@ Run `atria` to start the dashboard.
 | `l` | Launch a new agent in the selected project |
 | `f` | Focus (switch to) the agent's terminal |
 | `d` | Delete an agent session |
-| `Tab` | Cycle sort column |
+| `I` | Open settings |
+| `s` | Cycle sort column |
 | `q` / `Ctrl+C` | Quit |
 
 ### Embedded Terminal (PTY)
