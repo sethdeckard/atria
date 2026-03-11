@@ -16,10 +16,29 @@ import (
 	"github.com/sethdeckard/atria/internal/tui"
 )
 
+var (
+	version = "dev"
+	commit  = ""
+	date    = ""
+)
+
 func main() {
+	tui.Version = version
 	debug := false
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "--version", "-v":
+			fmt.Println(tui.Logo)
+			fmt.Println()
+			fmt.Printf("atria v%s", version)
+			if commit != "" {
+				fmt.Printf(" (%s)", commit[:min(7, len(commit))])
+			}
+			if date != "" {
+				fmt.Printf(" built %s", date)
+			}
+			fmt.Println()
+			return
 		case "--uninstall-it2":
 			iterm.Uninstall()
 			return
@@ -31,6 +50,7 @@ func main() {
 			fmt.Println("Options:")
 			fmt.Println("  --debug           Log screen reads to /tmp/atria-debug.log")
 			fmt.Println("  --uninstall-it2   Remove the auto-installed it2 venv")
+			fmt.Println("  --version, -v     Show version information")
 			fmt.Println("  --help, -h        Show this help")
 			return
 		}

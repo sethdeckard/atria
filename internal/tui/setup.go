@@ -196,10 +196,7 @@ func setupStepDescriptionWithStatus(step int, cfg *config.Config, info StatusInf
 func renderSetup(step int, items []settingsItem, cursor int, editing bool, editBuf string, width, _ int) string {
 	var sb strings.Builder
 
-	logo := logoStyle.Render(`         _        _
-   __ _ | |_  _ _(_) __ _
-  / _` + "`" + ` ||  _|| '_| |/ _` + "`" + ` |
-  \__,_| \__||_| |_|\__,_|`)
+	logo := logoStyle.Render(Logo)
 
 	sb.WriteString(logo)
 	sb.WriteString("\n\n")

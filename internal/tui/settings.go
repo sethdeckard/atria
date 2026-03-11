@@ -201,7 +201,7 @@ func renderSettings(items []settingsItem, cursor int, editing bool, editBuf stri
 
 	// Config path
 	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("  config: ~/.config/atria/config.toml"))
+	sb.WriteString(dimStyle.Render("  config: ~/.config/atria/config.toml  \u00b7  v" + Version))
 	sb.WriteString("\n")
 
 	// Footer — context-aware based on selected item

@@ -416,10 +416,7 @@ func relativeTime(t time.Time) string {
 func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAgents []model.AgentType, canSetup bool) string {
 	var sb strings.Builder
 
-	logo := logoStyle.Render(`         _        _
-   __ _ | |_  _ _(_) __ _
-  / _` + "`" + ` ||  _|| '_| |/ _` + "`" + ` |
-  \__,_| \__||_| |_|\__,_|`)
+	logo := logoStyle.Render(Logo)
 
 	sb.WriteString(logo)
 	sb.WriteString("\n\n")
