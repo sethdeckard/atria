@@ -417,7 +417,7 @@ func (m Model) viewProjectList() string {
 		}
 	}
 
-	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, len(m.availableAgents) > 1, maxRows, scrollOffset, m.sortCol, m.sortDesc)
+	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, m.availableAgents, maxRows, scrollOffset, m.sortCol, m.sortDesc)
 	sb.WriteString(list)
 
 	if m.streamOpen {

@@ -177,13 +177,13 @@ func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int, col sor
 	return dimStyle.Render(line)
 }
 
-func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, canToggle bool, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool) string {
+func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, availableAgents []model.AgentType, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool) string {
 	var sb strings.Builder
 
 	sb.WriteString(renderHeader(width))
 
 	if len(rows) == 0 {
-		sb.WriteString(renderEmptyState(defaultAgent, canToggle))
+		sb.WriteString(renderEmptyState(defaultAgent, len(availableAgents) > 1, availableAgents))
 		return sb.String()
 	}
 
@@ -413,7 +413,7 @@ func relativeTime(t time.Time) string {
 	}
 }
 
-func renderEmptyState(defaultAgent model.AgentType, canToggle bool) string {
+func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAgents []model.AgentType) string {
 	var sb strings.Builder
 
 	logo := logoStyle.Render(`         _        _
@@ -423,17 +423,22 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool) string {
 
 	sb.WriteString(logo)
 	sb.WriteString("\n\n")
-	sb.WriteString(emptyHintStyle.Render("  Agent orchestration for your terminal."))
+	sb.WriteString(emptyHintStyle.Render("  Agent multiplexer for your terminal."))
 	sb.WriteString("\n\n")
-	sb.WriteString("  " + emptyKeyStyle.Render("l") + emptyHintStyle.Render("  Launch an agent in a project"))
+	sb.WriteString("  " + emptyKeyStyle.Render("l") + emptyHintStyle.Render("  launch an agent in a directory"))
 	sb.WriteString("\n")
 	if canToggle {
-		sb.WriteString("  " + emptyKeyStyle.Render("t") + emptyHintStyle.Render("  Toggle agent type (Claude/Codex)"))
+		var names []string
+		for _, a := range availableAgents {
+			name := string(a)
+			names = append(names, strings.ToUpper(name[:1])+name[1:])
+		}
+		sb.WriteString("  " + emptyKeyStyle.Render("t") + emptyHintStyle.Render(fmt.Sprintf("  toggle agent type (%s)", strings.Join(names, "/"))))
 		sb.WriteString("\n")
 	}
-	sb.WriteString("  " + emptyKeyStyle.Render("?") + emptyHintStyle.Render("  Show all key bindings"))
+	sb.WriteString("  " + emptyKeyStyle.Render("?") + emptyHintStyle.Render("  show all key bindings"))
 	sb.WriteString("\n")
-	sb.WriteString("  " + emptyKeyStyle.Render("q") + emptyHintStyle.Render("  Quit"))
+	sb.WriteString("  " + emptyKeyStyle.Render("q") + emptyHintStyle.Render("  quit"))
 	sb.WriteString("\n")
 
 	return sb.String()

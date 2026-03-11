@@ -1563,13 +1563,13 @@ func TestViewProjectListEmpty(t *testing.T) {
 	if !strings.Contains(v, "agents") {
 		t.Error("expected agents title")
 	}
-	if !strings.Contains(v, "Agent orchestration") {
+	if !strings.Contains(v, "Agent multiplexer") {
 		t.Error("expected tagline in empty state")
 	}
-	if !strings.Contains(v, "Launch an agent") {
+	if !strings.Contains(v, "launch an agent in a directory") {
 		t.Error("expected launch hint in empty state")
 	}
-	if !strings.Contains(v, "Toggle agent type") {
+	if !strings.Contains(v, "toggle agent type") {
 		t.Error("expected toggle hint in empty state")
 	}
 }
@@ -1581,10 +1581,10 @@ func TestViewProjectListEmptySingleAgent(t *testing.T) {
 	m.availableAgents = []model.AgentType{model.AgentClaude}
 	m.defaultAgent = model.AgentClaude
 	v := m.View()
-	if !strings.Contains(v, "Launch an agent") {
+	if !strings.Contains(v, "launch an agent in a directory") {
 		t.Error("expected launch hint in empty state")
 	}
-	if strings.Contains(v, "Toggle agent type") {
+	if strings.Contains(v, "toggle agent type") {
 		t.Error("should not show toggle hint with single agent")
 	}
 }
