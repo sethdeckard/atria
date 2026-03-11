@@ -437,6 +437,19 @@ func (m Model) viewProjectList() string {
 		selected = &m.rows[m.cursor]
 	}
 	sb.WriteString("\n")
+	if !m.streamOpen && selected != nil {
+		dirLine := " " + contractHome(selected.project.Dir)
+		if lipgloss.Width(dirLine) > m.width && m.width > 2 {
+			// Truncate by runes to handle non-ASCII correctly
+			runes := []rune(dirLine)
+			for lipgloss.Width(string(runes)) > m.width-1 {
+				runes = runes[:len(runes)-1]
+			}
+			dirLine = string(runes) + "\u2026"
+		}
+		sb.WriteString(dimStyle.Render(dirLine))
+		sb.WriteString("\n")
+	}
 	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, len(m.availableAgents) > 1, m.streamOpen))
 
 	if m.statusText != "" {
@@ -590,6 +603,8 @@ func (m Model) maxVisibleRows() int {
 	}
 	if m.streamOpen {
 		overhead += streamPanelHeight(m.height) + 1 // +1 for spacer line above top separator
+	} else if len(m.rows) > 0 {
+		overhead++ // directory path line above footer
 	}
 	max := m.height - overhead
 	if max < 1 {

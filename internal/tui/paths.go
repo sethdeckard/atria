@@ -16,7 +16,7 @@ func shortenPath(path string) string {
 	if len(parts) <= 2 {
 		return path
 	}
-	return "\u2026/" + strings.Join(parts[len(parts)-2:], "/")
+	return strings.Join(parts[len(parts)-2:], "/")
 }
 
 // contractHome replaces home dir prefix with ~ for display.
