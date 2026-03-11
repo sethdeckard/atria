@@ -35,6 +35,7 @@ const (
 	viewBatchPrompt
 	viewTerminal
 	viewSettings
+	viewSetup
 )
 
 type Model struct {
@@ -89,6 +90,15 @@ type Model struct {
 	configPath      string
 	ptyClient       terminal.Backend
 	settingsDirPick bool // true when dir browser is for settings (add watch dir)
+
+	// Setup wizard
+	setupItems      []settingsItem
+	setupCursor     int
+	setupStep       int
+	setupEditing    bool
+	setupEditBuf    string
+	setupDirPick    bool      // true when dir browser is for setup (add watch dir)
+	setupReturnView viewState // view to return to when wizard exits
 
 	// Directory browser
 	browserDirs   []DirBrowserItem
@@ -325,9 +335,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cb, ok := m.backend.(interface{ Invalidate() }); ok {
 				cb.Invalidate()
 			}
-			// Rebuild settings items.
+			// Rebuild settings/setup items.
 			if m.cfg != nil {
 				m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+				if m.view == viewSetup {
+					m.rebuildSetupItems()
+				}
 			}
 		}
 		return m, nil
@@ -338,6 +351,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Rollback != nil {
 				msg.Rollback(&m)
 				m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+				if m.view == viewSetup {
+					m.rebuildSetupItems()
+				}
 			}
 		}
 		return m, nil
@@ -382,6 +398,8 @@ func (m Model) View() string {
 		content = m.termView.render()
 	case viewSettings:
 		content = renderSettings(m.settingsItems, m.settingsCursor, m.settingsEditing, m.settingsEditBuf, m.width, m.height)
+	case viewSetup:
+		content = renderSetupWithDescription(m.setupStep, m.setupItems, m.setupCursor, m.setupEditing, m.setupEditBuf, m.statusInfo, m.cfg, m.width, m.height)
 	}
 
 	if m.showHelp {
@@ -417,7 +435,8 @@ func (m Model) viewProjectList() string {
 		}
 	}
 
-	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, m.availableAgents, maxRows, scrollOffset, m.sortCol, m.sortDesc)
+	canSetup := m.canSetup()
+	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, m.availableAgents, maxRows, scrollOffset, m.sortCol, m.sortDesc, canSetup)
 	sb.WriteString(list)
 
 	if m.streamOpen {
@@ -652,12 +671,12 @@ func (m Model) viewChat() string {
 
 func (m Model) viewDirBrowser() string {
 	var sb strings.Builder
-	agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
+	agentName := agentDisplayName(m.defaultAgent)
 
 	// Header
 	headerText := "launch " + agentName
 	var right string
-	if m.settingsDirPick {
+	if m.settingsDirPick || m.setupDirPick {
 		headerText = "select watch directory"
 		right = brandingStyle.Render("atria  ")
 	} else {
@@ -691,7 +710,7 @@ func (m Model) viewDirBrowser() string {
 	idx := 0
 
 	recent := m.browserRecentProjects()
-	if m.settingsDirPick {
+	if m.settingsDirPick || m.setupDirPick {
 		recent = nil
 	}
 	if len(recent) > 0 {
@@ -797,7 +816,7 @@ func (m Model) viewDirBrowser() string {
 		} else {
 			// Action button
 			launchLabel := "\u25b6 launch " + agentName + " here"
-			if m.settingsDirPick {
+			if m.settingsDirPick || m.setupDirPick {
 				launchLabel = "\u25b6 add this directory"
 			}
 			if selected {
@@ -812,11 +831,11 @@ func (m Model) viewDirBrowser() string {
 	// Footer
 	var hints []string
 	hints = append(hints, "enter:select")
-	if !m.settingsDirPick {
+	if !m.settingsDirPick && !m.setupDirPick {
 		hints = append(hints, "l/\u2192:open")
 	}
 	hints = append(hints, "h/\u2190:back")
-	if !m.settingsDirPick && len(m.availableAgents) > 1 {
+	if !m.settingsDirPick && !m.setupDirPick && len(m.availableAgents) > 1 {
 		hints = append(hints, "t:toggle")
 	}
 	hints = append(hints, "esc:cancel")
@@ -841,7 +860,7 @@ func (m Model) viewHelp() string {
   j/k, arrows   Navigate project list
   v              Toggle agent screen stream
   l              Launch agent in a project
-  t              Toggle agent type (Claude/Codex)
+  t              Toggle agent type (Claude Code/Codex/OpenCode)
   s              Cycle sort column
   S              Reverse sort direction
   f              Focus agent's terminal tab
@@ -868,6 +887,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleTerminalKey(msg)
 	case viewSettings:
 		return m.handleSettingsKey(msg)
+	case viewSetup:
+		return m.handleSetupKey(msg)
 	}
 	return m, nil
 }
@@ -926,8 +947,7 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
-		m.statusText = "Default agent: " + agentName
+		m.statusText = "Default agent: " + agentDisplayName(m.defaultAgent)
 		return m, nil
 
 	case key.Matches(msg, keys.Sort):
@@ -938,6 +958,17 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, keys.SortReverse):
+		if len(m.rows) == 0 && m.canSetup() {
+			m.setupStep = 0
+			m.setupEditing = false
+			m.setupEditBuf = ""
+			m.setupReturnView = viewProjectList
+			m.setupItems = buildSetupStepItems(0, m.statusInfo, m.cfg, m.availableAgents)
+			m.setupCursor = firstSelectableItem(m.setupItems)
+			m.view = viewSetup
+			m.showHelp = false
+			return m, nil
+		}
 		m.sortDesc = !m.sortDesc
 		sortRows(m.rows, m.sortCol, m.sortDesc)
 		m.cursor = 0
@@ -1027,7 +1058,11 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case key.Matches(msg, keys.Escape):
-		if m.settingsDirPick {
+		if m.setupDirPick {
+			m.setupDirPick = false
+			m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
+			m.view = viewSetup
+		} else if m.settingsDirPick {
 			m.settingsDirPick = false
 			m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
 			m.view = viewSettings
@@ -1084,6 +1119,24 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, listDir(parent)
 
 	case key.Matches(msg, keys.Enter):
+		// Setup: add watch dir
+		if m.setupDirPick {
+			if m.browserCursor == launchIdx {
+				return m.addSetupWatchDirFromBrowser(m.browserPath)
+			}
+			if m.browserCursor < recentCount {
+				recent := m.browserRecentProjects()
+				p := recent[m.browserCursor]
+				return m.addSetupWatchDirFromBrowser(p.Dir)
+			}
+			dirIdx := m.browserCursor - recentCount
+			if dirIdx >= 0 && dirIdx < len(m.browserDirs) {
+				dir := m.browserDirs[dirIdx]
+				return m, listDir(dir.Path)
+			}
+			return m, nil
+		}
+
 		// Settings: add watch dir
 		if m.settingsDirPick {
 			if m.browserCursor == launchIdx {
@@ -1140,14 +1193,29 @@ func (m Model) addWatchDirFromBrowser(dirPath string) (Model, tea.Cmd) {
 	})
 }
 
+func (m Model) addSetupWatchDirFromBrowser(dirPath string) (Model, tea.Cmd) {
+	m.setupDirPick = false
+	prevWatchDirs := make([]string, len(m.cfg.WatchDirs))
+	copy(prevWatchDirs, m.cfg.WatchDirs)
+	if !containsString(m.cfg.WatchDirs, dirPath) {
+		m.cfg.WatchDirs = append(m.cfg.WatchDirs, dirPath)
+		m.watchDirs = m.cfg.WatchDirs
+	}
+	m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
+	m.view = viewSetup
+	return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {
+		rm.cfg.WatchDirs = prevWatchDirs
+		rm.watchDirs = prevWatchDirs
+	})
+}
+
 func (m Model) launchFromBrowser(dirPath, name string) (Model, tea.Cmd) {
 	m.store.AddProject(dirPath)
 	_ = m.store.SaveProjects()
 	m.rows = buildRows(storeAdapter{m.store})
 	sortRows(m.rows, m.sortCol, m.sortDesc)
 	m.view = viewProjectList
-	agentName := strings.ToUpper(string(m.defaultAgent)[:1]) + string(m.defaultAgent)[1:]
-	m.statusText = fmt.Sprintf("Launching %s for %s...", agentName, name)
+	m.statusText = fmt.Sprintf("Launching %s for %s...", agentDisplayName(m.defaultAgent), name)
 	return m, launchAgent(m.backend, dirPath, m.defaultAgent)
 }
 
@@ -1165,7 +1233,7 @@ func (m Model) browserRecentProjects() []*model.Project {
 }
 
 func (m Model) browserRecentCount() int {
-	if m.settingsDirPick {
+	if m.settingsDirPick || m.setupDirPick {
 		return 0
 	}
 	return len(m.browserRecentProjects())
@@ -1271,22 +1339,25 @@ func (m Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.settingsEditing = true
 			m.settingsEditBuf = item.value
 			return m, nil
+		case "action":
+			if item.key == "add_watch_dir" {
+				return m.openSettingsDirPicker()
+			}
 		}
 		return m, nil
 
 	case key.Matches(msg, keys.Add):
-		// Add watch dir (works from anywhere in settings)
-		startDir := ""
-		if len(m.watchDirs) > 0 {
-			startDir = m.watchDirs[0]
-		}
-		if startDir == "" {
-			home, _ := os.UserHomeDir()
-			startDir = home
-		}
-		m.settingsEditing = false
-		m.settingsDirPick = true
-		return m, listDir(startDir)
+		return m.openSettingsDirPicker()
+
+	case key.Matches(msg, keys.SortReverse):
+		m.setupStep = 0
+		m.setupEditing = false
+		m.setupEditBuf = ""
+		m.setupReturnView = viewSettings
+		m.setupItems = buildSetupStepItems(0, m.statusInfo, m.cfg, m.availableAgents)
+		m.setupCursor = firstSelectableItem(m.setupItems)
+		m.view = viewSetup
+		return m, nil
 
 	case key.Matches(msg, keys.Delete):
 		if m.settingsCursor < 0 || m.settingsCursor >= len(m.settingsItems) {
@@ -1386,6 +1457,38 @@ func (m Model) handleSettingsEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
+// canSetup returns true when no integrations are enabled and at least one
+// integration environment is detected (TMUX set or TERM_PROGRAM == iTerm.app).
+// rebuildSetupItems rebuilds the setup item list for the current step,
+// cancels any in-progress edit, and clamps the cursor.
+func (m *Model) rebuildSetupItems() {
+	m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
+	m.setupEditing = false
+	m.setupEditBuf = ""
+	if m.setupCursor >= len(m.setupItems) {
+		m.setupCursor = len(m.setupItems) - 1
+	}
+	if m.setupCursor < 0 {
+		m.setupCursor = 0
+	}
+}
+
+// canSetup returns true when basic onboarding is incomplete: no watch
+// directories configured, or an integration environment is detected but
+// not yet enabled.
+func (m *Model) canSetup() bool {
+	if m.cfg == nil {
+		return false
+	}
+	if len(m.cfg.WatchDirs) == 0 {
+		return true
+	}
+	if len(m.cfg.Integrations) > 0 {
+		return false
+	}
+	return os.Getenv("TMUX") != "" || os.Getenv("TERM_PROGRAM") == "iTerm.app"
+}
+
 func (m *Model) firstEditableSettingsItem() int {
 	for i, item := range m.settingsItems {
 		if item.itemType != "header" {
@@ -1434,6 +1537,20 @@ func (m Model) toggleSettingsIntegration(item settingsItem) (Model, tea.Cmd) {
 	return m, toggleIntegration(item.key, enable, m.cfg, m.configPath, composite, m.ptyClient)
 }
 
+func (m Model) openSettingsDirPicker() (Model, tea.Cmd) {
+	startDir := ""
+	if len(m.watchDirs) > 0 {
+		startDir = m.watchDirs[0]
+	}
+	if startDir == "" {
+		home, _ := os.UserHomeDir()
+		startDir = home
+	}
+	m.settingsEditing = false
+	m.settingsDirPick = true
+	return m, listDir(startDir)
+}
+
 func (m Model) cycleSettingsChoice(item settingsItem) (Model, tea.Cmd) {
 	if item.key != "default_agent" {
 		return m, nil
@@ -1443,17 +1560,17 @@ func (m Model) cycleSettingsChoice(item settingsItem) (Model, tea.Cmd) {
 		return m, nil
 	}
 	cur := item.value
-	next := string(agents[0])
+	nextAgent := agents[0]
 	for i, a := range agents {
-		if string(a) == cur {
-			next = string(agents[(i+1)%len(agents)])
+		if agentDisplayName(a) == cur {
+			nextAgent = agents[(i+1)%len(agents)]
 			break
 		}
 	}
 	prevAgent := m.defaultAgent
 	prevCfgAgent := m.cfg.DefaultAgent
-	m.defaultAgent = model.AgentType(next)
-	m.cfg.DefaultAgent = next
+	m.defaultAgent = nextAgent
+	m.cfg.DefaultAgent = string(nextAgent)
 	m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
 	return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {
 		rm.defaultAgent = prevAgent

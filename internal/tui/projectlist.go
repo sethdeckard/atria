@@ -177,13 +177,13 @@ func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int, col sor
 	return dimStyle.Render(line)
 }
 
-func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, availableAgents []model.AgentType, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool) string {
+func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, availableAgents []model.AgentType, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool, canSetup bool) string {
 	var sb strings.Builder
 
 	sb.WriteString(renderHeader(width))
 
 	if len(rows) == 0 {
-		sb.WriteString(renderEmptyState(defaultAgent, len(availableAgents) > 1, availableAgents))
+		sb.WriteString(renderEmptyState(defaultAgent, len(availableAgents) > 1, availableAgents, canSetup))
 		return sb.String()
 	}
 
@@ -413,7 +413,7 @@ func relativeTime(t time.Time) string {
 	}
 }
 
-func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAgents []model.AgentType) string {
+func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAgents []model.AgentType, canSetup bool) string {
 	var sb strings.Builder
 
 	logo := logoStyle.Render(`         _        _
@@ -425,13 +425,16 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAge
 	sb.WriteString("\n\n")
 	sb.WriteString(emptyHintStyle.Render("  Agent multiplexer for your terminal."))
 	sb.WriteString("\n\n")
+	if canSetup {
+		sb.WriteString("  " + selectedTextStyle.Render("S") + emptyHintStyle.Render("  ") + titleStyle.Render("run setup") + emptyHintStyle.Render(" \u2014 configure integrations and watch directories"))
+		sb.WriteString("\n\n")
+	}
 	sb.WriteString("  " + emptyKeyStyle.Render("l") + emptyHintStyle.Render("  launch an agent in a directory"))
 	sb.WriteString("\n")
 	if canToggle {
 		var names []string
 		for _, a := range availableAgents {
-			name := string(a)
-			names = append(names, strings.ToUpper(name[:1])+name[1:])
+			names = append(names, agentDisplayName(a))
 		}
 		sb.WriteString("  " + emptyKeyStyle.Render("t") + emptyHintStyle.Render(fmt.Sprintf("  toggle agent type (%s)", strings.Join(names, "/"))))
 		sb.WriteString("\n")
@@ -459,8 +462,7 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 		global = append(global, "v:stream")
 	}
 	if defaultAgent != "" {
-		agentName := strings.ToUpper(string(defaultAgent)[:1]) + string(defaultAgent)[1:]
-		global = append(global, fmt.Sprintf("l:launch (%s)", agentName))
+		global = append(global, fmt.Sprintf("l:launch (%s)", agentDisplayName(defaultAgent)))
 	}
 	if canToggle {
 		global = append(global, "t:toggle")

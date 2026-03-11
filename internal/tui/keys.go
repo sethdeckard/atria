@@ -23,6 +23,8 @@ type keyMap struct {
 	CtrlD         key.Binding
 	CtrlBackslash key.Binding
 	Add           key.Binding
+	Tab           key.Binding
+	ShiftTab      key.Binding
 }
 
 var keys = keyMap{
@@ -103,5 +105,13 @@ var keys = keyMap{
 	Add: key.NewBinding(
 		key.WithKeys("a"),
 		key.WithHelp("a", "add"),
+	),
+	Tab: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "next"),
+	),
+	ShiftTab: key.NewBinding(
+		key.WithKeys("shift+tab"),
+		key.WithHelp("shift+tab", "back"),
 	),
 }

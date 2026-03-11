@@ -56,20 +56,26 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 			value: d, key: "watch_dirs",
 		})
 	}
+	items = append(items, settingsItem{
+		section: "watch_dirs", label: "  + add directory", itemType: "action",
+		key: "add_watch_dir",
+	})
 
 	// Section: Config
 	items = append(items, settingsItem{section: "config", label: "config", itemType: "header"})
 
 	// Default agent
-	agentVal := "claude"
+	var agentType model.AgentType
 	if cfg.DefaultAgent != "" {
-		agentVal = cfg.DefaultAgent
+		agentType = model.AgentType(cfg.DefaultAgent)
 	} else if len(agents) > 0 {
-		agentVal = string(agents[0])
+		agentType = agents[0]
+	} else {
+		agentType = model.AgentClaude
 	}
 	items = append(items, settingsItem{
 		section: "config", label: "  default agent", itemType: "choice",
-		value: agentVal, key: "default_agent",
+		value: agentDisplayName(agentType), key: "default_agent",
 	})
 
 	// PTY dimensions
@@ -178,6 +184,8 @@ func renderSettings(items []settingsItem, cursor int, editing bool, editBuf stri
 
 		if isSelected {
 			sb.WriteString(selectedStyle.Render(line))
+		} else if item.itemType == "action" {
+			sb.WriteString(dimStyle.Render(label))
 		} else {
 			switch {
 			case strings.Contains(value, "\u2713"):
@@ -209,6 +217,8 @@ func renderSettings(items []settingsItem, cursor int, editing bool, editBuf stri
 				hints = append(hints, "enter: toggle")
 			case "string", "number":
 				hints = append(hints, "enter: edit")
+			case "action":
+				hints = append(hints, "enter: add")
 			case "list-entry":
 				hints = append(hints, "d: remove")
 			}
@@ -216,6 +226,7 @@ func renderSettings(items []settingsItem, cursor int, editing bool, editBuf stri
 				hints = append(hints, "a: add")
 			}
 		}
+		hints = append(hints, "S: setup")
 		hints = append(hints, "esc: back")
 		sb.WriteString(footerStyle.Render("  " + strings.Join(hints, "  ")))
 	}
