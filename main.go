@@ -11,6 +11,7 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/internal/terminal/iterm"
+	"github.com/sethdeckard/atria/internal/terminal/kitty"
 	ptybackend "github.com/sethdeckard/atria/internal/terminal/pty"
 	"github.com/sethdeckard/atria/internal/terminal/tmux"
 	"github.com/sethdeckard/atria/internal/tui"
@@ -85,6 +86,13 @@ func main() {
 		switch name {
 		case "iterm2":
 			bs := tui.BackendStatus{Name: "iterm2", Enabled: true}
+			// Skip interactive Preflight when not inside iTerm2 — it
+			// triggers AppleScript Automation prompts and stdin reads.
+			if os.Getenv("TERM_PROGRAM") != "iTerm.app" {
+				bs.Reason = "not running inside iTerm2"
+				backendStatuses = append(backendStatuses, bs)
+				continue
+			}
 			it2Path, ok := iterm.Preflight(cfg.IT2Path)
 			if !ok {
 				bs.Reason = "it2 not available"
@@ -121,6 +129,22 @@ func main() {
 				bs.Active = true
 			}
 			backendStatuses = append(backendStatuses, bs)
+		case "kitty":
+			bs := tui.BackendStatus{Name: "kitty", Enabled: true}
+			kt := kitty.NewClient(cfg.KittenPath)
+			if err := kt.Available(); err != nil {
+				bs.Reason = err.Error()
+				backendStatuses = append(backendStatuses, bs)
+				continue
+			}
+			availableIntegrations["kitty"] = kt
+			integrations = append(integrations, terminal.Integration{
+				Prefix: "kitty:", Source: "kitty", Backend: kt,
+			})
+			if os.Getenv("KITTY_WINDOW_ID") != "" {
+				bs.Active = true
+			}
+			backendStatuses = append(backendStatuses, bs)
 		default:
 			fmt.Fprintf(os.Stderr, "unknown integration: %s\n", name)
 		}
@@ -133,6 +157,9 @@ func main() {
 	if !configuredSet["tmux"] {
 		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "tmux"})
 	}
+	if !configuredSet["kitty"] {
+		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "kitty"})
+	}
 
 	// Derive launch target from environment + available integrations.
 	// Prefer tmux (most specific), then iTerm, then PTY.
@@ -141,6 +168,9 @@ func main() {
 	if b, ok := availableIntegrations["tmux"]; ok && os.Getenv("TMUX") != "" {
 		primary = b
 		primarySource = "tmux"
+	} else if b, ok := availableIntegrations["kitty"]; ok && os.Getenv("KITTY_WINDOW_ID") != "" {
+		primary = b
+		primarySource = "kitty"
 	} else if b, ok := availableIntegrations["iterm2"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
 		primary = b
 		primarySource = "iterm"
@@ -149,6 +179,7 @@ func main() {
 	// Mark launch targets in status info.
 	for i, bs := range backendStatuses {
 		if bs.Active && ((bs.Name == "tmux" && primarySource == "tmux") ||
+			(bs.Name == "kitty" && primarySource == "kitty") ||
 			(bs.Name == "iterm2" && primarySource == "iterm")) {
 			backendStatuses[i].Launch = true
 		}

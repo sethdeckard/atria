@@ -1473,20 +1473,9 @@ func (m *Model) rebuildSetupItems() {
 	}
 }
 
-// canSetup returns true when basic onboarding is incomplete: no watch
-// directories configured, or an integration environment is detected but
-// not yet enabled.
+// canSetup returns true when the empty state should offer the setup wizard.
 func (m *Model) canSetup() bool {
-	if m.cfg == nil {
-		return false
-	}
-	if len(m.cfg.WatchDirs) == 0 {
-		return true
-	}
-	if len(m.cfg.Integrations) > 0 {
-		return false
-	}
-	return os.Getenv("TMUX") != "" || os.Getenv("TERM_PROGRAM") == "iTerm.app"
+	return m.cfg != nil
 }
 
 func (m *Model) firstEditableSettingsItem() int {
@@ -1738,18 +1727,32 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		cmds = append(cmds, discoverAgent(m.backend, sess, agentType, m.watchDirs, projectDirs))
 	}
 
-	// Check tracked sessions whose iTerm name no longer matches an agent.
-	// The agent must be idle AND have accumulated unmatched screen reads,
-	// meaning the screen shows no agent patterns (e.g. a plain shell after
-	// the agent exited). Idle alone is not sufficient — Claude's tab title
-	// drops the ✳ prefix while idle but the screen still shows agent UI.
+	// Track orphan ticks: when a session is idle, the terminal name no
+	// longer matches an agent pattern, AND the bottom screen region shows
+	// no agent UI, the agent likely exited and the pane fell back to a shell.
+	//
+	// All three conditions are needed:
+	// - Name check alone is insufficient: Claude drops ✳/agent keywords
+	//   from its title while idle but its screen still shows ❯.
+	// - UnmatchedReads alone is insufficient: idle patterns from agent
+	//   scrollback (e.g. Codex's › still visible) keep resetting it.
+	// - HasAgentScreen restricts pattern matching to the bottom region,
+	//   so scrollback from exited agents doesn't prevent orphan cleanup.
 	liveNames := make(map[string]string)
 	for _, sess := range msg.Sessions {
 		liveNames[sess.ID] = sess.Name
 	}
 	for _, s := range m.store.Sessions {
 		name, alive := liveNames[s.SessionID]
-		if alive && s.Status == model.StatusIdle && s.UnmatchedReads >= 3 && terminal.DetectAgent(name) == "" {
+		if !alive {
+			continue
+		}
+		if s.Status == model.StatusIdle && s.ScreenChecked && terminal.DetectAgent(name) == "" && !terminal.HasAgentScreen(s.LastScreen, s.Type) {
+			s.OrphanTicks++
+		} else {
+			s.OrphanTicks = 0
+		}
+		if s.OrphanTicks >= 2 {
 			liveIDs[s.SessionID] = false // mark for removal below
 		}
 	}

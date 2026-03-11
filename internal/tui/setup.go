@@ -31,7 +31,7 @@ func buildSetupStepItems(step int, info StatusInfo, cfg *config.Config, agents [
 
 func buildSetupIntegrationItems(info StatusInfo) []settingsItem {
 	var items []settingsItem
-	for _, bs := range info.Backends {
+	for _, bs := range sortedIntegrations(info.Backends) {
 		if bs.Name == "pty" {
 			continue
 		}
@@ -111,6 +111,8 @@ func envDetected(name string) bool {
 		return os.Getenv("TMUX") != ""
 	case "iterm2":
 		return os.Getenv("TERM_PROGRAM") == "iTerm.app"
+	case "kitty":
+		return os.Getenv("KITTY_WINDOW_ID") != ""
 	}
 	return false
 }
@@ -146,27 +148,21 @@ func setupStepDescription(step int, cfg *config.Config) string {
 	case 0:
 		inTmux := os.Getenv("TMUX") != ""
 		inITerm := os.Getenv("TERM_PROGRAM") == "iTerm.app"
+		inKitty := os.Getenv("KITTY_WINDOW_ID") != ""
 
 		switch {
 		case inTmux && inITerm:
 			return fmt.Sprintf("You're running inside tmux and iTerm2. Enabling these integrations\nlets %s discover agent sessions in your tmux windows and iTerm tabs and panes.", atria)
+		case inTmux && inKitty:
+			return fmt.Sprintf("You're running inside tmux and Kitty. Enabling these integrations\nlets %s discover agent sessions in your tmux windows and Kitty tabs.", atria)
 		case inTmux:
 			return fmt.Sprintf("You're running inside tmux. Enabling the tmux integration lets\n%s discover agent sessions in your tmux windows.", atria)
 		case inITerm:
-			desc := fmt.Sprintf("You're running inside iTerm2. Enabling the iterm2 integration lets\n%s discover agent sessions in your iTerm tabs and panes.", atria)
-			// Check if iterm2 was just toggled on and probe failed
-			for _, integ := range cfg.Integrations {
-				if integ == "iterm2" {
-					for _, bs := range []string{} {
-						_ = bs
-					}
-					// Check if it2 is not available via backend status
-					break
-				}
-			}
-			return desc
+			return fmt.Sprintf("You're running inside iTerm2. Enabling the iterm2 integration lets\n%s discover agent sessions in your iTerm tabs and panes.", atria)
+		case inKitty:
+			return fmt.Sprintf("You're running inside Kitty. Enabling the kitty integration lets\n%s discover agent sessions in your Kitty tabs.", atria)
 		default:
-			return fmt.Sprintf("Integrations let %s discover agent sessions running in\nexternal terminal multiplexers like tmux or iTerm2.", atria)
+			return fmt.Sprintf("Integrations let %s discover agent sessions running in\nexternal terminal multiplexers like tmux, iTerm2, or Kitty.", atria)
 		}
 
 	case 1:
@@ -178,19 +174,54 @@ func setupStepDescription(step int, cfg *config.Config) string {
 	return ""
 }
 
-func setupStepDescriptionWithStatus(step int, cfg *config.Config, info StatusInfo) string {
-	desc := setupStepDescription(step, cfg)
-	if step != 0 {
-		return desc
-	}
-	// Add restart note if iterm2 is enabled but not active (it2 not available)
-	for _, bs := range info.Backends {
-		if bs.Name == "iterm2" && bs.Enabled && !bs.Active && bs.Reason != "" {
-			desc += "\n\nRestart Atria to complete iTerm2 setup."
+// integrationHint returns an actionable hint for the given integration,
+// or empty string if none is needed.
+func integrationHint(name string, info StatusInfo) string {
+	var bs *BackendStatus
+	for _, b := range info.Backends {
+		if b.Name == name {
+			bs = &b
 			break
 		}
 	}
-	return desc
+	if bs == nil {
+		return ""
+	}
+
+	switch name {
+	case "iterm2":
+		if bs.Enabled && !bs.Active && bs.Reason != "" {
+			return "Restart Atria in iTerm2 to complete setup."
+		}
+		if !bs.Enabled && !envDetected(name) {
+			return "Enable inside iTerm2 to discover agent sessions."
+		}
+	case "kitty":
+		if bs.Enabled && !bs.Active && bs.Reason != "" {
+			return "Requires kitty.conf: allow_remote_control yes, listen_on unix:/tmp/kitty-{kitty_pid}"
+		}
+		if !bs.Enabled && !envDetected(name) {
+			return "Enable inside Kitty to discover agent sessions."
+		}
+	case "tmux":
+		if !bs.Enabled && !envDetected(name) {
+			return "Enable inside tmux to discover agent sessions."
+		}
+		if bs.Enabled && !bs.Active {
+			return "Start a tmux session and run Atria inside it."
+		}
+	}
+	return ""
+}
+
+// setupStepDescriptionAndHint returns the base description and an optional
+// contextual hint for the highlighted integration (step 0 only).
+func setupStepDescriptionAndHint(step int, cfg *config.Config, info StatusInfo, highlightedName string) (string, string) {
+	desc := setupStepDescription(step, cfg)
+	if step != 0 || highlightedName == "" {
+		return desc, ""
+	}
+	return desc, integrationHint(highlightedName, info)
 }
 
 func renderSetup(step int, items []settingsItem, cursor int, editing bool, editBuf string, width, _ int) string {
@@ -319,7 +350,12 @@ const setupStepDescriptionPlaceholder = "__SETUP_DESC__"
 
 func renderSetupWithDescription(step int, items []settingsItem, cursor int, editing bool, editBuf string, info StatusInfo, cfg *config.Config, width, height int) string {
 	raw := renderSetup(step, items, cursor, editing, editBuf, width, height)
-	desc := setupStepDescriptionWithStatus(step, cfg, info)
+	// Determine which integration is highlighted for contextual hint.
+	highlightedName := ""
+	if cursor >= 0 && cursor < len(items) && items[cursor].section == "backends" {
+		highlightedName = items[cursor].key
+	}
+	desc, hint := setupStepDescriptionAndHint(step, cfg, info, highlightedName)
 	// Indent each line of description
 	lines := strings.Split(desc, "\n")
 	var indented []string
@@ -327,6 +363,9 @@ func renderSetupWithDescription(step int, items []settingsItem, cursor int, edit
 		indented = append(indented, "  "+l)
 	}
 	styledDesc := dimStyle.Render(strings.Join(indented, "\n"))
+	if hint != "" {
+		styledDesc += "\n\n" + statusBarStyle.Render("  "+hint)
+	}
 	return strings.Replace(raw, dimStyle.Render("  "+setupStepDescriptionPlaceholder), styledDesc, 1)
 }
 

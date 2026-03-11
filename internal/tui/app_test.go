@@ -954,15 +954,17 @@ func TestSessionsRefreshedRemovesExitedAgent(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:     "/a/myproject",
-		SessionID:      "sess-exited",
-		Type:           model.AgentCodex,
-		Status:         model.StatusIdle,
-		UnmatchedReads: 3, // screen shows no agent patterns (plain shell)
+		ProjectDir:    "/a/myproject",
+		SessionID:     "sess-exited",
+		Type:          model.AgentCodex,
+		Status:        model.StatusIdle,
+		OrphanTicks:   1, // one tick already accumulated, next refresh triggers removal
+		LastScreen:    "user@host ~ %", // shell prompt, no agent UI
+		ScreenChecked: true,
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
-	// iTerm pane still alive but name no longer matches an agent (plain zsh)
+	// Pane still alive but name no longer matches an agent (plain zsh)
 	updated, _ := m.Update(SessionsRefreshedMsg{
 		Sessions: []terminal.Session{
 			{ID: "sess-exited", Name: "zsh"},
@@ -971,6 +973,88 @@ func TestSessionsRefreshedRemovesExitedAgent(t *testing.T) {
 	um := modelFrom(updated)
 	if um.store.SessionByID("sess-exited") != nil {
 		t.Error("expected exited agent session to be removed")
+	}
+}
+
+func TestSessionsRefreshedOrphanFullCycle(t *testing.T) {
+	// End-to-end: idle + generic title + no agent screen => removed after 2 refreshes.
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir:    "/a/myproject",
+		SessionID:     "sess-orphan",
+		Type:          model.AgentCodex,
+		Status:        model.StatusIdle,
+		LastScreen:    "user@host ~ %",
+		ScreenChecked: true,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	refreshMsg := SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "sess-orphan", Name: "~/projects/myproject"},
+		},
+	}
+
+	// First refresh: OrphanTicks goes from 0 → 1, session kept.
+	updated, _ := m.Update(refreshMsg)
+	um := modelFrom(updated)
+	sess := um.store.SessionByID("sess-orphan")
+	if sess == nil {
+		t.Fatal("expected session to survive first refresh")
+	}
+	if sess.OrphanTicks != 1 {
+		t.Fatalf("expected OrphanTicks=1 after first refresh, got %d", sess.OrphanTicks)
+	}
+
+	// Second refresh: OrphanTicks goes from 1 → 2, session removed.
+	updated2, _ := um.Update(refreshMsg)
+	um2 := modelFrom(updated2)
+	if um2.store.SessionByID("sess-orphan") != nil {
+		t.Error("expected orphan session to be removed after second refresh")
+	}
+}
+
+func TestSessionsRefreshedKeepsIdleAgentWithScreenUI(t *testing.T) {
+	// idle + generic title + agent prompt still visible => retained across refreshes.
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir:    "/a/myproject",
+		SessionID:     "sess-idle",
+		Type:          model.AgentClaude,
+		Status:        model.StatusIdle,
+		ScreenChecked: true,
+		LastScreen:    "some conversation output\n\n❯ ", // Claude prompt in bottom region
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	refreshMsg := SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "sess-idle", Name: "Editing foo.go"},
+		},
+	}
+
+	// First refresh: screen shows agent UI, OrphanTicks stays 0.
+	updated, _ := m.Update(refreshMsg)
+	um := modelFrom(updated)
+	sess := um.store.SessionByID("sess-idle")
+	if sess == nil {
+		t.Fatal("expected idle Claude session to survive first refresh")
+	}
+	if sess.OrphanTicks != 0 {
+		t.Errorf("expected OrphanTicks=0 when screen shows agent UI, got %d", sess.OrphanTicks)
+	}
+
+	// Second refresh: still retained, OrphanTicks still 0.
+	updated2, _ := um.Update(refreshMsg)
+	um2 := modelFrom(updated2)
+	sess2 := um2.store.SessionByID("sess-idle")
+	if sess2 == nil {
+		t.Fatal("expected idle Claude session to survive second refresh")
+	}
+	if sess2.OrphanTicks != 0 {
+		t.Errorf("expected OrphanTicks=0 after second refresh, got %d", sess2.OrphanTicks)
 	}
 }
 

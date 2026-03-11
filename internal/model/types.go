@@ -66,6 +66,7 @@ type AgentSession struct {
 	InitialStatus  AgentStatus `json:"-"`
 	LastScreen     string      `json:"-"`
 	UnmatchedReads int         `json:"-"` // consecutive screen reads with no agent pattern
+	OrphanTicks    int         `json:"-"` // consecutive refreshes where name doesn't match agent while idle
 	Source         string      `json:"-"` // "pty", "iterm", "tmux"
 }
 

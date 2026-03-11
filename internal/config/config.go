@@ -16,6 +16,7 @@ type Config struct {
 	IT2Path      string   `toml:"it2_path"`
 	TmuxPath     string   `toml:"tmux_path"`
 	TmuxSession  string   `toml:"tmux_session"`
+	KittenPath   string   `toml:"kitten_path"`
 	DataDir      string   `toml:"data_dir"`
 	MonitorDir   string   `toml:"monitor_dir"`
 	CacheTTL     int      `toml:"cache_ttl"`
@@ -52,6 +53,7 @@ func Load(path string) (*Config, error) {
 	cfg.MonitorDir = expandHome(cfg.MonitorDir)
 	cfg.IT2Path = expandHome(cfg.IT2Path)
 	cfg.TmuxPath = expandHome(cfg.TmuxPath)
+	cfg.KittenPath = expandHome(cfg.KittenPath)
 	cfg.LaunchDir = expandHome(cfg.LaunchDir)
 
 	for i, dir := range cfg.WatchDirs {
@@ -110,7 +112,8 @@ func (cfg *Config) Save(path string) error {
 	// integrations
 	sb.WriteString("# Terminal integrations for agent discovery and launching\n")
 	sb.WriteString("# Available: \"iterm2\" (macOS, requires iTerm2 Python API),\n")
-	sb.WriteString("#            \"tmux\" (requires running inside tmux)\n")
+	sb.WriteString("#            \"tmux\" (requires running inside tmux),\n")
+	sb.WriteString("#            \"kitty\" (requires Kitty remote control)\n")
 	if len(cfg.Integrations) > 0 {
 		sb.WriteString("integrations = [")
 		for i, name := range cfg.Integrations {
@@ -168,6 +171,15 @@ func (cfg *Config) Save(path string) error {
 		sb.WriteString(fmt.Sprintf("it2_path = %q\n", contractHome(cfg.IT2Path)))
 	} else {
 		sb.WriteString("# it2_path = \"~/.local/share/atria/venv/bin/it2\"\n")
+	}
+	sb.WriteString("\n")
+
+	// kitty settings
+	sb.WriteString("# Kitty backend settings\n")
+	if cfg.KittenPath != "" {
+		sb.WriteString(fmt.Sprintf("kitten_path = %q\n", contractHome(cfg.KittenPath)))
+	} else {
+		sb.WriteString("# kitten_path = \"kitten\"\n")
 	}
 	sb.WriteString("\n")
 

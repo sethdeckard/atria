@@ -37,7 +37,7 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 
 	// Section: Backends
 	items = append(items, settingsItem{section: "backends", label: "integrations", itemType: "header"})
-	for _, bs := range info.Backends {
+	for _, bs := range sortedIntegrations(info.Backends) {
 		if bs.Name == "pty" {
 			continue
 		}
@@ -107,6 +107,23 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 	})
 
 	return items
+}
+
+// sortedIntegrations returns a copy of backends with the current terminal's
+// integration sorted to the top (after pty which is always first).
+func sortedIntegrations(backends []BackendStatus) []BackendStatus {
+	sorted := make([]BackendStatus, len(backends))
+	copy(sorted, backends)
+	for i := 1; i < len(sorted); i++ {
+		if envDetected(sorted[i].Name) {
+			// Move to position 1 (after pty at 0).
+			bs := sorted[i]
+			copy(sorted[2:i+1], sorted[1:i])
+			sorted[1] = bs
+			break
+		}
+	}
+	return sorted
 }
 
 func backendStatusLabel(bs BackendStatus) string {

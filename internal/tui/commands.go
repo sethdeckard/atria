@@ -12,6 +12,7 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/internal/terminal/iterm"
+	"github.com/sethdeckard/atria/internal/terminal/kitty"
 	"github.com/sethdeckard/atria/internal/terminal/tmux"
 )
 
@@ -156,6 +157,8 @@ func integrationMeta(name string) (prefix, source string) {
 		return "iterm:", "iterm"
 	case "tmux":
 		return "tmux:", "tmux"
+	case "kitty":
+		return "kitty:", "kitty"
 	default:
 		return name + ":", name
 	}
@@ -235,6 +238,10 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			tm := tmux.NewClient(cfg.TmuxPath, cfg.TmuxSession)
 			probeErr = tm.Available()
 			backend = tm
+		case "kitty":
+			kt := kitty.NewClient(cfg.KittenPath)
+			probeErr = kt.Available()
+			backend = kt
 		}
 
 		if probeErr != nil {
@@ -252,7 +259,8 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 
 		// Mark active only when the environment matches.
 		if (name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app") ||
-			(name == "tmux" && os.Getenv("TMUX") != "") {
+			(name == "tmux" && os.Getenv("TMUX") != "") ||
+			(name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "") {
 			status.Active = true
 		}
 
@@ -280,6 +288,12 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			}
 			composite.SetPrimary(backend, "tmux")
 			status.Launch = true
+		} else if name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "" && composite.PrimarySource() != "tmux" {
+			if composite.PrimarySource() == "pty" {
+				demotePTY()
+			}
+			composite.SetPrimary(backend, "kitty")
+			status.Launch = true
 		} else if name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app" && composite.PrimarySource() == "pty" {
 			demotePTY()
 			composite.SetPrimary(backend, "iterm")
@@ -306,6 +320,9 @@ func derivePrimary(integrations []terminal.Integration, ptyClient terminal.Backe
 	}
 	if b, ok := integMap["tmux"]; ok && os.Getenv("TMUX") != "" {
 		return b, "tmux"
+	}
+	if b, ok := integMap["kitty"]; ok && os.Getenv("KITTY_WINDOW_ID") != "" {
+		return b, "kitty"
 	}
 	if b, ok := integMap["iterm"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
 		return b, "iterm"

@@ -45,6 +45,21 @@ integrations = ["iterm2"]
 # it2_path = "~/.local/share/atria/venv/bin/it2"
 ```
 
+#### Kitty
+
+Discovers existing agents in Kitty windows. When running inside Kitty, also launches new agents as native tabs. Communicates via Unix socket to avoid TTY conflicts with Bubble Tea.
+
+Requires `kitty.conf`:
+```
+allow_remote_control yes
+listen_on unix:/tmp/kitty-{kitty_pid}
+```
+
+```toml
+integrations = ["kitty"]
+# kitten_path = "kitten"
+```
+
 #### tmux
 
 Discovers existing agents in tmux windows. When running inside tmux, also launches new agents as native windows in a detached tmux session named `atria`.
@@ -64,10 +79,10 @@ The tmux default `allow-rename on` is required for Claude Code's terminal title 
 You can enable multiple integrations to discover agents across environments:
 
 ```toml
-integrations = ["iterm2", "tmux"]
+integrations = ["iterm2", "tmux", "kitty"]
 ```
 
-Each discovered agent is managed through its native integration — focusing an iTerm-discovered agent switches to its iTerm tab, while focusing a PTY agent opens the embedded terminal view.
+Each discovered agent is managed through its native integration — focusing an iTerm-discovered agent switches to its iTerm tab, focusing a Kitty agent switches to its Kitty window, while focusing a PTY agent opens the embedded terminal view.
 
 Integrations must be explicitly enabled. Without `integrations` configured, only the built-in PTY backend is used. You can also toggle integrations from the settings screen (`I` key) — changes take effect immediately and persist to config.
 
@@ -100,7 +115,7 @@ Press `Enter` on an agent to open the chat view. Type a prompt and press `Enter`
 
 - Go 1.21+
 - Claude Code (`claude`), Codex (`codex`), and/or OpenCode (`opencode`) on `$PATH`
-- Optional: tmux or iTerm2 for native terminal integration
+- Optional: tmux, iTerm2, or Kitty for native terminal integration
 
 ## Debug
 

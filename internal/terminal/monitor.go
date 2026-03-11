@@ -236,6 +236,62 @@ func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatu
 	return bestStatus, bestLine
 }
 
+// HasAgentScreen checks whether agent-specific patterns appear in the bottom
+// region of the screen content. Unlike ClassifyScreen (which matches idle
+// patterns anywhere), this restricts ALL patterns to the bottom region so
+// scrollback from a previously-exited agent doesn't count as a positive signal.
+func HasAgentScreen(content string, agentType model.AgentType) bool {
+	patterns := agentPatternRegistry[agentType]
+	if patterns == nil {
+		return false
+	}
+	lines := strings.Split(content, "\n")
+
+	lastNonBlank := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			lastNonBlank = i
+			break
+		}
+	}
+	bottomStart := lastNonBlank - bottomLineCount + 1
+	if bottomStart < 0 {
+		bottomStart = 0
+	}
+
+	for i := bottomStart; i <= lastNonBlank; i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		for _, re := range patterns.NeedsInput {
+			if re.MatchString(line) {
+				return true
+			}
+		}
+		excluded := false
+		for _, re := range patterns.WorkingExclude {
+			if re.MatchString(line) {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
+			for _, re := range patterns.Working {
+				if re.MatchString(line) {
+					return true
+				}
+			}
+		}
+		for _, re := range patterns.Idle {
+			if re.MatchString(line) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ReadTail reads the last n bytes of a log file.
 func ReadTail(logPath string, n int) string {
 	data, err := os.ReadFile(logPath)

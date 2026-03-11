@@ -31,6 +31,7 @@ internal/
   terminal/composite.go          # Composite backend (PTY + integrations)
   terminal/cache.go              # Cached session list with TTL
   terminal/cwd.go                # CWD discovery strategies (shared)
+  terminal/kitty/client.go       # Kitty backend (kitten @ CLI via socket)
   terminal/iterm/client.go       # iTerm2 backend (it2 CLI wrapper)
   terminal/tmux/client.go        # tmux backend
   terminal/pty/client.go         # PTY backend (built-in multiplexer)
@@ -97,6 +98,26 @@ Agent sessions live as windows inside a dedicated tmux session (`atria`), create
 - When not in tmux, silently no-ops — user must `tmux attach -t atria` themselves
 
 **MonitorOutput:** Unsupported (no-op with error). Screen reads every 3s are the primary status mechanism.
+
+### Kitty (`integrations = ["kitty"]`)
+
+Uses the `kitten @` CLI over a Unix socket (`KITTY_LISTEN_ON`) to avoid TTY-based escape sequences that conflict with Bubble Tea's alternate screen.
+
+**Requirements:**
+- Kitty terminal with remote control enabled: `allow_remote_control yes` in `kitty.conf`
+- Unix socket listener: `listen_on unix:/tmp/kitty-{kitty_pid}` in `kitty.conf`
+- `KITTY_LISTEN_ON` environment variable (set automatically by Kitty when `listen_on` is configured)
+
+**Config options:**
+- `kitten_path` — path to kitten binary (default: found via `$PATH`)
+
+**Session mapping:** Each Kitty window becomes a session. The window ID serves as the session ID. Window titles are used for session names (agent detection works via title, same as other backends). CWD is read from Kitty's window metadata.
+
+**Focus behavior:**
+- `focus-window --match id:<id>` via socket to switch to the agent's Kitty window
+- Works when Atria runs inside Kitty
+
+**MonitorOutput:** Unsupported (no-op with error). Screen reads via `get-text --extent screen` are the primary status mechanism.
 
 ### PTY (built-in, always available)
 
