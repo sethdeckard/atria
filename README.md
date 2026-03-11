@@ -105,3 +105,8 @@ Press `Enter` on an agent to open the chat view. Type a prompt and press `Enter`
 ## Debug
 
 Run with `--debug` to log screen read diagnostics to `/tmp/atria-debug.log`.
+
+## License
+
+`atria` is licensed under the MIT License. See `LICENSE` for the project
+license and `THIRD_PARTY_NOTICES.md` for dependency notices.
