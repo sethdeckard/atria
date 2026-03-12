@@ -469,7 +469,7 @@ func (m Model) viewProjectList() string {
 		sb.WriteString(dimStyle.Render(dirLine))
 		sb.WriteString("\n")
 	}
-	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, len(m.availableAgents) > 1, m.streamOpen))
+	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, len(m.availableAgents) > 1, m.streamOpen, m.width))
 
 	if m.statusText != "" {
 		sb.WriteString("\n")

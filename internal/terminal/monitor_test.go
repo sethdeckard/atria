@@ -36,6 +36,8 @@ func TestClassifyOutput(t *testing.T) {
 		{"codex working bullet", "• Working (30s • esc to interrupt)", model.AgentCodex, model.StatusWorking},
 		{"codex working simple", "• Working", model.AgentCodex, model.StatusWorking},
 		{"codex waiting for input", "Waiting for user input", model.AgentCodex, model.StatusNeedsInput},
+		{"codex run command prompt", "Would you like to run the following command?", model.AgentCodex, model.StatusNeedsInput},
+		{"codex confirm prompt", "Press enter to confirm or esc to cancel", model.AgentCodex, model.StatusNeedsInput},
 		{"codex prompt", "› Write tests for @filename", model.AgentCodex, model.StatusIdle},
 		{"codex status bar idle", "gpt-5.3-codex default · 73% left · ~/projects/foo", model.AgentCodex, model.StatusIdle},
 

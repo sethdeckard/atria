@@ -444,7 +444,7 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAge
 	return sb.String()
 }
 
-func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, canToggle bool, streamOpen bool) string {
+func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, canToggle bool, streamOpen bool, width int) string {
 	left := fmt.Sprintf(" %d agents", rowCount)
 
 	var parts []string
@@ -468,5 +468,13 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 	parts = append(parts, strings.Join(global, "  "))
 
 	all := append([]string{left}, parts...)
-	return footerStyle.Render(strings.Join(all, "  \u00b7  "))
+	footer := strings.Join(all, "  \u00b7  ")
+	if width > 0 && lipgloss.Width(footer) > width && width > 2 {
+		runes := []rune(footer)
+		for lipgloss.Width(string(runes)) > width-1 {
+			runes = runes[:len(runes)-1]
+		}
+		footer = string(runes) + "\u2026"
+	}
+	return footerStyle.Render(footer)
 }

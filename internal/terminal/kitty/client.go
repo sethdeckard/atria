@@ -71,6 +71,9 @@ func (c *Client) Available() error {
 
 	listenOn := os.Getenv("KITTY_LISTEN_ON")
 	if listenOn == "" {
+		if os.Getenv("KITTY_WINDOW_ID") == "" {
+			return fmt.Errorf("not running inside Kitty")
+		}
 		return fmt.Errorf("KITTY_LISTEN_ON not set — add listen_on to kitty.conf")
 	}
 	c.listenOn = listenOn

@@ -41,6 +41,8 @@ var claudePatterns = &AgentPatterns{
 var codexPatterns = &AgentPatterns{
 	NeedsInput: []*regexp.Regexp{
 		regexp.MustCompile(`Waiting for .+ input`),
+		regexp.MustCompile(`Would you like to run`),
+		regexp.MustCompile(`Press enter to confirm`),
 	},
 	Working: []*regexp.Regexp{
 		regexp.MustCompile(`[•●] Working`),
