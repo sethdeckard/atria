@@ -6,6 +6,8 @@ atria is a TUI dashboard for managing multiple AI coding agents running across y
 
 Comes with a built-in terminal multiplexer ready to launch agents out of the box. Optional integrations discover agents already running in iTerm2, Kitty, or tmux.
 
+![atria demo](demo.gif)
+
 ## Supported Agents
 
 - **Claude Code** (`claude`)
