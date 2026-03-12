@@ -70,10 +70,6 @@ func main() {
 	if err := store.LoadProjects(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: loading projects: %v\n", err)
 	}
-	if err := store.LoadSessions(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: loading sessions: %v\n", err)
-	}
-
 	// Always create PTY as the fallback.
 	ptyClient := ptybackend.NewClient(cfg.PtyCols, cfg.PtyRows)
 

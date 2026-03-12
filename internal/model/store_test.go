@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestAddRemoveProject(t *testing.T) {
@@ -71,43 +70,6 @@ func TestProjectPersistence(t *testing.T) {
 	}
 	if s2.Projects[1].Dir != "/home/user/beta" {
 		t.Fatalf("expected beta, got %s", s2.Projects[1].Dir)
-	}
-}
-
-func TestSessionPersistence(t *testing.T) {
-	dir := t.TempDir()
-	s := NewStore(dir)
-
-	now := time.Now()
-	s.SetSession(&AgentSession{
-		ProjectDir: "/proj/a",
-		SessionID:  "sess-001",
-		Type:       AgentClaude,
-		Status:     StatusWorking,
-		LastSent:   now,
-	})
-
-	if err := s.SaveSessions(); err != nil {
-		t.Fatalf("SaveSessions: %v", err)
-	}
-
-	s2 := NewStore(dir)
-	if err := s2.LoadSessions(); err != nil {
-		t.Fatalf("LoadSessions: %v", err)
-	}
-	if len(s2.Sessions) != 1 {
-		t.Fatalf("expected 1 session, got %d", len(s2.Sessions))
-	}
-	sess := s2.Sessions[0]
-	if sess.SessionID != "sess-001" {
-		t.Fatalf("expected sess-001, got %s", sess.SessionID)
-	}
-	if sess.Type != AgentClaude {
-		t.Fatalf("expected claude, got %s", sess.Type)
-	}
-	// Status is json:"-", so it should be zero value after reload.
-	if sess.Status != "" {
-		t.Fatalf("expected empty status after reload, got %s", sess.Status)
 	}
 }
 

@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// NOTE: Sessions are intentionally not persisted. PTY sessions die with Atria,
+// and integration sessions (iTerm2/tmux/Kitty) are re-discovered on startup.
+// Persisting sessions caused stale state that fought auto-discovery.
+
 // Store holds projects and sessions in memory with JSON persistence.
 type Store struct {
 	Projects []*Project
@@ -23,10 +27,6 @@ func NewStore(dataDir string) *Store {
 
 func (s *Store) projectsPath() string {
 	return filepath.Join(s.dataDir, "projects.json")
-}
-
-func (s *Store) sessionsPath() string {
-	return filepath.Join(s.dataDir, "sessions.json")
 }
 
 // LoadProjects reads projects from dataDir/projects.json.
@@ -88,31 +88,6 @@ func (s *Store) FindProject(dir string) *Project {
 		}
 	}
 	return nil
-}
-
-// LoadSessions reads sessions from dataDir/sessions.json.
-func (s *Store) LoadSessions() error {
-	data, err := os.ReadFile(s.sessionsPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			s.Sessions = nil
-			return nil
-		}
-		return err
-	}
-	return json.Unmarshal(data, &s.Sessions)
-}
-
-// SaveSessions writes sessions to dataDir/sessions.json.
-func (s *Store) SaveSessions() error {
-	if err := os.MkdirAll(s.dataDir, 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(s.Sessions, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.sessionsPath(), data, 0o644)
 }
 
 // SetSession adds or updates a session keyed by SessionID.

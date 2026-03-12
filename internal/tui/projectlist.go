@@ -262,6 +262,20 @@ func padToWidth(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
+func agentTypeLabel(t model.AgentType) string {
+	switch t {
+	case model.AgentClaude:
+		return "Claude"
+	case model.AgentCodex:
+		return "Codex"
+	case model.AgentOpenCode:
+		return "OpenCode"
+	default:
+		s := string(t)
+		return strings.ToUpper(s[:1]) + s[1:]
+	}
+}
+
 // formatRow builds a single-line row. When plain is true, no inner styles are
 // applied so a row-level style can wrap the whole line cleanly.
 func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, plain bool) string {
@@ -271,8 +285,7 @@ func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spi
 	}
 	name = fmt.Sprintf("  %-*s", nameWidth, name)
 
-	agentStr := string(r.session.Type)
-	agentStr = strings.ToUpper(agentStr[:1]) + agentStr[1:]
+	agentStr := agentTypeLabel(r.session.Type)
 	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
 
 	dir := shortenPath(r.project.Dir)
@@ -320,8 +333,7 @@ func formatSelectedRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth 
 	}
 	nameStr := fmt.Sprintf("  %-*s", nameWidth, name)
 
-	agentStr := string(r.session.Type)
-	agentStr = strings.ToUpper(agentStr[:1]) + agentStr[1:]
+	agentStr := agentTypeLabel(r.session.Type)
 	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
 
 	dir := shortenPath(r.project.Dir)

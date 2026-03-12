@@ -322,7 +322,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 				}
-				_ = m.store.SaveSessions()
 			}
 			// Update statusInfo.
 			for i, bs := range m.statusInfo.Backends {
@@ -1643,7 +1642,6 @@ func (m Model) deleteSelected() (Model, tea.Cmd) {
 		delete(m.attentionSessions, s.SessionID)
 		m.store.RemoveSession(s.SessionID)
 	}
-	_ = m.store.SaveSessions()
 	m.store.RemoveProject(r.project.Dir)
 	_ = m.store.SaveProjects()
 	m.rows = buildRows(storeAdapter{m.store})
@@ -1804,7 +1802,6 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 		Status:     model.StatusWorking,
 	}
 	m.store.SetSession(as)
-	_ = m.store.SaveSessions()
 
 	m.rows = buildRows(storeAdapter{m.store})
 	sortRows(m.rows, m.sortCol, m.sortDesc)
@@ -1858,7 +1855,6 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 		Source:     source,
 	}
 	m.store.SetSession(as)
-	_ = m.store.SaveSessions()
 
 	m.rows = buildRows(storeAdapter{m.store})
 	sortRows(m.rows, m.sortCol, m.sortDesc)
