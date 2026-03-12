@@ -1,0 +1,86 @@
+package terminal
+
+import (
+	"regexp"
+
+	"github.com/sethdeckard/atria/internal/model"
+)
+
+// AgentPatterns holds compiled regexes for a specific agent type.
+type AgentPatterns struct {
+	NeedsInput     []*regexp.Regexp
+	Working        []*regexp.Regexp
+	WorkingExclude []*regexp.Regexp // lines matching these skip working detection
+	Idle           []*regexp.Regexp
+}
+
+// Per-agent pattern definitions.
+
+var claudePatterns = &AgentPatterns{
+	NeedsInput: []*regexp.Regexp{
+		regexp.MustCompile(`Do you want to proceed`),
+		regexp.MustCompile(`Would you like to proceed`),
+		regexp.MustCompile(`Allow .+\?`),
+		regexp.MustCompile(`Esc to cancel`),
+	},
+	Working: []*regexp.Regexp{
+		regexp.MustCompile(`[✻✶·] \S+…`),
+		regexp.MustCompile(`esc\s+to\s+interrupt`),
+	},
+	WorkingExclude: []*regexp.Regexp{
+		regexp.MustCompile(`⏵`),
+	},
+	Idle: []*regexp.Regexp{
+		regexp.MustCompile(`❯`),
+		regexp.MustCompile(`\? for shortcuts`),
+	},
+}
+
+var codexPatterns = &AgentPatterns{
+	NeedsInput: []*regexp.Regexp{
+		regexp.MustCompile(`Waiting for .+ input`),
+		regexp.MustCompile(`Would you like to run`),
+		regexp.MustCompile(`Press enter to confirm`),
+	},
+	Working: []*regexp.Regexp{
+		regexp.MustCompile(`[•●] Working`),
+		regexp.MustCompile(`esc\s+to\s+interrupt`),
+	},
+	WorkingExclude: []*regexp.Regexp{
+		regexp.MustCompile(`⏵`),
+	},
+	Idle: []*regexp.Regexp{
+		regexp.MustCompile(`›`),
+		regexp.MustCompile(`gpt-\S+-codex`),
+	},
+}
+
+var openCodePatterns = &AgentPatterns{
+	NeedsInput: []*regexp.Regexp{
+		regexp.MustCompile(`Permission required`),
+		regexp.MustCompile(`Allow once`),
+	},
+	Working: []*regexp.Regexp{
+		regexp.MustCompile(`esc\s+interrupt`),
+	},
+	WorkingExclude: []*regexp.Regexp{
+		regexp.MustCompile(`⏵`),
+	},
+	Idle: []*regexp.Regexp{
+		regexp.MustCompile(`ctrl\+p commands`),
+	},
+}
+
+var agentPatternRegistry = map[model.AgentType]*AgentPatterns{
+	model.AgentClaude:   claudePatterns,
+	model.AgentCodex:    codexPatterns,
+	model.AgentOpenCode: openCodePatterns,
+}
+
+// Shared patterns that apply to all agent types.
+var (
+	sharedBellPattern      = regexp.MustCompile("\x07")
+	sharedErrorPattern     = regexp.MustCompile(`Error:`)
+	sharedCompletedPattern = regexp.MustCompile(`✓|completed|No findings`)
+	sharedShellPrompt      = regexp.MustCompile(`\$ $`)
+)
