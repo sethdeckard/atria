@@ -152,6 +152,107 @@ func TestDefaultSocketPath(t *testing.T) {
 	}
 }
 
+func TestExtractFocusedWindowID(t *testing.T) {
+	tests := []struct {
+		name   string
+		fr     *pb.FocusResponse
+		wantID string
+		wantOK bool
+	}{
+		{
+			name:   "nil FocusResponse",
+			fr:     nil,
+			wantID: "",
+			wantOK: false,
+		},
+		{
+			name:   "empty notifications",
+			fr:     &pb.FocusResponse{},
+			wantID: "",
+			wantOK: false,
+		},
+		{
+			name: "window became key",
+			fr: &pb.FocusResponse{
+				Notifications: []*pb.FocusChangedNotification{
+					{Event: &pb.FocusChangedNotification_Window_{
+						Window: &pb.FocusChangedNotification_Window{
+							WindowStatus: pb.FocusChangedNotification_Window_TERMINAL_WINDOW_BECAME_KEY.Enum(),
+							WindowId:     proto.String("win-1"),
+						},
+					}},
+				},
+			},
+			wantID: "win-1",
+			wantOK: true,
+		},
+		{
+			name: "window is current",
+			fr: &pb.FocusResponse{
+				Notifications: []*pb.FocusChangedNotification{
+					{Event: &pb.FocusChangedNotification_Window_{
+						Window: &pb.FocusChangedNotification_Window{
+							WindowStatus: pb.FocusChangedNotification_Window_TERMINAL_WINDOW_IS_CURRENT.Enum(),
+							WindowId:     proto.String("win-2"),
+						},
+					}},
+				},
+			},
+			wantID: "win-2",
+			wantOK: true,
+		},
+		{
+			name: "non-window notifications only",
+			fr: &pb.FocusResponse{
+				Notifications: []*pb.FocusChangedNotification{
+					{Event: &pb.FocusChangedNotification_ApplicationActive{
+						ApplicationActive: true,
+					}},
+					{Event: &pb.FocusChangedNotification_SelectedTab{
+						SelectedTab: "tab-1",
+					}},
+				},
+			},
+			wantID: "",
+			wantOK: false,
+		},
+		{
+			name: "multiple notifications first key wins",
+			fr: &pb.FocusResponse{
+				Notifications: []*pb.FocusChangedNotification{
+					{Event: &pb.FocusChangedNotification_ApplicationActive{
+						ApplicationActive: true,
+					}},
+					{Event: &pb.FocusChangedNotification_Window_{
+						Window: &pb.FocusChangedNotification_Window{
+							WindowStatus: pb.FocusChangedNotification_Window_TERMINAL_WINDOW_BECAME_KEY.Enum(),
+							WindowId:     proto.String("win-first"),
+						},
+					}},
+					{Event: &pb.FocusChangedNotification_Window_{
+						Window: &pb.FocusChangedNotification_Window{
+							WindowStatus: pb.FocusChangedNotification_Window_TERMINAL_WINDOW_IS_CURRENT.Enum(),
+							WindowId:     proto.String("win-second"),
+						},
+					}},
+				},
+			},
+			wantID: "win-first",
+			wantOK: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotID, gotOK := extractFocusedWindowID(tt.fr)
+			if gotID != tt.wantID || gotOK != tt.wantOK {
+				t.Errorf("extractFocusedWindowID() = (%q, %v), want (%q, %v)",
+					gotID, gotOK, tt.wantID, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestUnquoteJSON(t *testing.T) {
 	tests := []struct {
 		input, want string

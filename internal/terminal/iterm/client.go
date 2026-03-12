@@ -191,6 +191,26 @@ func (c *Client) ttyForSession(sessionID string) string {
 	return unquoteJSON(vr.GetValues()[0])
 }
 
+// extractFocusedWindowID scans FocusResponse notifications for the focused window.
+// Returns the window ID and true if found, or "" and false if no focused window.
+func extractFocusedWindowID(fr *pb.FocusResponse) (string, bool) {
+	if fr == nil {
+		return "", false
+	}
+	for _, notif := range fr.GetNotifications() {
+		w := notif.GetWindow()
+		if w == nil {
+			continue
+		}
+		status := w.GetWindowStatus()
+		if status == pb.FocusChangedNotification_Window_TERMINAL_WINDOW_BECAME_KEY ||
+			status == pb.FocusChangedNotification_Window_TERMINAL_WINDOW_IS_CURRENT {
+			return w.GetWindowId(), true
+		}
+	}
+	return "", false
+}
+
 // focusedWindowID queries iTerm2's FocusRequest API to find the currently
 // focused (key) window. Falls back to the first window from ListSessions.
 func (c *Client) focusedWindowID() (string, error) {
@@ -203,19 +223,8 @@ func (c *Client) focusedWindowID() (string, error) {
 		return "", err
 	}
 
-	fr := resp.GetFocusResponse()
-	if fr != nil {
-		for _, notif := range fr.GetNotifications() {
-			w := notif.GetWindow()
-			if w == nil {
-				continue
-			}
-			status := w.GetWindowStatus()
-			if status == pb.FocusChangedNotification_Window_TERMINAL_WINDOW_BECAME_KEY ||
-				status == pb.FocusChangedNotification_Window_TERMINAL_WINDOW_IS_CURRENT {
-				return w.GetWindowId(), nil
-			}
-		}
+	if id, ok := extractFocusedWindowID(resp.GetFocusResponse()); ok {
+		return id, nil
 	}
 
 	// Fallback: use the first window from ListSessions.

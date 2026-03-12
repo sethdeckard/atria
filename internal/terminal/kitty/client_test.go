@@ -160,10 +160,72 @@ func TestMonitorOutputUnsupported(t *testing.T) {
 	}
 }
 
-func TestGetVarUnsupported(t *testing.T) {
-	c := NewClient("")
-	_, err := c.GetVar("42", "nonexistent")
-	if err == nil {
-		t.Fatal("expected error for unsupported variable")
+func TestLookupWindowVar(t *testing.T) {
+	windows := []kittyWindow{
+		{ID: 42, Title: "claude", CWD: "/tmp", PID: 1234},
+		{ID: 99, Title: "codex", CWD: "/home", PID: 5678},
+	}
+
+	tests := []struct {
+		name      string
+		windows   []kittyWindow
+		sessionID string
+		varName   string
+		want      string
+		wantErr   bool
+	}{
+		{
+			name:      "get cwd for known window",
+			windows:   windows,
+			sessionID: "42",
+			varName:   "path",
+			want:      "/tmp",
+		},
+		{
+			name:      "get pid for known window",
+			windows:   windows,
+			sessionID: "42",
+			varName:   "pid",
+			want:      "1234",
+		},
+		{
+			name:      "unknown window ID",
+			windows:   windows,
+			sessionID: "55",
+			varName:   "path",
+			wantErr:   true,
+		},
+		{
+			name:      "unsupported variable",
+			windows:   windows,
+			sessionID: "42",
+			varName:   "title",
+			wantErr:   true,
+		},
+		{
+			name:      "empty windows slice",
+			windows:   []kittyWindow{},
+			sessionID: "42",
+			varName:   "path",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := lookupWindowVar(tt.windows, tt.sessionID, tt.varName)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("lookupWindowVar() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

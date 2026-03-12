@@ -197,19 +197,10 @@ func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 	return strings.Join(allLines, "\n"), nil
 }
 
-// GetVar reads a variable from a Kitty window. Supported: "path", "pid".
-// Re-runs kitten @ ls and filters by window ID.
-func (c *Client) GetVar(sessionID, varName string) (string, error) {
+// lookupWindowVar finds a window by ID string and returns the requested variable.
+func lookupWindowVar(windows []kittyWindow, sessionID, varName string) (string, error) {
 	if varName != "path" && varName != "pid" {
 		return "", fmt.Errorf("unsupported variable: %s", varName)
-	}
-	out, err := c.run("ls")
-	if err != nil {
-		return "", err
-	}
-	windows, err := parseLSOutput(out)
-	if err != nil {
-		return "", err
 	}
 	for _, w := range windows {
 		if strconv.Itoa(w.ID) == sessionID {
@@ -222,6 +213,20 @@ func (c *Client) GetVar(sessionID, varName string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("window %s not found", sessionID)
+}
+
+// GetVar reads a variable from a Kitty window. Supported: "path", "pid".
+// Re-runs kitten @ ls and filters by window ID.
+func (c *Client) GetVar(sessionID, varName string) (string, error) {
+	out, err := c.run("ls")
+	if err != nil {
+		return "", err
+	}
+	windows, err := parseLSOutput(out)
+	if err != nil {
+		return "", err
+	}
+	return lookupWindowVar(windows, sessionID, varName)
 }
 
 // MonitorOutput is not supported by the Kitty backend. Screen reads are the
