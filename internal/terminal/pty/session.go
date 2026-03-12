@@ -10,6 +10,8 @@ import (
 	"github.com/hinshun/vt10x"
 )
 
+const bellChar = "\x07"
+
 type session struct {
 	id   string
 	ptmx *os.File
@@ -27,7 +29,7 @@ type session struct {
 // It intercepts bell characters (\x07) before they are consumed by vt10x.
 func (s *session) readLoop() {
 	defer close(s.done)
-	buf := make([]byte, 4096)
+	buf := make([]byte, readBufSize)
 	for {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
@@ -36,21 +38,21 @@ func (s *session) readLoop() {
 			// Check for bell characters in the raw data.
 			// Note: \x07 also terminates OSC sequences, but we accept the
 			// minor false-positive risk since the status classifier handles it.
-			if bytes.ContainsRune(data, '\a') {
-				s.mu.Lock()
-				s.bellPending = true
-				s.mu.Unlock()
-			}
+			hasBell := bytes.Contains(data, []byte(bellChar))
 
 			s.term.Write(data)
 
 			// Read title from vt10x (it parses OSC 0/1/2 natively)
 			title := s.term.Title()
-			if title != "" {
-				s.mu.Lock()
-				s.name = title
-				s.mu.Unlock()
+
+			s.mu.Lock()
+			if hasBell {
+				s.bellPending = true
 			}
+			if title != "" {
+				s.name = title
+			}
+			s.mu.Unlock()
 		}
 		if err != nil {
 			s.mu.Lock()
@@ -83,7 +85,7 @@ func (s *session) readScreen(lines int) string {
 	result := strings.Join(allLines, "\n")
 
 	if bell {
-		result = "\x07" + result
+		result = bellChar + result
 	}
 	return result
 }

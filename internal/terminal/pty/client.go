@@ -15,6 +15,16 @@ import (
 	"github.com/sethdeckard/atria/internal/terminal"
 )
 
+const (
+	// DefaultCols is the default terminal width when not configured.
+	DefaultCols = 120
+	// DefaultRows is the default terminal height when not configured.
+	DefaultRows = 40
+
+	readBufSize     = 4096
+	shutdownTimeout = 2 * time.Second
+)
+
 // Client implements terminal.Backend using built-in PTY management.
 // Each agent session runs in its own pseudo-terminal with a vt10x emulator.
 type Client struct {
@@ -28,10 +38,10 @@ type Client struct {
 // NewClient creates a new PTY backend client with the given terminal dimensions.
 func NewClient(cols, rows int) *Client {
 	if cols <= 0 {
-		cols = 120
+		cols = DefaultCols
 	}
 	if rows <= 0 {
-		rows = 40
+		rows = DefaultRows
 	}
 	return &Client{
 		sessions: make(map[string]*session),
@@ -114,8 +124,10 @@ func (c *Client) SendText(sessionID, text string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.ptmx.Write([]byte(text))
-	return err
+	if _, err = s.ptmx.Write([]byte(text)); err != nil {
+		return fmt.Errorf("pty send: %w", err)
+	}
+	return nil
 }
 
 // RunCommand sends a command string followed by a newline to the session's PTY.
@@ -213,7 +225,7 @@ func (c *Client) Close() {
 		// Wait for readLoop with timeout
 		select {
 		case <-s.done:
-		case <-time.After(2 * time.Second):
+		case <-time.After(shutdownTimeout):
 			if s.cmd.Process != nil {
 				s.cmd.Process.Kill()
 			}
