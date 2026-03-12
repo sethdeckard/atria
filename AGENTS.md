@@ -41,7 +41,6 @@ internal/
   terminal/tmux/client.go        # tmux backend
   terminal/pty/client.go         # PTY backend (built-in multiplexer)
   terminal/pty/session.go        # PTY session (process + vt10x emulator)
-  project/discover.go            # Watch dir scanning
   tui/app.go                     # Root Bubble Tea model
   tui/messages.go                # tea.Msg types
   tui/commands.go                # tea.Cmd factories
