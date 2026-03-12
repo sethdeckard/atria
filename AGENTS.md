@@ -1,5 +1,7 @@
 # Atria - Agent Conventions
 
+> Internal development conventions. See README.md for user documentation.
+
 ## Project Overview
 
 Atria is a Go TUI tool for managing multiple AI coding agents (Claude Code, Codex, OpenCode) running in terminal tabs/panes. Built with Bubble Tea (bubbletea, lipgloss, bubbles).

@@ -6,3 +6,5 @@ atria
 *.test
 *.out
 /dist/
+.DS_Store
+*.log

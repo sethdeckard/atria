@@ -43,12 +43,18 @@ func main() {
 		case "--debug":
 			debug = true
 		case "--help", "-h":
+			fmt.Println("atria - Agent multiplexer for your terminal")
+			fmt.Println()
 			fmt.Println("Usage: atria [options]")
 			fmt.Println()
 			fmt.Println("Options:")
 			fmt.Println("  --debug           Log screen reads to /tmp/atria-debug.log")
 			fmt.Println("  --version, -v     Show version information")
 			fmt.Println("  --help, -h        Show this help")
+			fmt.Println()
+			fmt.Println("Config: ~/.config/atria/config.toml")
+			fmt.Println()
+			fmt.Println("On first run, press S to open the setup wizard.")
 			return
 		}
 	}
@@ -61,8 +67,12 @@ func main() {
 
 	configPath := config.DefaultPath()
 	store := model.NewStore(cfg.DataDir)
-	_ = store.LoadProjects()
-	_ = store.LoadSessions()
+	if err := store.LoadProjects(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: loading projects: %v\n", err)
+	}
+	if err := store.LoadSessions(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: loading sessions: %v\n", err)
+	}
 
 	// Always create PTY as the fallback.
 	ptyClient := ptybackend.NewClient(cfg.PtyCols, cfg.PtyRows)
