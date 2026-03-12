@@ -89,7 +89,7 @@ func buildSetupDefaultItems(cfg *config.Config, agents []model.AgentType) []sett
 	// Tmux session name — only if tmux is enabled
 	for _, integ := range cfg.Integrations {
 		if integ == "tmux" {
-			tmuxSession := "atria"
+			tmuxSession := config.DefaultTmuxSession
 			if cfg.TmuxSession != "" {
 				tmuxSession = cfg.TmuxSession
 			}

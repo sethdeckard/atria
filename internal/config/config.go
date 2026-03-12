@@ -10,6 +10,16 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// Default values for configuration fields.
+const (
+	DefaultDataDir     = "~/.config/atria"
+	DefaultMonitorDir  = "/tmp/atria-monitors"
+	DefaultCacheTTL    = 5
+	DefaultTmuxSession = "atria"
+	DefaultPtyCols     = 120
+	DefaultPtyRows     = 40
+)
+
 // Config holds the application configuration parsed from a TOML file.
 type Config struct {
 	WatchDirs    []string `toml:"watch_dirs"`
@@ -37,9 +47,9 @@ func DefaultPath() string {
 // exist, a Config with default values is returned without an error.
 func Load(path string) (*Config, error) {
 	cfg := &Config{
-		DataDir:    "~/.config/atria",
-		MonitorDir: "/tmp/atria-monitors",
-		CacheTTL:   5,
+		DataDir:    DefaultDataDir,
+		MonitorDir: DefaultMonitorDir,
+		CacheTTL:   DefaultCacheTTL,
 	}
 
 	expanded := expandHome(path)
@@ -93,18 +103,7 @@ func (cfg *Config) Save(path string) error {
 
 	// watch_dirs
 	sb.WriteString("# Directories to scan for agent projects\n")
-	if len(cfg.WatchDirs) > 0 {
-		sb.WriteString("watch_dirs = [")
-		for i, d := range cfg.WatchDirs {
-			if i > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteString(fmt.Sprintf("%q", contractHome(d)))
-		}
-		sb.WriteString("]\n")
-	} else {
-		sb.WriteString("# watch_dirs = []\n")
-	}
+	writeSliceField(&sb, "watch_dirs", cfg.WatchDirs, contractHome)
 	sb.WriteString("\n")
 
 	// integrations
@@ -112,18 +111,7 @@ func (cfg *Config) Save(path string) error {
 	sb.WriteString("# Available: \"iterm2\" (macOS, requires iTerm2 Python API),\n")
 	sb.WriteString("#            \"tmux\" (requires running inside tmux),\n")
 	sb.WriteString("#            \"kitty\" (requires Kitty remote control)\n")
-	if len(cfg.Integrations) > 0 {
-		sb.WriteString("integrations = [")
-		for i, name := range cfg.Integrations {
-			if i > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteString(fmt.Sprintf("%q", name))
-		}
-		sb.WriteString("]\n")
-	} else {
-		sb.WriteString("# integrations = []\n")
-	}
+	writeSliceField(&sb, "integrations", cfg.Integrations, nil)
 	sb.WriteString("\n")
 
 	// default_agent
@@ -137,21 +125,21 @@ func (cfg *Config) Save(path string) error {
 
 	// pty_cols, pty_rows
 	sb.WriteString("# PTY terminal dimensions (built-in backend)\n")
-	if cfg.PtyCols != 0 && cfg.PtyCols != 120 {
+	if cfg.PtyCols != 0 && cfg.PtyCols != DefaultPtyCols {
 		sb.WriteString(fmt.Sprintf("pty_cols = %d\n", cfg.PtyCols))
 	} else {
-		sb.WriteString("# pty_cols = 120\n")
+		sb.WriteString(fmt.Sprintf("# pty_cols = %d\n", DefaultPtyCols))
 	}
-	if cfg.PtyRows != 0 && cfg.PtyRows != 40 {
+	if cfg.PtyRows != 0 && cfg.PtyRows != DefaultPtyRows {
 		sb.WriteString(fmt.Sprintf("pty_rows = %d\n", cfg.PtyRows))
 	} else {
-		sb.WriteString("# pty_rows = 40\n")
+		sb.WriteString(fmt.Sprintf("# pty_rows = %d\n", DefaultPtyRows))
 	}
 	sb.WriteString("\n")
 
 	// tmux settings
 	sb.WriteString("# tmux backend settings\n")
-	if cfg.TmuxSession != "" && cfg.TmuxSession != "atria" {
+	if cfg.TmuxSession != "" && cfg.TmuxSession != DefaultTmuxSession {
 		sb.WriteString(fmt.Sprintf("tmux_session = %q\n", cfg.TmuxSession))
 	} else {
 		sb.WriteString("# tmux_session = \"atria\"\n")
@@ -177,43 +165,49 @@ func (cfg *Config) Save(path string) error {
 	defaultDataDir := filepath.Join(home, ".config/atria")
 	hasAdvanced := false
 
-	if cfg.DataDir != "" && cfg.DataDir != defaultDataDir {
-		if !hasAdvanced {
-			sb.WriteString("# Advanced settings\n")
-			hasAdvanced = true
-		}
-		sb.WriteString(fmt.Sprintf("data_dir = %q\n", contractHome(cfg.DataDir)))
+	type advField struct {
+		key   string
+		value string
+		show  bool
 	}
-	if cfg.MonitorDir != "" && cfg.MonitorDir != "/tmp/atria-monitors" {
-		if !hasAdvanced {
-			sb.WriteString("# Advanced settings\n")
-			hasAdvanced = true
-		}
-		sb.WriteString(fmt.Sprintf("monitor_dir = %q\n", contractHome(cfg.MonitorDir)))
+	fields := []advField{
+		{"data_dir", fmt.Sprintf("%q", contractHome(cfg.DataDir)), cfg.DataDir != "" && cfg.DataDir != defaultDataDir},
+		{"monitor_dir", fmt.Sprintf("%q", contractHome(cfg.MonitorDir)), cfg.MonitorDir != "" && cfg.MonitorDir != DefaultMonitorDir},
+		{"cache_ttl", fmt.Sprintf("%d", cfg.CacheTTL), cfg.CacheTTL != 0 && cfg.CacheTTL != DefaultCacheTTL},
+		{"launch_dir", fmt.Sprintf("%q", contractHome(cfg.LaunchDir)), cfg.LaunchDir != ""},
+		{"focus_mode", fmt.Sprintf("%q", cfg.FocusMode), cfg.FocusMode != ""},
 	}
-	if cfg.CacheTTL != 0 && cfg.CacheTTL != 5 {
-		if !hasAdvanced {
-			sb.WriteString("# Advanced settings\n")
-			hasAdvanced = true
+	for _, f := range fields {
+		if f.show {
+			if !hasAdvanced {
+				sb.WriteString("# Advanced settings\n")
+				hasAdvanced = true
+			}
+			sb.WriteString(f.key + " = " + f.value + "\n")
 		}
-		sb.WriteString(fmt.Sprintf("cache_ttl = %d\n", cfg.CacheTTL))
-	}
-	if cfg.LaunchDir != "" {
-		if !hasAdvanced {
-			sb.WriteString("# Advanced settings\n")
-			hasAdvanced = true
-		}
-		sb.WriteString(fmt.Sprintf("launch_dir = %q\n", contractHome(cfg.LaunchDir)))
-	}
-	if cfg.FocusMode != "" {
-		if !hasAdvanced {
-			sb.WriteString("# Advanced settings\n")
-			hasAdvanced = true
-		}
-		sb.WriteString(fmt.Sprintf("focus_mode = %q\n", cfg.FocusMode))
 	}
 
 	return os.WriteFile(expanded, []byte(sb.String()), 0o644)
+}
+
+// writeSliceField writes a TOML array field, or a commented-out empty array if values is empty.
+func writeSliceField(sb *strings.Builder, key string, values []string, transform func(string) string) {
+	if len(values) > 0 {
+		sb.WriteString(key + " = [")
+		for i, v := range values {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			val := v
+			if transform != nil {
+				val = transform(v)
+			}
+			sb.WriteString(fmt.Sprintf("%q", val))
+		}
+		sb.WriteString("]\n")
+	} else {
+		sb.WriteString("# " + key + " = []\n")
+	}
 }
 
 // expandHome replaces a leading ~ with the user's home directory.

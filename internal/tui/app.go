@@ -1412,10 +1412,10 @@ func (m Model) handleSettingsEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		switch item.key {
 		case "pty_cols":
-			n := parsePositiveInt(val, 120)
+			n := parsePositiveInt(val, config.DefaultPtyCols)
 			m.cfg.PtyCols = n
 		case "pty_rows":
-			n := parsePositiveInt(val, 40)
+			n := parsePositiveInt(val, config.DefaultPtyRows)
 			m.cfg.PtyRows = n
 		case "tmux_session":
 			if val != "" {

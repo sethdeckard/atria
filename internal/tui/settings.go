@@ -79,11 +79,11 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 	})
 
 	// PTY dimensions
-	ptyCols := 120
+	ptyCols := config.DefaultPtyCols
 	if cfg.PtyCols > 0 {
 		ptyCols = cfg.PtyCols
 	}
-	ptyRows := 40
+	ptyRows := config.DefaultPtyRows
 	if cfg.PtyRows > 0 {
 		ptyRows = cfg.PtyRows
 	}
@@ -97,7 +97,7 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 	})
 
 	// tmux settings
-	tmuxSession := "atria"
+	tmuxSession := config.DefaultTmuxSession
 	if cfg.TmuxSession != "" {
 		tmuxSession = cfg.TmuxSession
 	}
