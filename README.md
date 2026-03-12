@@ -1,5 +1,7 @@
 # atria
 
+[![CI](https://github.com/sethdeckard/atria/actions/workflows/ci.yml/badge.svg)](https://github.com/sethdeckard/atria/actions/workflows/ci.yml)
+
 Agent multiplexer for your terminal.
 
 atria is a TUI dashboard for managing multiple AI coding agents running across your terminal environment. It discovers running agents, shows their real-time status (working, idle, needs input), and lets you send prompts — all from a single view.
