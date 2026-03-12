@@ -624,7 +624,7 @@ func TestDirBrowserLaunchAction(t *testing.T) {
 	if um.store.FindProject("/watch/alpha") == nil {
 		t.Error("expected alpha project to be added")
 	}
-	if !strings.Contains(um.statusText, "Launching Claude Code for alpha") {
+	if !strings.Contains(um.statusText, "Launching Claude for alpha") {
 		t.Errorf("expected launching message, got %q", um.statusText)
 	}
 	if cmd == nil {
@@ -735,7 +735,7 @@ func TestDirBrowserRecentProjects(t *testing.T) {
 	if um.view != viewProjectList {
 		t.Errorf("expected return to project list, got %d", um.view)
 	}
-	if !strings.Contains(um.statusText, "Launching Claude Code for recent-proj") {
+	if !strings.Contains(um.statusText, "Launching Claude for recent-proj") {
 		t.Errorf("expected launching message, got %q", um.statusText)
 	}
 	if cmd == nil {
@@ -1699,7 +1699,7 @@ func TestViewProjectListWithAgents(t *testing.T) {
 	if !strings.Contains(v, "2 agents") {
 		t.Error("expected agent count")
 	}
-	if !strings.Contains(v, "l:launch (Claude Code)") {
+	if !strings.Contains(v, "l:launch (Claude)") {
 		t.Error("expected launch hint with agent name")
 	}
 	// Directory should be inline in the row

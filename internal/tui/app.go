@@ -670,7 +670,7 @@ func (m Model) viewChat() string {
 
 func (m Model) viewDirBrowser() string {
 	var sb strings.Builder
-	agentName := agentDisplayName(m.defaultAgent)
+	agentName := agentTypeLabel(m.defaultAgent)
 
 	// Header
 	headerText := "launch " + agentName
@@ -859,7 +859,7 @@ func (m Model) viewHelp() string {
   j/k, arrows   Navigate project list
   v              Toggle agent screen stream
   l              Launch agent in a project
-  t              Toggle agent type (Claude Code/Codex/OpenCode)
+  t              Toggle agent type (Claude/Codex/OpenCode)
   s              Cycle sort column
   S              Reverse sort direction
   f              Focus agent's terminal tab
@@ -946,7 +946,7 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		m.statusText = "Default agent: " + agentDisplayName(m.defaultAgent)
+		m.statusText = "Default agent: " + agentTypeLabel(m.defaultAgent)
 		return m, nil
 
 	case key.Matches(msg, keys.Sort):
@@ -1214,7 +1214,7 @@ func (m Model) launchFromBrowser(dirPath, name string) (Model, tea.Cmd) {
 	m.rows = buildRows(storeAdapter{m.store})
 	sortRows(m.rows, m.sortCol, m.sortDesc)
 	m.view = viewProjectList
-	m.statusText = fmt.Sprintf("Launching %s for %s...", agentDisplayName(m.defaultAgent), name)
+	m.statusText = fmt.Sprintf("Launching %s for %s...", agentTypeLabel(m.defaultAgent), name)
 	return m, launchAgent(m.backend, dirPath, m.defaultAgent)
 }
 
@@ -1550,7 +1550,7 @@ func (m Model) cycleSettingsChoice(item settingsItem) (Model, tea.Cmd) {
 	cur := item.value
 	nextAgent := agents[0]
 	for i, a := range agents {
-		if agentDisplayName(a) == cur {
+		if agentTypeLabel(a) == cur {
 			nextAgent = agents[(i+1)%len(agents)]
 			break
 		}

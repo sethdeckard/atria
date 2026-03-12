@@ -75,7 +75,7 @@ func buildSetupDefaultItems(cfg *config.Config, agents []model.AgentType) []sett
 	}
 	for _, a := range agents {
 		name := string(a)
-		display := agentDisplayName(a)
+		display := agentTypeLabel(a)
 		indicator := "\u00b7" // ·
 		if name == currentAgent {
 			indicator = "\u2713" // ✓
@@ -115,19 +115,6 @@ func envDetected(name string) bool {
 		return os.Getenv("KITTY_WINDOW_ID") != ""
 	}
 	return false
-}
-
-func agentDisplayName(a model.AgentType) string {
-	switch a {
-	case model.AgentClaude:
-		return "Claude Code"
-	case model.AgentCodex:
-		return "Codex"
-	case model.AgentOpenCode:
-		return "OpenCode"
-	}
-	name := string(a)
-	return strings.ToUpper(name[:1]) + name[1:]
 }
 
 func setupStepTitle(step int) string {

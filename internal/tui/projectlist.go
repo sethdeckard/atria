@@ -443,7 +443,7 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAge
 	if canToggle {
 		var names []string
 		for _, a := range availableAgents {
-			names = append(names, agentDisplayName(a))
+			names = append(names, agentTypeLabel(a))
 		}
 		sb.WriteString("  " + emptyKeyStyle.Render("t") + emptyHintStyle.Render(fmt.Sprintf("  toggle agent type (%s)", strings.Join(names, "/"))))
 		sb.WriteString("\n")
@@ -471,7 +471,7 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 		global = append(global, "v:stream")
 	}
 	if defaultAgent != "" {
-		global = append(global, fmt.Sprintf("l:launch (%s)", agentDisplayName(defaultAgent)))
+		global = append(global, fmt.Sprintf("l:launch (%s)", agentTypeLabel(defaultAgent)))
 	}
 	if canToggle {
 		global = append(global, "t:toggle")

@@ -75,7 +75,7 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 	}
 	items = append(items, settingsItem{
 		section: "config", label: "  default agent", itemType: "choice",
-		value: agentDisplayName(agentType), key: "default_agent",
+		value: agentTypeLabel(agentType), key: "default_agent",
 	})
 
 	// PTY dimensions
