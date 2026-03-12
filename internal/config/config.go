@@ -13,7 +13,6 @@ import (
 // Config holds the application configuration parsed from a TOML file.
 type Config struct {
 	WatchDirs    []string `toml:"watch_dirs"`
-	IT2Path      string   `toml:"it2_path"`
 	TmuxPath     string   `toml:"tmux_path"`
 	TmuxSession  string   `toml:"tmux_session"`
 	KittenPath   string   `toml:"kitten_path"`
@@ -51,7 +50,6 @@ func Load(path string) (*Config, error) {
 
 	cfg.DataDir = expandHome(cfg.DataDir)
 	cfg.MonitorDir = expandHome(cfg.MonitorDir)
-	cfg.IT2Path = expandHome(cfg.IT2Path)
 	cfg.TmuxPath = expandHome(cfg.TmuxPath)
 	cfg.KittenPath = expandHome(cfg.KittenPath)
 	cfg.LaunchDir = expandHome(cfg.LaunchDir)
@@ -162,15 +160,6 @@ func (cfg *Config) Save(path string) error {
 		sb.WriteString(fmt.Sprintf("tmux_path = %q\n", contractHome(cfg.TmuxPath)))
 	} else {
 		sb.WriteString("# tmux_path = \"/usr/bin/tmux\"\n")
-	}
-	sb.WriteString("\n")
-
-	// iterm2 settings
-	sb.WriteString("# iTerm2 backend settings\n")
-	if cfg.IT2Path != "" {
-		sb.WriteString(fmt.Sprintf("it2_path = %q\n", contractHome(cfg.IT2Path)))
-	} else {
-		sb.WriteString("# it2_path = \"~/.local/share/atria/venv/bin/it2\"\n")
 	}
 	sb.WriteString("\n")
 

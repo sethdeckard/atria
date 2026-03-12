@@ -224,14 +224,14 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			return IntegrationToggledMsg{Name: name, Status: status, Err: err}
 		}
 
-		// Probe the backend (non-interactive only — never call Preflight
-		// at runtime as it can prompt on stdin and corrupt the TUI).
+		// Probe the backend.
 		var backend terminal.Backend
 		var probeErr error
 
 		switch name {
 		case "iterm2":
-			it := iterm.NewClient(cfg.IT2Path)
+			it := iterm.NewClient()
+			it.SetNoPrompt(true) // suppress AppleScript dialogs during TUI
 			probeErr = it.Available()
 			backend = it
 		case "tmux":

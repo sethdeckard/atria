@@ -19,7 +19,7 @@ import (
 	"github.com/sethdeckard/atria/internal/terminal"
 )
 
-// monitorPatterns are the regex patterns for it2 monitor output.
+// monitorPatterns are the regex patterns for monitor output.
 // Captures permission prompts, errors, idle prompts, and completion signals.
 const monitorPatterns = `Allow|Permission|Error:|\\?$|Waiting for|proceed|Esc to cancel|❯|›|shortcuts|\\$|completed|No findings|✓`
 
@@ -1958,7 +1958,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	as.ScreenChecked = true
-	// Strip null bytes from screen content (it2 read-screen returns \x00 for spaces)
+	// Strip null bytes from screen content (some backends return \x00 for spaces)
 	content := strings.ReplaceAll(msg.Content, "\x00", " ")
 	screenChanged := content != as.LastScreen
 	as.LastScreen = content
@@ -1989,7 +1989,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 			// the agent likely exited and the pane shows a shell.
 			status = model.StatusIdle
 		} else if !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) {
-			// Consecutive blank screen reads while "working" — it2 can't
+			// Consecutive blank screen reads while "working" — backend can't
 			// read this session. No evidence the agent is working.
 			status = model.StatusIdle
 		} else {

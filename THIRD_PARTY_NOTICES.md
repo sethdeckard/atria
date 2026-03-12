@@ -33,11 +33,16 @@ before tagged releases to catch newly added or updated modules.
 - `github.com/rivo/uniseg` `v0.4.7`
 - `github.com/xo/terminfo` `v0.0.0-20220910002029-abceb7e1c41e`
 
+## BSD-2-Clause
+
+- `github.com/gorilla/websocket` `v1.5.3`
+
 ## BSD-3-Clause
 
 - `github.com/atotto/clipboard` `v0.1.4`
 - `golang.org/x/sys` `v0.38.0`
 - `golang.org/x/text` `v0.3.8`
+- `google.golang.org/protobuf` `v1.36.11`
 
 ## Audit Notes
 

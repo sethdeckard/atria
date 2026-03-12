@@ -209,12 +209,12 @@ func TestBackendAvailableSuccess(t *testing.T) {
 
 func TestBackendAvailableFailure(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, makeStore(t))
-	updated, cmd := m.Update(BackendAvailableMsg{Err: errors.New("it2 not found")})
+	updated, cmd := m.Update(BackendAvailableMsg{Err: errors.New("cannot connect to iTerm2")})
 	um := modelFrom(updated)
 	if um.backendOK {
 		t.Error("expected backendOK to be false")
 	}
-	if !strings.Contains(um.statusText, "it2 not found") {
+	if !strings.Contains(um.statusText, "cannot connect to iTerm2") {
 		t.Errorf("expected status to mention error, got %q", um.statusText)
 	}
 	if cmd != nil {

@@ -191,7 +191,7 @@ func integrationHint(name string, info StatusInfo) string {
 	switch name {
 	case "iterm2":
 		if bs.Enabled && !bs.Active && bs.Reason != "" {
-			return "Restart Atria in iTerm2 to complete setup."
+			return "Requires iTerm2 with Python API enabled (Settings > General > Magic)."
 		}
 		if !bs.Enabled && !envDetected(name) {
 			return "Enable inside iTerm2 to discover agent sessions."

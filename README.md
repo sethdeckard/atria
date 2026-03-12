@@ -38,11 +38,14 @@ The default when not running inside iTerm2 or tmux. Each agent runs in a built-i
 
 #### iTerm2
 
-Discovers existing agents in iTerm2 tabs. When running inside iTerm2, also launches new agents as native tabs. Requires iTerm2 with the Python API enabled (Settings > General > Magic > Enable Python API). The `it2` CLI is auto-installed on first run.
+Discovers existing agents in iTerm2 tabs and panes (including splits). When running inside iTerm2, also launches new agents as native tabs. Communicates via iTerm2's native protobuf-over-WebSocket API on a Unix socket — no external dependencies.
+
+Requires iTerm2 with the Python API enabled (Settings > General > Magic > Enable Python API).
+
+For cross-terminal discovery (running Atria in Terminal/tmux/Kitty while discovering iTerm2 sessions), disable iTerm2's automation auth: create `~/.config/iterm2/disable-automation-auth`. Without this, iTerm2 discovery only works when Atria runs inside iTerm2.
 
 ```toml
 integrations = ["iterm2"]
-# it2_path = "~/.local/share/atria/venv/bin/it2"
 ```
 
 #### Kitty

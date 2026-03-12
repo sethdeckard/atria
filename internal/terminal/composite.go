@@ -214,12 +214,17 @@ func (c *CompositeBackend) AddIntegration(integ Integration) {
 }
 
 // RemoveIntegration removes integrations matching the given prefix. Thread-safe.
+// If the removed backend implements a Close() method, it is called.
 func (c *CompositeBackend) RemoveIntegration(prefix string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	filtered := c.integrations[:0]
 	for _, integ := range c.integrations {
-		if integ.Prefix != prefix {
+		if integ.Prefix == prefix {
+			if closer, ok := integ.Backend.(interface{ Close() }); ok {
+				closer.Close()
+			}
+		} else {
 			filtered = append(filtered, integ)
 		}
 	}

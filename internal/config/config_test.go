@@ -38,7 +38,6 @@ func TestLoadFromFile(t *testing.T) {
 	content := `
 watch_dirs = ["~/wallpapers", "/usr/share/backgrounds"]
 integrations = ["iterm2", "tmux"]
-it2_path = "~/bin/it2"
 data_dir = "~/atria-data"
 monitor_dir = "~/atria-monitors"
 cache_ttl = 10
@@ -59,9 +58,6 @@ cache_ttl = 10
 	}
 	if cfg.CacheTTL != 10 {
 		t.Errorf("expected cache_ttl 10, got %d", cfg.CacheTTL)
-	}
-	if cfg.IT2Path != filepath.Join(home, "bin/it2") {
-		t.Errorf("expected it2_path %q, got %q", filepath.Join(home, "bin/it2"), cfg.IT2Path)
 	}
 	if cfg.DataDir != filepath.Join(home, "atria-data") {
 		t.Errorf("expected data_dir %q, got %q", filepath.Join(home, "atria-data"), cfg.DataDir)

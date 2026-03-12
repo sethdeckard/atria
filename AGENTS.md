@@ -32,7 +32,10 @@ internal/
   terminal/cache.go              # Cached session list with TTL
   terminal/cwd.go                # CWD discovery strategies (shared)
   terminal/kitty/client.go       # Kitty backend (kitten @ CLI via socket)
-  terminal/iterm/client.go       # iTerm2 backend (it2 CLI wrapper)
+  terminal/iterm/proto/api.proto  # iTerm2 protobuf spec (trimmed)
+  terminal/iterm/proto/api.pb.go  # Generated protobuf Go code
+  terminal/iterm/conn.go         # iTerm2 WebSocket connection manager
+  terminal/iterm/client.go       # iTerm2 backend (native protobuf API)
   terminal/tmux/client.go        # tmux backend
   terminal/pty/client.go         # PTY backend (built-in multiplexer)
   terminal/pty/session.go        # PTY session (process + vt10x emulator)
@@ -79,7 +82,17 @@ internal/
 
 ### iTerm2 (`integrations = ["iterm2"]`)
 
-Uses the `it2` Python CLI wrapper. Auto-installed if missing. Requires iTerm2 with Python API enabled.
+Uses iTerm2's native protobuf-over-WebSocket API via Unix socket. No external dependencies.
+
+**Requirements:**
+- iTerm2 with Python API enabled (Settings > General > Magic > Enable Python API)
+
+**Authentication:**
+- Inside iTerm2 (`TERM_PROGRAM == "iTerm.app"`): auth credentials (`ITERM2_COOKIE`) are pre-set by iTerm2 for child processes. If missing, AppleScript requests them interactively — safe because this runs before the TUI alt screen at startup.
+- Outside iTerm2 (Terminal, tmux, Kitty): passive discovery only (`noPrompt` mode). Connects without credentials; works when iTerm2 has automation auth disabled. No AppleScript dialogs are triggered. To disable auth: create `~/.config/iterm2/disable-automation-auth`.
+- Settings toggle (during TUI): always `noPrompt` — no system dialogs over alt screen. Config is saved so auth happens on next restart if needed.
+
+**Design decision:** AppleScript auth is intentionally suppressed outside iTerm2 and during TUI operation. This means cross-terminal discovery requires disabling iTerm2's automation auth. The alternative (prompting from any terminal) causes unexpected macOS Automation dialogs at startup.
 
 ### tmux (`integrations = ["tmux"]`)
 
@@ -194,7 +207,7 @@ Integrations must be explicitly enabled via config or the settings screen (`I` k
 
 ## Status Detection
 
-Status is determined by reading the bottom 25 lines of each agent's terminal session (via `it2 session read`, `tmux capture-pane`, or vt10x `String()`) every 3 seconds. Each line is classified independently, and the highest-priority match wins (needs_input > error > working > idle).
+Status is determined by reading the bottom 25 lines of each agent's terminal session (via `GetBufferRequest`, `tmux capture-pane`, or vt10x `String()`) every 3 seconds. Each line is classified independently, and the highest-priority match wins (needs_input > error > working > idle).
 
 ### Per-Agent Pattern Architecture
 

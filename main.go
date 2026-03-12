@@ -40,9 +40,6 @@ func main() {
 			}
 			fmt.Println()
 			return
-		case "--uninstall-it2":
-			iterm.Uninstall()
-			return
 		case "--debug":
 			debug = true
 		case "--help", "-h":
@@ -50,7 +47,6 @@ func main() {
 			fmt.Println()
 			fmt.Println("Options:")
 			fmt.Println("  --debug           Log screen reads to /tmp/atria-debug.log")
-			fmt.Println("  --uninstall-it2   Remove the auto-installed it2 venv")
 			fmt.Println("  --version, -v     Show version information")
 			fmt.Println("  --help, -h        Show this help")
 			return
@@ -86,20 +82,10 @@ func main() {
 		switch name {
 		case "iterm2":
 			bs := tui.BackendStatus{Name: "iterm2", Enabled: true}
-			// Skip interactive Preflight when not inside iTerm2 — it
-			// triggers AppleScript Automation prompts and stdin reads.
+			it := iterm.NewClient()
 			if os.Getenv("TERM_PROGRAM") != "iTerm.app" {
-				bs.Reason = "not running inside iTerm2"
-				backendStatuses = append(backendStatuses, bs)
-				continue
+				it.SetNoPrompt(true) // passive discovery only outside iTerm2
 			}
-			it2Path, ok := iterm.Preflight(cfg.IT2Path)
-			if !ok {
-				bs.Reason = "it2 not available"
-				backendStatuses = append(backendStatuses, bs)
-				continue
-			}
-			it := iterm.NewClient(it2Path)
 			if err := it.Available(); err != nil {
 				bs.Reason = err.Error()
 				backendStatuses = append(backendStatuses, bs)
