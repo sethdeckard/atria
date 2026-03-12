@@ -101,8 +101,8 @@ func (s *Store) SetSession(session *AgentSession) {
 	s.Sessions = append(s.Sessions, session)
 }
 
-// GetSession returns the session for the given project directory, or nil.
-func (s *Store) GetSession(projectDir string) *AgentSession {
+// FirstSession returns the first session for the given project directory, or nil.
+func (s *Store) FirstSession(projectDir string) *AgentSession {
 	for _, sess := range s.Sessions {
 		if sess.ProjectDir == projectDir {
 			return sess
@@ -140,13 +140,4 @@ func (s *Store) SessionByID(sessionID string) *AgentSession {
 		}
 	}
 	return nil
-}
-
-// TrackedSessionIDs returns the session IDs of all tracked sessions.
-func (s *Store) TrackedSessionIDs() []string {
-	ids := make([]string, 0, len(s.Sessions))
-	for _, sess := range s.Sessions {
-		ids = append(ids, sess.SessionID)
-	}
-	return ids
 }

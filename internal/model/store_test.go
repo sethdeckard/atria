@@ -105,7 +105,7 @@ func TestSetGetSession(t *testing.T) {
 	}
 	s.SetSession(sess)
 
-	got := s.GetSession("/proj/x")
+	got := s.FirstSession("/proj/x")
 	if got == nil || got.SessionID != "s1" {
 		t.Fatal("expected to get session s1")
 	}
@@ -146,11 +146,10 @@ func TestSetGetSession(t *testing.T) {
 		t.Fatal("expected nil for unknown session ID")
 	}
 
-	// TrackedSessionIDs
+	// Verify all tracked sessions
 	s.SetSession(&AgentSession{ProjectDir: "/proj/y", SessionID: "s3"})
-	ids := s.TrackedSessionIDs()
-	if len(ids) != 3 {
-		t.Fatalf("expected 3 IDs, got %d", len(ids))
+	if len(s.Sessions) != 3 {
+		t.Fatalf("expected 3 sessions, got %d", len(s.Sessions))
 	}
 
 	// RemoveSession by session ID

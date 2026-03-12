@@ -4,14 +4,22 @@ import (
 	"fmt"
 	"strings"
 
+	"time"
+
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/model"
 )
 
+type chatEntry struct {
+	Timestamp time.Time
+	Direction string // "sent" | "received"
+	Text      string
+}
+
 type chatView struct {
 	input        textarea.Model
-	entries      []model.ChatEntry
+	entries      []chatEntry
 	streamHeight int
 	ready        bool
 }
@@ -40,7 +48,7 @@ func (c *chatView) setSize(width, height int) {
 	c.ready = true
 }
 
-func (c *chatView) addEntry(entry model.ChatEntry) {
+func (c *chatView) addEntry(entry chatEntry) {
 	c.entries = append(c.entries, entry)
 }
 

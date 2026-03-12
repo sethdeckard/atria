@@ -43,18 +43,10 @@ type AgentSession struct {
 	Attention      string      `json:"-"`
 	MonitorPID     int         `json:"-"`
 	MonitorLog     string      `json:"-"`
-	LastSent       time.Time   `json:"last_sent"`
 	LastActivity   time.Time   `json:"-"`
 	ScreenChecked  bool        `json:"-"`
-	InitialStatus  AgentStatus `json:"-"`
 	LastScreen     string      `json:"-"`
 	UnmatchedReads int         `json:"-"` // consecutive screen reads with no agent pattern
 	OrphanTicks    int         `json:"-"` // consecutive refreshes where name doesn't match agent while idle
 	Source         string      `json:"-"` // "pty", "iterm", "tmux"
-}
-
-type ChatEntry struct {
-	Timestamp time.Time
-	Direction string // "sent" | "received"
-	Text      string
 }

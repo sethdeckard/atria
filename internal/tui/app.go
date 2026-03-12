@@ -1027,7 +1027,7 @@ func (m Model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.chat.input.Reset()
 
-		entry := model.ChatEntry{
+		entry := chatEntry{
 			Timestamp: time.Now(),
 			Direction: "sent",
 			Text:      text,
@@ -1039,7 +1039,6 @@ func (m Model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusText = "No agent session"
 			return m, nil
 		}
-		session.LastSent = time.Now()
 		return m, sendPrompt(m.backend, session.SessionID, text, session.ProjectDir)
 	}
 
@@ -1851,7 +1850,6 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 		SessionID:  msg.SessionID,
 		Type:       msg.AgentType,
 		Status:     model.StatusWorking,
-		LastSent:   time.Now(),
 		Source:     source,
 	}
 	m.store.SetSession(as)
@@ -1878,7 +1876,7 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
-	as := m.store.GetSession(msg.ProjectDir)
+	as := m.store.FirstSession(msg.ProjectDir)
 	if as == nil {
 		return m, nil
 	}
@@ -1893,7 +1891,7 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 
 	// Add received text to chat if viewing this session
 	if m.view == viewChat && m.chatSessionID == as.SessionID && msg.Attention != "" {
-		entry := model.ChatEntry{
+		entry := chatEntry{
 			Timestamp: time.Now(),
 			Direction: "received",
 			Text:      msg.Attention,
@@ -1936,7 +1934,7 @@ func (m Model) handleMonitorStarted(msg MonitorStartedMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	as := m.store.GetSession(msg.ProjectDir)
+	as := m.store.FirstSession(msg.ProjectDir)
 	if as != nil {
 		as.MonitorPID = msg.PID
 		as.MonitorLog = msg.LogPath
@@ -2011,7 +2009,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 
 	// Add to chat if viewing this session
 	if m.view == viewChat && m.chatSessionID == msg.SessionID && status == model.StatusNeedsInput && as.Attention != "" {
-		m.chat.addEntry(model.ChatEntry{
+		m.chat.addEntry(chatEntry{
 			Timestamp: time.Now(),
 			Direction: "received",
 			Text:      as.Attention,

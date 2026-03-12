@@ -328,7 +328,7 @@ func TestAgentLaunchedMsg(t *testing.T) {
 	})
 	um := modelFrom(updated)
 
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if session == nil {
 		t.Fatal("expected session to be created")
 	}
@@ -926,7 +926,7 @@ func TestSessionsRefreshedUpdatesActivity(t *testing.T) {
 		},
 	})
 	um := modelFrom(updated)
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if session.Activity != "Editing main.go" {
 		t.Errorf("expected activity 'Editing main.go', got %q", session.Activity)
 	}
@@ -946,7 +946,7 @@ func TestSessionsRefreshedRemovesDeadSessions(t *testing.T) {
 	// Refresh with no sessions — sess-dead should be removed
 	updated, _ := m.Update(SessionsRefreshedMsg{Sessions: nil})
 	um := modelFrom(updated)
-	if um.store.GetSession("/a/myproject") != nil {
+	if um.store.FirstSession("/a/myproject") != nil {
 		t.Error("expected dead session to be removed")
 	}
 }
@@ -1196,7 +1196,7 @@ func TestAgentDiscoveredMsg(t *testing.T) {
 	if proj == nil {
 		t.Fatal("expected project to be auto-added")
 	}
-	session := um.store.GetSession("/a/discovered")
+	session := um.store.FirstSession("/a/discovered")
 	if session == nil {
 		t.Fatal("expected session to be created")
 	}
@@ -1268,7 +1268,7 @@ func TestStatusUpdatedMsg(t *testing.T) {
 		Attention:  "Allow file edit? [y/n]",
 	})
 	um := modelFrom(updated)
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if session.Status != model.StatusNeedsInput {
 		t.Errorf("expected needs_input, got %q", session.Status)
 	}
@@ -1324,7 +1324,7 @@ func TestMonitorStartedMsg(t *testing.T) {
 		LogPath:    "/tmp/monitors/myproject.log",
 	})
 	um := modelFrom(updated)
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if session.MonitorPID != 1234 {
 		t.Errorf("expected PID 1234, got %d", session.MonitorPID)
 	}
@@ -1362,7 +1362,7 @@ func TestScreenReadUpdatesStatus(t *testing.T) {
 		Content:    "some output\n\u276f",
 	})
 	um := modelFrom(updated)
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if !session.ScreenChecked {
 		t.Error("expected ScreenChecked to be true")
 	}
@@ -1390,7 +1390,7 @@ func TestScreenReadIdleTransitionWithRecentActivity(t *testing.T) {
 		Content:    "some output\n\u276f",
 	})
 	um := modelFrom(updated)
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if session.Status != model.StatusIdle {
 		t.Errorf("expected idle when screen shows prompt, got %q", session.Status)
 	}
@@ -1417,7 +1417,7 @@ func TestScreenReadIdleUnchangedStillTransitions(t *testing.T) {
 		Content:    "some output\n\u276f",
 	})
 	um := modelFrom(updated)
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if session.Status != model.StatusIdle {
 		t.Errorf("expected idle when screen shows prompt, got %q", session.Status)
 	}
@@ -1442,7 +1442,7 @@ func TestScreenReadBlankTransitionsToIdle(t *testing.T) {
 		Content:    "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
 	})
 	um := modelFrom(updated)
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if session.Status != model.StatusIdle {
 		t.Errorf("expected idle after consecutive blank reads, got %q", session.Status)
 	}
@@ -1593,7 +1593,7 @@ func TestScreenReadErrorIgnored(t *testing.T) {
 		Err:        errors.New("read failed"),
 	})
 	um := modelFrom(updated)
-	session := um.store.GetSession("/a/myproject")
+	session := um.store.FirstSession("/a/myproject")
 	if session.Status != model.StatusWorking {
 		t.Errorf("expected status unchanged, got %q", session.Status)
 	}
