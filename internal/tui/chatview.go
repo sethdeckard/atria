@@ -236,18 +236,7 @@ func (c *chatView) renderStreamBox(session *model.AgentSession, width, spinnerFr
 				prefix = fmt.Sprintf("[%s]   ", ts)
 			}
 			// Truncate plain text to fit innerWidth, then style
-			plain := prefix + entryText
-			if lipgloss.Width(plain) > innerWidth {
-				truncated := ""
-				for _, r := range plain {
-					if lipgloss.Width(truncated+string(r)) > innerWidth-1 {
-						truncated += "\u2026"
-						break
-					}
-					truncated += string(r)
-				}
-				plain = truncated
-			}
+			plain := truncateToWidth(prefix+entryText, innerWidth)
 			var styled string
 			switch e.Direction {
 			case "sent":
@@ -276,19 +265,8 @@ func (c *chatView) renderStreamBox(session *model.AgentSession, width, spinnerFr
 
 // renderBoxLine renders a single line inside box borders, truncating if needed.
 func (c *chatView) renderBoxLine(line string, innerWidth int) string {
+	line = truncateToWidth(line, innerWidth)
 	lineWidth := lipgloss.Width(line)
-	if lineWidth > innerWidth {
-		truncated := ""
-		for _, r := range line {
-			if lipgloss.Width(truncated+string(r)) > innerWidth-1 {
-				truncated += "\u2026"
-				break
-			}
-			truncated += string(r)
-		}
-		line = truncated
-		lineWidth = lipgloss.Width(line)
-	}
 	pad := innerWidth - lineWidth
 	if pad < 0 {
 		pad = 0

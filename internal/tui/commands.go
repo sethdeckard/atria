@@ -172,12 +172,7 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 		if !enable {
 			// Persist first — remove from config and save.
 			prevIntegrations := cfg.Integrations
-			filtered := make([]string, 0, len(cfg.Integrations))
-			for _, n := range cfg.Integrations {
-				if n != name {
-					filtered = append(filtered, n)
-				}
-			}
+			filtered := removeString(cfg.Integrations, name)
 			if len(filtered) == 0 {
 				cfg.Integrations = nil
 			} else {
@@ -337,6 +332,16 @@ func containsString(ss []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func removeString(ss []string, s string) []string {
+	filtered := make([]string, 0, len(ss))
+	for _, v := range ss {
+		if v != s {
+			filtered = append(filtered, v)
+		}
+	}
+	return filtered
 }
 
 func discoverAgent(backend terminal.Backend, sess terminal.Session, agentType model.AgentType, watchDirs []string, projectDirs []string) tea.Cmd {

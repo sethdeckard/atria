@@ -575,20 +575,8 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 			lines = lines[len(lines)-contentLines:]
 		}
 		for _, line := range lines {
+			line = truncateToWidth(line, innerWidth)
 			lineWidth := lipgloss.Width(line)
-			if lineWidth > innerWidth {
-				// Truncate to fit (rune-safe)
-				truncated := ""
-				for _, r := range line {
-					if lipgloss.Width(truncated+string(r)) > innerWidth-1 {
-						truncated += "\u2026"
-						break
-					}
-					truncated += string(r)
-				}
-				line = truncated
-				lineWidth = lipgloss.Width(line)
-			}
 			pad := innerWidth - lineWidth
 			if pad < 0 {
 				pad = 0
@@ -1316,11 +1304,11 @@ func (m Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, keys.Down):
-		m.settingsCursor = m.nextSettingsItem(m.settingsCursor, 1)
+		m.settingsCursor = nextSelectableItem(m.settingsItems, m.settingsCursor, 1)
 		return m, nil
 
 	case key.Matches(msg, keys.Up):
-		m.settingsCursor = m.nextSettingsItem(m.settingsCursor, -1)
+		m.settingsCursor = nextSelectableItem(m.settingsItems, m.settingsCursor, -1)
 		return m, nil
 
 	case key.Matches(msg, keys.Enter):
@@ -1367,13 +1355,7 @@ func (m Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			prevWatchDirs := make([]string, len(m.cfg.WatchDirs))
 			copy(prevWatchDirs, m.cfg.WatchDirs)
 			dir := item.value
-			filtered := make([]string, 0, len(m.cfg.WatchDirs))
-			for _, d := range m.cfg.WatchDirs {
-				if d != dir {
-					filtered = append(filtered, d)
-				}
-			}
-			m.cfg.WatchDirs = filtered
+			m.cfg.WatchDirs = removeString(m.cfg.WatchDirs, dir)
 			m.watchDirs = m.cfg.WatchDirs
 			m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
 			if m.settingsCursor >= len(m.settingsItems) {
@@ -1485,20 +1467,6 @@ func (m *Model) firstEditableSettingsItem() int {
 	return 0
 }
 
-func (m *Model) nextSettingsItem(cur, dir int) int {
-	n := len(m.settingsItems)
-	if n == 0 {
-		return 0
-	}
-	next := cur + dir
-	for next >= 0 && next < n {
-		if m.settingsItems[next].itemType != "header" {
-			return next
-		}
-		next += dir
-	}
-	return cur
-}
 
 func (m Model) toggleSettingsIntegration(item settingsItem) (Model, tea.Cmd) {
 	// Find the backend status.

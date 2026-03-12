@@ -123,31 +123,7 @@ const headerLineCount = 3
 const footerLineCount = 3
 
 func renderHeader(width int) string {
-	var sb strings.Builder
-
-	// Line 1: "Agents" left, "Atria" right
-	left := titleStyle.Render("  agents")
-	right := brandingStyle.Render("atria  ")
-	leftW := lipgloss.Width(left)
-	rightW := lipgloss.Width(right)
-	gap := width - leftW - rightW
-	if gap < 0 {
-		// Too narrow for branding — show title only
-		sb.WriteString(left)
-	} else {
-		sb.WriteString(left + strings.Repeat(" ", gap) + right)
-	}
-	sb.WriteString("\n")
-
-	// Line 2: separator (account for 2-char indent)
-	sepWidth := width - 2
-	if sepWidth < 1 {
-		sepWidth = 1
-	}
-	sb.WriteString(dimStyle.Render("  " + strings.Repeat("\u2500", sepWidth)))
-	sb.WriteString("\n")
-
-	return sb.String()
+	return renderTitleBar("agents", width)
 }
 
 func sortIndicator(col, active sortColumn, desc bool) string {

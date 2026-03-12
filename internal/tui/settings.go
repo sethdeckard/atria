@@ -142,29 +142,25 @@ func backendStatusLabel(bs BackendStatus) string {
 	return "\u2713 active \u2014 discovery"
 }
 
+func nextSelectableItem(items []settingsItem, cur, dir int) int {
+	n := len(items)
+	if n == 0 {
+		return 0
+	}
+	next := cur + dir
+	for next >= 0 && next < n {
+		if items[next].itemType != "header" {
+			return next
+		}
+		next += dir
+	}
+	return cur
+}
+
 func renderSettings(items []settingsItem, cursor int, editing bool, editBuf string, width, _ int) string {
 	var sb strings.Builder
 
-	// Header: "Settings" left, "atria" branding right
-	left := titleStyle.Render("  settings")
-	right := brandingStyle.Render("atria  ")
-	leftW := lipgloss.Width(left)
-	rightW := lipgloss.Width(right)
-	gap := width - leftW - rightW
-	if gap < 0 {
-		sb.WriteString(left)
-	} else {
-		sb.WriteString(left + strings.Repeat(" ", gap) + right)
-	}
-	sb.WriteString("\n")
-
-	// Separator
-	sepWidth := width - 2
-	if sepWidth < 1 {
-		sepWidth = 1
-	}
-	sb.WriteString(dimStyle.Render("  " + strings.Repeat("\u2500", sepWidth)))
-	sb.WriteString("\n")
+	sb.WriteString(renderTitleBar("settings", width))
 
 	for i, item := range items {
 		if item.itemType == "header" {

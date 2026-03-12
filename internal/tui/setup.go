@@ -395,11 +395,11 @@ func (m Model) handleSetupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.exitSetupWizard()
 
 	case key.Matches(msg, keys.Down):
-		m.setupCursor = m.nextSetupItem(m.setupCursor, 1)
+		m.setupCursor = nextSelectableItem(m.setupItems, m.setupCursor, 1)
 		return m, nil
 
 	case key.Matches(msg, keys.Up):
-		m.setupCursor = m.nextSetupItem(m.setupCursor, -1)
+		m.setupCursor = nextSelectableItem(m.setupItems, m.setupCursor, -1)
 		return m, nil
 
 	case key.Matches(msg, keys.Enter):
@@ -440,13 +440,7 @@ func (m Model) handleSetupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			prevWatchDirs := make([]string, len(m.cfg.WatchDirs))
 			copy(prevWatchDirs, m.cfg.WatchDirs)
 			dir := item.value
-			filtered := make([]string, 0, len(m.cfg.WatchDirs))
-			for _, d := range m.cfg.WatchDirs {
-				if d != dir {
-					filtered = append(filtered, d)
-				}
-			}
-			m.cfg.WatchDirs = filtered
+			m.cfg.WatchDirs = removeString(m.cfg.WatchDirs, dir)
 			m.watchDirs = m.cfg.WatchDirs
 			m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
 			if m.setupCursor >= len(m.setupItems) {
@@ -577,20 +571,6 @@ func (m Model) openSetupDirPicker() (Model, tea.Cmd) {
 	return m, listDir(startDir)
 }
 
-func (m *Model) nextSetupItem(cur, dir int) int {
-	n := len(m.setupItems)
-	if n == 0 {
-		return 0
-	}
-	next := cur + dir
-	for next >= 0 && next < n {
-		if m.setupItems[next].itemType != "header" {
-			return next
-		}
-		next += dir
-	}
-	return cur
-}
 
 func (m Model) toggleSetupIntegration(item settingsItem) (Model, tea.Cmd) {
 	var bs BackendStatus

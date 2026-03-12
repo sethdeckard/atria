@@ -71,18 +71,7 @@ func (tv termView) render() string {
 	}
 
 	for _, line := range lines {
-		lineWidth := lipgloss.Width(line)
-		if lineWidth > tv.width {
-			truncated := ""
-			for _, r := range line {
-				if lipgloss.Width(truncated+string(r)) > tv.width-1 {
-					truncated += "\u2026"
-					break
-				}
-				truncated += string(r)
-			}
-			line = truncated
-		}
+		line = truncateToWidth(line, tv.width)
 		sb.WriteString(line)
 		sb.WriteString("\n")
 	}

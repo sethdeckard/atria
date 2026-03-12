@@ -127,6 +127,33 @@ func TestIntegrationMeta(t *testing.T) {
 	}
 }
 
+func TestRemoveString(t *testing.T) {
+	tests := []struct {
+		name     string
+		slice    []string
+		s        string
+		expected []string
+	}{
+		{"empty slice", []string{}, "a", []string{}},
+		{"no match", []string{"a", "b", "c"}, "d", []string{"a", "b", "c"}},
+		{"single match", []string{"a", "b", "c"}, "b", []string{"a", "c"}},
+		{"multiple matches", []string{"a", "b", "a", "c"}, "a", []string{"b", "c"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := removeString(tt.slice, tt.s)
+			if len(got) != len(tt.expected) {
+				t.Fatalf("removeString(%v, %q) = %v, want %v", tt.slice, tt.s, got, tt.expected)
+			}
+			for i := range got {
+				if got[i] != tt.expected[i] {
+					t.Errorf("removeString(%v, %q)[%d] = %q, want %q", tt.slice, tt.s, i, got[i], tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
 func TestContainsString(t *testing.T) {
 	tests := []struct {
 		name     string
