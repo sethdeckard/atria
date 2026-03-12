@@ -160,6 +160,33 @@ func TestReadLastLine(t *testing.T) {
 	})
 }
 
+func TestBottomRegion(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		want  int
+	}{
+		{"all blank", []string{"", "", ""}, 0},
+		{"fewer than 8 lines", []string{"a", "b", "c"}, 0},
+		{"exactly 8 lines", []string{"a", "b", "c", "d", "e", "f", "g", "h"}, 0},
+		{"normal case", []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}, 2},
+		{
+			"trailing blanks anchored from last non-blank",
+			[]string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "", "", ""},
+			2,
+		},
+		{"single line", []string{"only"}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := bottomRegion(tt.lines)
+			if got != tt.want {
+				t.Errorf("bottomRegion() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClassifyScreen(t *testing.T) {
 	tests := []struct {
 		name       string

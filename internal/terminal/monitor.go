@@ -191,6 +191,24 @@ func statusPriority(s model.AgentStatus) int {
 // false matches. Only idle/completed match anywhere since they're harmless.
 const bottomLineCount = 8
 
+// bottomRegion returns the start index of the bottom region, measured
+// from the last non-blank line. Used to restrict active-status matching
+// to the live UI area and ignore scrollback history.
+func bottomRegion(lines []string) int {
+	lastNonBlank := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			lastNonBlank = i
+			break
+		}
+	}
+	start := lastNonBlank - bottomLineCount + 1
+	if start < 0 {
+		start = 0
+	}
+	return start
+}
+
 // ClassifyScreen checks each line of multi-line screen content and returns
 // the highest priority status found. Active statuses (needs_input, error,
 // working) are only matched in the bottom region where the live UI appears.
@@ -202,19 +220,7 @@ func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatu
 	bestStatus := model.AgentStatus("")
 	bestLine := ""
 
-	// Find last non-blank line to anchor the bottom region
-	lastNonBlank := 0
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.TrimSpace(lines[i]) != "" {
-			lastNonBlank = i
-			break
-		}
-	}
-
-	bottomStart := lastNonBlank - bottomLineCount + 1
-	if bottomStart < 0 {
-		bottomStart = 0
-	}
+	bottomStart := bottomRegion(lines)
 
 	for i, line := range lines {
 		line = strings.TrimSpace(line)
@@ -249,16 +255,11 @@ func HasAgentScreen(content string, agentType model.AgentType) bool {
 	}
 	lines := strings.Split(content, "\n")
 
-	lastNonBlank := 0
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.TrimSpace(lines[i]) != "" {
-			lastNonBlank = i
-			break
-		}
-	}
-	bottomStart := lastNonBlank - bottomLineCount + 1
-	if bottomStart < 0 {
-		bottomStart = 0
+	bottomStart := bottomRegion(lines)
+
+	lastNonBlank := len(lines) - 1
+	for lastNonBlank > 0 && strings.TrimSpace(lines[lastNonBlank]) == "" {
+		lastNonBlank--
 	}
 
 	for i := bottomStart; i <= lastNonBlank; i++ {
