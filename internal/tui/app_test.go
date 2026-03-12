@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 )
@@ -2321,5 +2322,316 @@ func TestStreamPanelHeight(t *testing.T) {
 	h = streamPanelHeight(80)
 	if h != 25 {
 		t.Errorf("streamPanelHeight(80) = %d, want 25 (capped)", h)
+	}
+}
+
+// --- Settings screen tests ---
+
+func settingsModel(t *testing.T) Model {
+	t.Helper()
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.cfg = &config.Config{
+		WatchDirs:   []string{"/a", "/b"},
+		TmuxSession: "atria",
+		PtyCols:     120,
+		PtyRows:     40,
+	}
+	m.availableAgents = []model.AgentType{model.AgentClaude, model.AgentCodex}
+	m.defaultAgent = model.AgentClaude
+	m.statusInfo = StatusInfo{
+		Backends: []BackendStatus{
+			{Name: "pty", Enabled: true, Active: true},
+			{Name: "tmux", Enabled: false},
+			{Name: "iterm2", Enabled: false},
+		},
+	}
+	m.view = viewSettings
+	m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+	m.settingsCursor = m.firstEditableSettingsItem()
+	return m
+}
+
+func TestSettingsNavigation(t *testing.T) {
+	m := settingsModel(t)
+	startCursor := m.settingsCursor
+
+	// Move down
+	updated, _ := m.Update(keyMsg("j"))
+	um := modelFrom(updated)
+	if um.settingsCursor <= startCursor {
+		t.Errorf("expected cursor to advance past %d, got %d", startCursor, um.settingsCursor)
+	}
+	downCursor := um.settingsCursor
+
+	// Move up — should return to start
+	updated, _ = um.Update(keyMsg("k"))
+	um = modelFrom(updated)
+	if um.settingsCursor != startCursor {
+		t.Errorf("expected cursor back at %d, got %d", startCursor, um.settingsCursor)
+	}
+
+	// Move down past last item — cursor stays
+	um.settingsCursor = len(um.settingsItems) - 1
+	// Make sure we're on a non-header
+	for um.settingsItems[um.settingsCursor].itemType == "header" {
+		um.settingsCursor--
+	}
+	lastCursor := um.settingsCursor
+	updated, _ = um.Update(keyMsg("j"))
+	um = modelFrom(updated)
+	if um.settingsCursor != lastCursor {
+		t.Errorf("expected cursor clamped at %d, got %d", lastCursor, um.settingsCursor)
+	}
+	_ = downCursor
+}
+
+func TestSettingsEscapeReturns(t *testing.T) {
+	m := settingsModel(t)
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyEscape))
+	um := modelFrom(updated)
+	if um.view != viewProjectList {
+		t.Errorf("expected viewProjectList after Esc, got %d", um.view)
+	}
+}
+
+func TestSettingsQuitReturns(t *testing.T) {
+	m := settingsModel(t)
+	updated, _ := m.Update(keyMsg("q"))
+	um := modelFrom(updated)
+	if um.view != viewProjectList {
+		t.Errorf("expected viewProjectList after q, got %d", um.view)
+	}
+}
+
+func TestSettingsEnterOnToggle(t *testing.T) {
+	m := settingsModel(t)
+	// Find the tmux toggle item
+	for i, item := range m.settingsItems {
+		if item.itemType == "toggle" && item.key == "tmux" {
+			m.settingsCursor = i
+			break
+		}
+	}
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	um := modelFrom(updated)
+	if um.statusText != "Cannot modify backend" {
+		t.Errorf("expected 'Cannot modify backend', got %q", um.statusText)
+	}
+}
+
+func TestSettingsEnterOnChoice(t *testing.T) {
+	m := settingsModel(t)
+	// Find the default_agent choice item
+	for i, item := range m.settingsItems {
+		if item.itemType == "choice" && item.key == "default_agent" {
+			m.settingsCursor = i
+			break
+		}
+	}
+	if m.defaultAgent != model.AgentClaude {
+		t.Fatalf("expected initial agent Claude, got %s", m.defaultAgent)
+	}
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	um := modelFrom(updated)
+	if um.defaultAgent != model.AgentCodex {
+		t.Errorf("expected agent cycled to Codex, got %s", um.defaultAgent)
+	}
+	if um.cfg.DefaultAgent != string(model.AgentCodex) {
+		t.Errorf("expected cfg.DefaultAgent 'codex', got %q", um.cfg.DefaultAgent)
+	}
+}
+
+func TestSettingsEnterOnStringOpensEdit(t *testing.T) {
+	m := settingsModel(t)
+	// Find the tmux_session string item
+	for i, item := range m.settingsItems {
+		if item.itemType == "string" && item.key == "tmux_session" {
+			m.settingsCursor = i
+			break
+		}
+	}
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	um := modelFrom(updated)
+	if !um.settingsEditing {
+		t.Error("expected settingsEditing to be true")
+	}
+	if um.settingsEditBuf != "atria" {
+		t.Errorf("expected edit buf 'atria', got %q", um.settingsEditBuf)
+	}
+}
+
+func TestSettingsEditTypeAndSave(t *testing.T) {
+	m := settingsModel(t)
+	// Position cursor on pty_cols item
+	for i, item := range m.settingsItems {
+		if item.key == "pty_cols" {
+			m.settingsCursor = i
+			break
+		}
+	}
+	m.settingsEditing = true
+	m.settingsEditBuf = "12"
+
+	// Type '0'
+	updated, _ := m.Update(keyMsg("0"))
+	um := modelFrom(updated)
+	if um.settingsEditBuf != "120" {
+		t.Errorf("expected edit buf '120', got %q", um.settingsEditBuf)
+	}
+
+	// Press Enter to commit
+	updated, cmd := um.Update(ctrlKeyMsg(tea.KeyEnter))
+	um = modelFrom(updated)
+	if um.settingsEditing {
+		t.Error("expected settingsEditing to be false after Enter")
+	}
+	if um.cfg.PtyCols != 120 {
+		t.Errorf("expected PtyCols=120, got %d", um.cfg.PtyCols)
+	}
+	if cmd == nil {
+		t.Error("expected saveConfig command")
+	}
+}
+
+func TestSettingsEditBackspace(t *testing.T) {
+	m := settingsModel(t)
+	m.settingsEditing = true
+	m.settingsEditBuf = "abc"
+	// Need cursor on any editable item so handleSettingsEditKey runs
+	for i, item := range m.settingsItems {
+		if item.itemType == "string" || item.itemType == "number" {
+			m.settingsCursor = i
+			break
+		}
+	}
+
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyBackspace))
+	um := modelFrom(updated)
+	if um.settingsEditBuf != "ab" {
+		t.Errorf("expected 'ab' after backspace, got %q", um.settingsEditBuf)
+	}
+}
+
+func TestSettingsEditEscapeCancels(t *testing.T) {
+	m := settingsModel(t)
+	m.settingsEditing = true
+	m.settingsEditBuf = "changed"
+	for i, item := range m.settingsItems {
+		if item.itemType == "string" || item.itemType == "number" {
+			m.settingsCursor = i
+			break
+		}
+	}
+
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyEscape))
+	um := modelFrom(updated)
+	if um.settingsEditing {
+		t.Error("expected settingsEditing to be false after Esc")
+	}
+	if um.settingsEditBuf != "" {
+		t.Errorf("expected empty edit buf, got %q", um.settingsEditBuf)
+	}
+}
+
+func TestSettingsDeleteWatchDir(t *testing.T) {
+	m := settingsModel(t)
+	// Find the list-entry for "/a"
+	found := false
+	for i, item := range m.settingsItems {
+		if item.itemType == "list-entry" && item.key == "watch_dirs" && item.value == "/a" {
+			m.settingsCursor = i
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("could not find watch_dirs list-entry for /a")
+	}
+
+	updated, cmd := m.Update(keyMsg("d"))
+	um := modelFrom(updated)
+	if len(um.cfg.WatchDirs) != 1 || um.cfg.WatchDirs[0] != "/b" {
+		t.Errorf("expected WatchDirs=[/b], got %v", um.cfg.WatchDirs)
+	}
+	if len(um.watchDirs) != 1 || um.watchDirs[0] != "/b" {
+		t.Errorf("expected watchDirs=[/b], got %v", um.watchDirs)
+	}
+	if cmd == nil {
+		t.Error("expected saveConfig command")
+	}
+}
+
+func TestIntegrationToggledMsgRemapsIDs(t *testing.T) {
+	store := makeStore(t)
+	store.SetSession(&model.AgentSession{
+		SessionID:  "old-1",
+		ProjectDir: "/proj",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.cfg = &config.Config{}
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.statusInfo = StatusInfo{
+		Backends: []BackendStatus{
+			{Name: "tmux", Enabled: true, Active: true},
+		},
+	}
+	m.attentionSessions = map[string]time.Time{"old-1": time.Now()}
+	m.chatSessionID = "old-1"
+	m.termSessionID = "old-1"
+
+	msg := IntegrationToggledMsg{
+		Name:        "tmux",
+		Status:      BackendStatus{Name: "tmux", Enabled: true, Active: true},
+		RemappedIDs: map[string]string{"old-1": "pty:old-1"},
+	}
+	updated, _ := m.Update(msg)
+	um := modelFrom(updated)
+
+	// Session ID should be remapped
+	sess := um.store.Sessions[0]
+	if sess.SessionID != "pty:old-1" {
+		t.Errorf("expected session ID 'pty:old-1', got %q", sess.SessionID)
+	}
+	// Attention map should be remapped
+	if _, ok := um.attentionSessions["old-1"]; ok {
+		t.Error("old attention key should be removed")
+	}
+	if _, ok := um.attentionSessions["pty:old-1"]; !ok {
+		t.Error("new attention key should be set")
+	}
+	if um.chatSessionID != "pty:old-1" {
+		t.Errorf("expected chatSessionID 'pty:old-1', got %q", um.chatSessionID)
+	}
+	if um.termSessionID != "pty:old-1" {
+		t.Errorf("expected termSessionID 'pty:old-1', got %q", um.termSessionID)
+	}
+	// Backend status should be updated
+	for _, bs := range um.statusInfo.Backends {
+		if bs.Name == "tmux" && !bs.Active {
+			t.Error("expected tmux backend to be active after toggle msg")
+		}
+	}
+}
+
+func TestConfigSavedMsgRollback(t *testing.T) {
+	m := settingsModel(t)
+	m.cfg.PtyCols = 200
+
+	msg := ConfigSavedMsg{
+		Err: errors.New("disk full"),
+		Rollback: func(rm *Model) {
+			rm.cfg.PtyCols = 120
+		},
+	}
+	updated, _ := m.Update(msg)
+	um := modelFrom(updated)
+	if !strings.Contains(um.statusText, "Config save failed") {
+		t.Errorf("expected status to contain 'Config save failed', got %q", um.statusText)
+	}
+	if um.cfg.PtyCols != 120 {
+		t.Errorf("expected PtyCols rolled back to 120, got %d", um.cfg.PtyCols)
 	}
 }
