@@ -2031,6 +2031,8 @@ func TestShellEscape(t *testing.T) {
 		{"simple", "'simple'"},
 		{"has space", "'has space'"},
 		{"it's", "'it'\"'\"'s'"},
+		{"", "''"},
+		{"a'b'c", "'a'\"'\"'b'\"'\"'c'"},
 	}
 	for _, tc := range tests {
 		got := shellEscape(tc.input)

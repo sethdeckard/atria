@@ -293,6 +293,97 @@ func TestHasBell(t *testing.T) {
 	}
 }
 
+func TestHasAgentScreen(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		agentType model.AgentType
+		expected  bool
+	}{
+		{
+			"claude idle prompt in bottom",
+			"some output\n❯ ",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"claude working spinner",
+			"some output\n✻ Reading…",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"claude needs_input",
+			"some output\nAllow file edit?",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"codex idle prompt",
+			"some output\n› Write tests",
+			model.AgentCodex,
+			true,
+		},
+		{
+			"codex working",
+			"some output\n• Working (30s • esc to interrupt)",
+			model.AgentCodex,
+			true,
+		},
+		{
+			"opencode idle",
+			"some output\nctrl+p commands",
+			model.AgentOpenCode,
+			true,
+		},
+		{
+			"opencode needs_input",
+			"some output\n△ Permission required",
+			model.AgentOpenCode,
+			true,
+		},
+		{
+			"cross-agent isolation: claude prompt on codex screen",
+			"some output\n❯ ",
+			model.AgentCodex,
+			false,
+		},
+		{
+			"cross-agent isolation: codex prompt on claude screen",
+			"some output\n› Write tests",
+			model.AgentClaude,
+			false,
+		},
+		{
+			"pattern in scrollback only above bottom region",
+			"❯ \nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nline11\nline12",
+			model.AgentClaude,
+			false,
+		},
+		{
+			"empty content",
+			"",
+			model.AgentClaude,
+			false,
+		},
+		{
+			"unknown agent type",
+			"❯ ",
+			"unknown",
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := HasAgentScreen(tt.content, tt.agentType)
+			if got != tt.expected {
+				t.Errorf("HasAgentScreen(%q, %q) = %v, want %v", tt.content, tt.agentType, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestReadTail(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.log")

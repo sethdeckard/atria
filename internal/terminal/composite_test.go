@@ -401,6 +401,91 @@ func TestComposite_SetPrimary(t *testing.T) {
 	}
 }
 
+func TestComposite_RouteEdgeCases(t *testing.T) {
+	primary := &trackingBackend{}
+	tmuxInteg := &trackingBackend{}
+
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "tmux:", Source: "tmux", Backend: tmuxInteg},
+	})
+
+	tests := []struct {
+		name      string
+		sessionID string
+		wantErr   bool
+		wantDest  string // "primary" or "tmux"
+		wantID    string // expected unprefixed ID
+	}{
+		{
+			"path-like ID with colon routes to primary",
+			"/some/path:extra",
+			false,
+			"primary",
+			"/some/path:extra",
+		},
+		{
+			"unrecognized integration prefix returns error",
+			"unknown:sess-1",
+			true,
+			"",
+			"",
+		},
+		{
+			"no colon plain ID routes to primary",
+			"pty-0",
+			false,
+			"primary",
+			"pty-0",
+		},
+		{
+			"empty string routes to primary",
+			"",
+			false,
+			"primary",
+			"",
+		},
+		{
+			"registered prefix routes to integration",
+			"tmux:win-1",
+			false,
+			"tmux",
+			"win-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset tracking.
+			primary.lastSendID = ""
+			primary.lastSendText = ""
+			tmuxInteg.lastSendID = ""
+			tmuxInteg.lastSendText = ""
+
+			err := comp.SendText(tt.sessionID, "test")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			switch tt.wantDest {
+			case "primary":
+				if primary.lastSendID != tt.wantID {
+					t.Errorf("expected primary got ID %q, got %q", tt.wantID, primary.lastSendID)
+				}
+			case "tmux":
+				if tmuxInteg.lastSendID != tt.wantID {
+					t.Errorf("expected tmux got ID %q, got %q", tt.wantID, tmuxInteg.lastSendID)
+				}
+			}
+		})
+	}
+}
+
 func TestComposite_MissingIntegrationReturnsError(t *testing.T) {
 	primary := &trackingBackend{}
 
