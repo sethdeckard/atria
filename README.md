@@ -17,6 +17,12 @@ Comes with a built-in terminal multiplexer ready to launch agents out of the box
 1. Install:
 
    ```
+   brew install sethdeckard/tap/atria
+   ```
+
+   Or with Go:
+
+   ```
    go install github.com/sethdeckard/atria@latest
    ```
 
@@ -32,7 +38,7 @@ atria scans your watch directories for projects and lets you launch and manage a
 
 ## Requirements
 
-- Go 1.25+ (for building from source)
+- macOS or Linux
 - At least one supported agent on `$PATH`: `claude`, `codex`, or `opencode`
 
 ## Configuration

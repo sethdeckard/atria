@@ -22,6 +22,17 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+brews:
+  - repository:
+      owner: sethdeckard
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/sethdeckard/atria
+    description: "Agent multiplexer for your terminal"
+    license: MIT
+    install: |
+      bin.install "atria"
+
 changelog:
   sort: asc
   filters:
