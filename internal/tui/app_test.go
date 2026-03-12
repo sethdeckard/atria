@@ -1840,7 +1840,7 @@ func TestDuplicateDisplayNames(t *testing.T) {
 	rows := buildRows(storeAdapter{store})
 	sortRows(rows, sortByAgent, false)
 
-	// Find duplicate myapp rows
+	// Find duplicate myapp rows — same basename, disambiguated with #2
 	var myappNames []string
 	for _, r := range rows {
 		if r.project.Name == "myapp" {
@@ -1850,11 +1850,11 @@ func TestDuplicateDisplayNames(t *testing.T) {
 	if len(myappNames) != 2 {
 		t.Fatalf("expected 2 myapp rows, got %d", len(myappNames))
 	}
-	// First keeps clean name, second gets #2
-	// DisplayName adds parent dir disambiguator: "myapp (go)" and "myapp (rb)"
-	// Since these are already different, no #N suffix is needed
-	if myappNames[0] == myappNames[1] {
-		t.Errorf("duplicate display names should be disambiguated, both are %q", myappNames[0])
+	if myappNames[0] != "myapp" {
+		t.Errorf("first should be 'myapp', got %q", myappNames[0])
+	}
+	if myappNames[1] != "myapp #2" {
+		t.Errorf("second should be 'myapp #2', got %q", myappNames[1])
 	}
 
 	// Test with truly duplicate display names (same parent dir)

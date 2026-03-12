@@ -29,26 +29,9 @@ type Project struct {
 	LastLaunchedAt time.Time `json:"last_launched_at,omitempty"`
 }
 
-// DisplayName returns a unique name. If multiple projects share the same
-// basename, disambiguate with the shortest unique parent suffix.
-func (p *Project) DisplayName(all []*Project) string {
-	base := filepath.Base(p.Dir)
-
-	// Check if any other project shares the same basename.
-	var conflicts []*Project
-	for _, other := range all {
-		if other.Dir != p.Dir && filepath.Base(other.Dir) == base {
-			conflicts = append(conflicts, other)
-		}
-	}
-
-	if len(conflicts) == 0 {
-		return base
-	}
-
-	// Disambiguate using the parent directory name.
-	parent := filepath.Base(filepath.Dir(p.Dir))
-	return base + " (" + parent + ")"
+// DisplayName returns the project's directory basename.
+func (p *Project) DisplayName() string {
+	return filepath.Base(p.Dir)
 }
 
 type AgentSession struct {

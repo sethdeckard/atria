@@ -49,7 +49,7 @@ func (c *chatView) renderHeader(session *model.AgentSession, project *model.Proj
 		return titleStyle.Render("  No agent selected")
 	}
 	agentStr := strings.ToUpper(string(session.Type)[:1]) + string(session.Type)[1:]
-	name := project.DisplayName(nil)
+	name := project.DisplayName()
 	dir := contractHome(project.Dir)
 	right := brandingStyle.Render("atria  ")
 	rightW := lipgloss.Width(right)

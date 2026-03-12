@@ -74,20 +74,9 @@ func TestProjectPersistence(t *testing.T) {
 }
 
 func TestDisplayName(t *testing.T) {
-	pGo := &Project{Name: "myapp", Dir: "/go/myapp"}
-	pRuby := &Project{Name: "myapp", Dir: "/ruby/myapp"}
-	pUnique := &Project{Name: "other", Dir: "/home/other"}
-
-	all := []*Project{pGo, pRuby, pUnique}
-
-	if got := pGo.DisplayName(all); got != "myapp (go)" {
-		t.Fatalf("expected 'myapp (go)', got %q", got)
-	}
-	if got := pRuby.DisplayName(all); got != "myapp (ruby)" {
-		t.Fatalf("expected 'myapp (ruby)', got %q", got)
-	}
-	if got := pUnique.DisplayName(all); got != "other" {
-		t.Fatalf("expected 'other', got %q", got)
+	p := &Project{Name: "myapp", Dir: "/go/myapp"}
+	if got := p.DisplayName(); got != "myapp" {
+		t.Fatalf("expected 'myapp', got %q", got)
 	}
 }
 

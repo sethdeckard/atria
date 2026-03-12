@@ -36,7 +36,7 @@ func buildRows(store interface {
 	for _, p := range projects {
 		sessions := store.GetSessions(p.Dir)
 		for _, s := range sessions {
-			rows = append(rows, projectRow{project: p, session: s, displayName: p.DisplayName(projects)})
+			rows = append(rows, projectRow{project: p, session: s, displayName: p.DisplayName()})
 		}
 	}
 
