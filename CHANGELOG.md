@@ -10,6 +10,7 @@ Initial public release.
 - iTerm2 integration via native protobuf-over-WebSocket API
 - Kitty integration via Unix socket remote control
 - tmux integration with detached session management
+- WezTerm integration via `wezterm cli` over Unix socket
 - Setup wizard for first-run configuration
 - Settings screen for managing integrations, watch directories, and preferences
 - Embedded terminal view with full keystroke forwarding
