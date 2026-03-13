@@ -69,7 +69,7 @@ You can also configure everything interactively from the settings screen (`I` ke
 |-----|--------|
 | `j`/`k` or arrows | Navigate agents |
 | `Enter` | Open chat view to send a prompt |
-| `l` | Launch a new agent in the selected project |
+| `l` | Launch a new agent (choose backend if an integration is active) |
 | `f` | Focus (switch to) the agent's terminal |
 | `d` | Delete an agent session |
 | `I` | Open settings |
@@ -99,6 +99,8 @@ Enable in config or toggle from the settings screen (`I`):
 ```toml
 integrations = ["iterm2", "kitty", "tmux", "wezterm"]
 ```
+
+When an integration is active (i.e., you're running inside that terminal with its integration enabled), pressing `l` to launch offers a choice between the native terminal (e.g., a new tmux window) and the embedded PTY. When no integration is active, agents launch directly in the embedded PTY.
 
 Each discovered agent is managed through its native integration — focusing an iTerm2-discovered agent switches to its iTerm2 tab, focusing a Kitty agent switches to its Kitty window, while focusing a PTY agent opens the embedded terminal view.
 
