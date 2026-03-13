@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.0
+
+- Per-launch backend choice: directory browser shows launch actions for both the active integration and embedded terminal
+- Environment column in agent list showing integration source (tmux, iterm, kitty, wezterm, embedded)
+- Reorder columns: status before directory for better scannability
+
 ## v0.1.0
 
 Initial public release.
