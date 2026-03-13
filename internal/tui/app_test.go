@@ -232,7 +232,7 @@ func TestLaunchBlockedWithoutBackend(t *testing.T) {
 	m.defaultAgent = model.AgentClaude
 	// backendOK is false by default
 
-	updated, cmd := m.Update(keyMsg("l"))
+	updated, cmd := m.Update(keyMsg("n"))
 	um := modelFrom(updated)
 	if cmd != nil {
 		t.Error("expected no command when backend unavailable")
@@ -250,7 +250,7 @@ func TestLaunchWorksWithoutDetectedAgents(t *testing.T) {
 	m.availableAgents = nil
 	m.defaultAgent = model.AgentClaude
 
-	_, cmd := m.Update(keyMsg("l"))
+	_, cmd := m.Update(keyMsg("n"))
 	if cmd == nil {
 		t.Error("expected listDirs command even without detected agents")
 	}
@@ -267,7 +267,7 @@ func TestLaunchOpensProjectPicker(t *testing.T) {
 	m.defaultAgent = model.AgentClaude
 
 	// l key should open the project picker (listDirs command)
-	_, cmd := m.Update(keyMsg("l"))
+	_, cmd := m.Update(keyMsg("n"))
 	if cmd == nil {
 		t.Fatal("expected a listDirs command")
 	}
@@ -656,7 +656,7 @@ func TestDirBrowserEnterOnParentDescends(t *testing.T) {
 	}
 }
 
-func TestDirBrowserDescendWithL(t *testing.T) {
+func TestDirBrowserDescendWithN(t *testing.T) {
 	store := makeStore(t)
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
@@ -668,8 +668,8 @@ func TestDirBrowserDescendWithL(t *testing.T) {
 	}
 	m.browserCursor = 1 // on "alpha"
 
-	// l should descend into alpha
-	_, cmd := m.Update(keyMsg("l"))
+	// n should descend into alpha
+	_, cmd := m.Update(keyMsg("n"))
 	if cmd == nil {
 		t.Fatal("expected listDir command for descend")
 	}
@@ -806,6 +806,185 @@ func TestDirBrowserScroll(t *testing.T) {
 	}
 	if m.browserScroll != 0 {
 		t.Errorf("expected scroll 0 at top, got %d", m.browserScroll)
+	}
+}
+
+func TestDirBrowserLaunchChoiceRendering(t *testing.T) {
+	store := makeStore(t)
+	mb := &mockBackend{newSessionID: "sess-1"}
+	m := newTestModelWithStore(mb, store)
+	m.width = 80
+	m.height = 40
+	m.view = viewDirBrowser
+	m.browserPath = "/watch/alpha"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/watch", Name: "..", IsParent: true},
+	}
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+
+	// Set up composite with tmux as primary and PTY as integration.
+	ptyBackend := &mockBackend{newSessionID: "pty-0"}
+	tmuxBackend := &mockBackend{newSessionID: "tmux-0"}
+	comp := terminal.NewCompositeBackend(tmuxBackend, "tmux", []terminal.Integration{
+		{Prefix: "pty:", Source: "pty", Backend: ptyBackend},
+	})
+	m.backend = terminal.NewCachedBackend(comp, 5)
+
+	v := m.viewDirBrowser()
+	if !strings.Contains(v, "(tmux)") {
+		t.Errorf("expected '(tmux)' in browser, got:\n%s", v)
+	}
+	if !strings.Contains(v, "(embedded)") {
+		t.Errorf("expected '(embedded)' in browser, got:\n%s", v)
+	}
+}
+
+func TestDirBrowserHeaderAgentHint(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.height = 40
+	m.view = viewDirBrowser
+	m.browserPath = "/watch"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/", Name: "..", IsParent: true},
+	}
+
+	// Multiple agents — header should show cycle hint near agent name.
+	m.availableAgents = []model.AgentType{model.AgentClaude, model.AgentCodex}
+	m.defaultAgent = model.AgentClaude
+	v := m.viewDirBrowser()
+	if !strings.Contains(v, "t:cycle") {
+		t.Errorf("expected 't:cycle' in header with multiple agents, got:\n%s", v)
+	}
+
+	// Single agent — no cycle hint.
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	v = m.viewDirBrowser()
+	if strings.Contains(v, "t:cycle") {
+		t.Errorf("should not show 't:cycle' with single agent, got:\n%s", v)
+	}
+}
+
+func TestDirBrowserPathNearLaunchAction(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.height = 40
+	m.view = viewDirBrowser
+	m.browserPath = "/watch/myproject"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/watch", Name: "..", IsParent: true},
+	}
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+
+	v := m.viewDirBrowser()
+	// Path should appear near the launch action, not just in header
+	launchIdx := strings.Index(v, "launch Claude here")
+	pathIdx := strings.LastIndex(v[:launchIdx], "/watch/myproject")
+	if pathIdx == -1 {
+		t.Errorf("expected path label near launch action, got:\n%s", v)
+	}
+}
+
+func TestDirBrowserNoChoiceRendering(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 80
+	m.height = 40
+	m.view = viewDirBrowser
+	m.browserPath = "/watch/alpha"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/watch", Name: "..", IsParent: true},
+	}
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+
+	v := m.viewDirBrowser()
+	if strings.Contains(v, "(embedded)") {
+		t.Errorf("should not show (embedded) without launch choice, got:\n%s", v)
+	}
+	if strings.Contains(v, "(pty)") {
+		t.Errorf("should not show (pty) suffix without launch choice, got:\n%s", v)
+	}
+	if !strings.Contains(v, "launch Claude here") {
+		t.Errorf("expected 'launch Claude here' without suffix, got:\n%s", v)
+	}
+}
+
+func TestDirBrowserLaunchEmbedded(t *testing.T) {
+	store := makeStore(t)
+	mb := &mockBackend{newSessionID: "pty-0"}
+	tmuxBackend := &mockBackend{newSessionID: "tmux-0"}
+	comp := terminal.NewCompositeBackend(tmuxBackend, "tmux", []terminal.Integration{
+		{Prefix: "pty:", Source: "pty", Backend: mb},
+	})
+	cached := terminal.NewCachedBackend(comp, 5)
+
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backend = cached
+	m.width = 80
+	m.height = 40
+	m.backendOK = true
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	m.view = viewDirBrowser
+	m.browserPath = "/watch/alpha"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/watch", Name: "..", IsParent: true},
+	}
+	// Cursor on embedded action (dirs=1, launchIdx=1, embeddedIdx=2)
+	m.browserCursor = 2
+
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	um := modelFrom(updated)
+	if um.view != viewProjectList {
+		t.Errorf("expected return to project list, got %d", um.view)
+	}
+	if !strings.Contains(um.statusText, "Launching") {
+		t.Errorf("expected launching message, got %q", um.statusText)
+	}
+	if cmd == nil {
+		t.Error("expected launch command")
+	}
+}
+
+func TestDirBrowserLaunchIntegration(t *testing.T) {
+	store := makeStore(t)
+	mb := &mockBackend{newSessionID: "pty-0"}
+	tmuxBackend := &mockBackend{newSessionID: "tmux-0"}
+	comp := terminal.NewCompositeBackend(tmuxBackend, "tmux", []terminal.Integration{
+		{Prefix: "pty:", Source: "pty", Backend: mb},
+	})
+	cached := terminal.NewCachedBackend(comp, 5)
+
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backend = cached
+	m.width = 80
+	m.height = 40
+	m.backendOK = true
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	m.view = viewDirBrowser
+	m.browserPath = "/watch/alpha"
+	m.browserDirs = []DirBrowserItem{
+		{Path: "/watch", Name: "..", IsParent: true},
+	}
+	// Cursor on primary launch action (launchIdx=1)
+	m.browserCursor = 1
+
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	um := modelFrom(updated)
+	if um.view != viewProjectList {
+		t.Errorf("expected return to project list, got %d", um.view)
+	}
+	if !strings.Contains(um.statusText, "Launching") {
+		t.Errorf("expected launching message, got %q", um.statusText)
+	}
+	if cmd == nil {
+		t.Error("expected launch command")
 	}
 }
 
@@ -1651,11 +1830,11 @@ func TestViewProjectListEmpty(t *testing.T) {
 	if !strings.Contains(v, "Agent multiplexer") {
 		t.Error("expected tagline in empty state")
 	}
-	if !strings.Contains(v, "launch an agent in a directory") {
-		t.Error("expected launch hint in empty state")
+	if !strings.Contains(v, "new agent in a directory") {
+		t.Error("expected new agent hint in empty state")
 	}
-	if !strings.Contains(v, "toggle agent type") {
-		t.Error("expected toggle hint in empty state")
+	if !strings.Contains(v, "cycle agent") {
+		t.Error("expected cycle agent hint in empty state")
 	}
 }
 
@@ -1666,11 +1845,11 @@ func TestViewProjectListEmptySingleAgent(t *testing.T) {
 	m.availableAgents = []model.AgentType{model.AgentClaude}
 	m.defaultAgent = model.AgentClaude
 	v := m.View()
-	if !strings.Contains(v, "launch an agent in a directory") {
-		t.Error("expected launch hint in empty state")
+	if !strings.Contains(v, "new agent in a directory") {
+		t.Error("expected new agent hint in empty state")
 	}
-	if strings.Contains(v, "toggle agent type") {
-		t.Error("should not show toggle hint with single agent")
+	if strings.Contains(v, "cycle agent") {
+		t.Error("should not show cycle agent hint with single agent")
 	}
 }
 
@@ -1700,8 +1879,8 @@ func TestViewProjectListWithAgents(t *testing.T) {
 	if !strings.Contains(v, "2 agents") {
 		t.Error("expected agent count")
 	}
-	if !strings.Contains(v, "l:launch (Claude)") {
-		t.Error("expected launch hint with agent name")
+	if !strings.Contains(v, "n:new") {
+		t.Error("expected new agent hint")
 	}
 	// Directory should be inline in the row
 	if !strings.Contains(v, "/a/alpha") {

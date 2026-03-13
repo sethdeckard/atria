@@ -95,6 +95,28 @@ func (c *CompositeBackend) NewSession() (string, error) {
 	return p.NewSession()
 }
 
+// NewSessionOn creates a session on a specific backend identified by source name.
+// If source matches the primary backend, delegates directly. Otherwise, looks
+// for a matching integration and prefixes the returned session ID.
+func (c *CompositeBackend) NewSessionOn(source string) (string, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if source == c.primarySource {
+		return c.primary.NewSession()
+	}
+	for _, integ := range c.integrations {
+		if integ.Source == source {
+			id, err := integ.Backend.NewSession()
+			if err != nil {
+				return "", err
+			}
+			return integ.Prefix + id, nil
+		}
+	}
+	return "", fmt.Errorf("backend %q not available", source)
+}
+
 // SendText routes to the correct backend based on session ID prefix.
 func (c *CompositeBackend) SendText(sessionID, text string) error {
 	c.mu.RLock()
@@ -161,23 +183,33 @@ func (c *CompositeBackend) MonitorOutput(sessionID, logPath, patterns string) (i
 	return b.MonitorOutput(id, logPath, patterns)
 }
 
-// Resize forwards to the primary backend (only PTY needs this).
+// Resize forwards to all backends that support resizing (primary + integrations).
+// This ensures PTY sessions receive resize updates even when PTY is an integration.
 func (c *CompositeBackend) Resize(cols, rows int) {
 	c.mu.RLock()
-	p := c.primary
-	c.mu.RUnlock()
-	if r, ok := p.(interface{ Resize(int, int) }); ok {
+	defer c.mu.RUnlock()
+	if r, ok := c.primary.(interface{ Resize(int, int) }); ok {
 		r.Resize(cols, rows)
+	}
+	for _, integ := range c.integrations {
+		if r, ok := integ.Backend.(interface{ Resize(int, int) }); ok {
+			r.Resize(cols, rows)
+		}
 	}
 }
 
-// Close forwards to the primary backend (only PTY needs this).
+// Close forwards to all backends that support closing (primary + integrations).
+// This ensures PTY sessions are cleaned up even when PTY is an integration.
 func (c *CompositeBackend) Close() {
 	c.mu.RLock()
-	p := c.primary
-	c.mu.RUnlock()
-	if cl, ok := p.(interface{ Close() }); ok {
+	defer c.mu.RUnlock()
+	if cl, ok := c.primary.(interface{ Close() }); ok {
 		cl.Close()
+	}
+	for _, integ := range c.integrations {
+		if cl, ok := integ.Backend.(interface{ Close() }); ok {
+			cl.Close()
+		}
 	}
 }
 

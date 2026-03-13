@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -57,6 +58,16 @@ func (c *CachedBackend) Available() error {
 // NewSession delegates to the inner backend.
 func (c *CachedBackend) NewSession() (string, error) {
 	return c.inner.NewSession()
+}
+
+// NewSessionOn delegates to the inner backend's NewSessionOn if it supports it.
+func (c *CachedBackend) NewSessionOn(source string) (string, error) {
+	if ns, ok := c.inner.(interface {
+		NewSessionOn(string) (string, error)
+	}); ok {
+		return ns.NewSessionOn(source)
+	}
+	return "", fmt.Errorf("inner backend does not support NewSessionOn")
 }
 
 // SendText delegates to the inner backend.

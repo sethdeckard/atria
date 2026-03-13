@@ -8,13 +8,14 @@ import (
 
 // mockBackend is a test double that tracks how many times ListSessions is called.
 type mockBackend struct {
-	mu       sync.Mutex
-	calls    int
-	sessions []Session
+	mu           sync.Mutex
+	calls        int
+	sessions     []Session
+	newSessionID string
 }
 
 func (m *mockBackend) Available() error                                    { return nil }
-func (m *mockBackend) NewSession() (string, error)                         { return "", nil }
+func (m *mockBackend) NewSession() (string, error)                         { return m.newSessionID, nil }
 func (m *mockBackend) SendText(sessionID, text string) error               { return nil }
 func (m *mockBackend) RunCommand(sessionID, cmd string) error              { return nil }
 func (m *mockBackend) FocusSession(sessionID string) error                 { return nil }
@@ -96,6 +97,33 @@ func TestCachedBackend_RefreshesAfterTTL(t *testing.T) {
 
 	if mock.callCount() != 2 {
 		t.Errorf("expected 2 inner calls after TTL expiry, got %d", mock.callCount())
+	}
+}
+
+func TestCachedBackend_NewSessionOn(t *testing.T) {
+	primary := &mockBackend{newSessionID: "pty-0"}
+	integ := &mockBackend{newSessionID: "pty-1"}
+
+	comp := NewCompositeBackend(primary, "tmux", []Integration{
+		{Prefix: "pty:", Source: "pty", Backend: integ},
+	})
+	cached := NewCachedBackend(comp, 5)
+
+	id, err := cached.NewSessionOn("pty")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "pty:pty-1" {
+		t.Errorf("expected 'pty:pty-1', got %q", id)
+	}
+
+	// Primary source works too.
+	id, err = cached.NewSessionOn("tmux")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "pty-0" {
+		t.Errorf("expected 'pty-0', got %q", id)
 	}
 }
 

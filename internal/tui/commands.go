@@ -31,9 +31,26 @@ func refreshSessions(backend terminal.Backend) tea.Cmd {
 	}
 }
 
-func launchAgent(backend terminal.Backend, projectDir string, agentType model.AgentType) tea.Cmd {
+func launchAgent(backend terminal.Backend, projectDir string, agentType model.AgentType, source string) tea.Cmd {
+	// Resolve source eagerly so a concurrent primary change can't misclassify.
+	if source == "" {
+		source = "pty"
+		if cb, ok := backend.(*terminal.CachedBackend); ok {
+			if comp, ok := cb.Inner().(*terminal.CompositeBackend); ok {
+				source = comp.PrimarySource()
+			}
+		}
+	}
 	return func() tea.Msg {
-		sessionID, err := backend.NewSession()
+		var sessionID string
+		var err error
+		if ns, ok := backend.(interface {
+			NewSessionOn(string) (string, error)
+		}); ok {
+			sessionID, err = ns.NewSessionOn(source)
+		} else {
+			sessionID, err = backend.NewSession()
+		}
 		if err != nil {
 			return AgentLaunchedMsg{ProjectDir: projectDir, Err: err}
 		}
@@ -54,6 +71,7 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType model.Ag
 			ProjectDir: projectDir,
 			SessionID:  sessionID,
 			AgentType:  agentType,
+			Source:     source,
 		}
 	}
 }

@@ -386,6 +386,34 @@ func TestComposite_AddRemoveIntegration(t *testing.T) {
 	}
 }
 
+// resizableBackend extends trackingBackend with Resize support.
+type resizableBackend struct {
+	trackingBackend
+	resizeCols int
+	resizeRows int
+}
+
+func (r *resizableBackend) Resize(cols, rows int) {
+	r.resizeCols = cols
+	r.resizeRows = rows
+}
+
+func TestComposite_ResizeForwardsToIntegrations(t *testing.T) {
+	primary := &trackingBackend{}
+	ptyInteg := &resizableBackend{}
+
+	comp := NewCompositeBackend(primary, "tmux", []Integration{
+		{Prefix: "pty:", Source: "pty", Backend: ptyInteg},
+	})
+
+	comp.Resize(200, 50)
+
+	if ptyInteg.resizeCols != 200 || ptyInteg.resizeRows != 50 {
+		t.Errorf("expected PTY integration to receive resize(200,50), got (%d,%d)",
+			ptyInteg.resizeCols, ptyInteg.resizeRows)
+	}
+}
+
 func TestComposite_SetPrimary(t *testing.T) {
 	pty := &trackingBackend{}
 	tmuxB := &trackingBackend{}
@@ -483,6 +511,57 @@ func TestComposite_RouteEdgeCases(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestComposite_NewSessionOn_Primary(t *testing.T) {
+	primary := &trackingBackend{
+		mockBackend: mockBackend{newSessionID: "pty-0"},
+	}
+
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "tmux:", Source: "tmux", Backend: &trackingBackend{}},
+	})
+
+	id, err := comp.NewSessionOn("pty")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "pty-0" {
+		t.Errorf("expected 'pty-0', got %q", id)
+	}
+}
+
+func TestComposite_NewSessionOn_Integration(t *testing.T) {
+	primary := &trackingBackend{}
+	ptyInteg := &trackingBackend{
+		mockBackend: mockBackend{newSessionID: "pty-1"},
+	}
+
+	comp := NewCompositeBackend(primary, "tmux", []Integration{
+		{Prefix: "pty:", Source: "pty", Backend: ptyInteg},
+	})
+
+	id, err := comp.NewSessionOn("pty")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "pty:pty-1" {
+		t.Errorf("expected 'pty:pty-1', got %q", id)
+	}
+}
+
+func TestComposite_NewSessionOn_Unknown(t *testing.T) {
+	primary := &trackingBackend{}
+
+	comp := NewCompositeBackend(primary, "pty", nil)
+
+	_, err := comp.NewSessionOn("nosuch")
+	if err == nil {
+		t.Fatal("expected error for unknown source, got nil")
+	}
+	if !strings.Contains(err.Error(), "nosuch") {
+		t.Errorf("expected error to mention 'nosuch', got %q", err.Error())
 	}
 }
 

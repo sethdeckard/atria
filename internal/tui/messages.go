@@ -16,6 +16,7 @@ type AgentLaunchedMsg struct {
 	ProjectDir string
 	SessionID  string
 	AgentType  model.AgentType
+	Source     string // backend source ("pty", "tmux", etc.), empty = use primary
 	Err        error
 }
 

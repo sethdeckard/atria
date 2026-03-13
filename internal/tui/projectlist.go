@@ -414,14 +414,14 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAge
 		sb.WriteString("  " + selectedTextStyle.Render("S") + emptyHintStyle.Render("  ") + titleStyle.Render("run setup") + emptyHintStyle.Render(" \u2014 configure integrations and watch directories"))
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString("  " + emptyKeyStyle.Render("l") + emptyHintStyle.Render("  launch an agent in a directory"))
+	sb.WriteString("  " + emptyKeyStyle.Render("n") + emptyHintStyle.Render("  new agent in a directory"))
 	sb.WriteString("\n")
 	if canToggle {
 		var names []string
 		for _, a := range availableAgents {
 			names = append(names, agentTypeLabel(a))
 		}
-		sb.WriteString("  " + emptyKeyStyle.Render("t") + emptyHintStyle.Render(fmt.Sprintf("  toggle agent type (%s)", strings.Join(names, "/"))))
+		sb.WriteString("  " + emptyKeyStyle.Render("t") + emptyHintStyle.Render(fmt.Sprintf("  cycle agent (%s)", strings.Join(names, "/"))))
 		sb.WriteString("\n")
 	}
 	sb.WriteString("  " + emptyKeyStyle.Render("?") + emptyHintStyle.Render("  show all key bindings"))
@@ -432,7 +432,7 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAge
 	return sb.String()
 }
 
-func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, canToggle bool, streamOpen bool, width int) string {
+func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, streamOpen bool, width int) string {
 	left := fmt.Sprintf(" %d agents", rowCount)
 
 	var parts []string
@@ -447,10 +447,7 @@ func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentTy
 		global = append(global, "v:stream")
 	}
 	if defaultAgent != "" {
-		global = append(global, fmt.Sprintf("l:launch (%s)", agentTypeLabel(defaultAgent)))
-	}
-	if canToggle {
-		global = append(global, "t:toggle")
+		global = append(global, "n:new")
 	}
 	global = append(global, "s:sort", "I:settings", "?:help", "q:quit")
 	parts = append(parts, strings.Join(global, "  "))

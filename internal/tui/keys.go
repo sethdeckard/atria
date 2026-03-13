@@ -37,12 +37,12 @@ var keys = keyMap{
 		key.WithHelp("", ""),
 	),
 	Launch: key.NewBinding(
-		key.WithKeys("l"),
-		key.WithHelp("l", "launch agent"),
+		key.WithKeys("n"),
+		key.WithHelp("n", "new agent"),
 	),
 	Toggle: key.NewBinding(
 		key.WithKeys("t"),
-		key.WithHelp("t", "toggle agent type"),
+		key.WithHelp("t", "cycle agent"),
 	),
 	Sort: key.NewBinding(
 		key.WithKeys("s"),

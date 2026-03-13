@@ -468,7 +468,7 @@ func (m Model) viewProjectList() string {
 		sb.WriteString(dimStyle.Render(dirLine))
 		sb.WriteString("\n")
 	}
-	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, len(m.availableAgents) > 1, m.streamOpen, m.width))
+	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, m.streamOpen, m.width))
 
 	if m.statusText != "" {
 		sb.WriteString("\n")
@@ -662,6 +662,9 @@ func (m Model) viewDirBrowser() string {
 
 	// Header
 	headerText := "launch " + agentName
+	if !m.settingsDirPick && !m.setupDirPick && len(m.availableAgents) > 1 {
+		headerText += dimStyle.Render("  t:cycle")
+	}
 	var right string
 	if m.settingsDirPick || m.setupDirPick {
 		headerText = "select watch directory"
@@ -709,20 +712,38 @@ func (m Model) viewDirBrowser() string {
 		lines = append(lines, browserLine{idx: -1}) // blank separator
 	}
 
+	if len(recent) > 0 && len(m.browserDirs) > 0 {
+		lines = append(lines, browserLine{idx: -1, label: "browse"})
+	}
 	for range m.browserDirs {
 		lines = append(lines, browserLine{idx: idx})
 		idx++
 	}
 
-	// Blank + launch action
+	// Path label + launch action(s)
 	lines = append(lines, browserLine{idx: -1}) // blank separator
+	if !m.settingsDirPick && !m.setupDirPick {
+		lines = append(lines, browserLine{idx: -1, label: contractHome(m.browserPath)})
+	}
 	launchIdx := idx
 	lines = append(lines, browserLine{idx: launchIdx})
+	idx++
 
+	primarySource, hasChoice := m.hasLaunchChoice()
+	embeddedIdx := -1
+	if hasChoice {
+		embeddedIdx = idx
+		lines = append(lines, browserLine{idx: embeddedIdx})
+		idx++
+	}
 	// Compute scroll window over selectable items, then map to lines
 	maxVisible := m.browserMaxVisible()
 	scrollOffset := m.browserScroll
-	totalItems := m.browserRecentCount() + len(m.browserDirs) + 1
+	actionCount := 1
+	if hasChoice {
+		actionCount = 2
+	}
+	totalItems := m.browserRecentCount() + len(m.browserDirs) + actionCount
 	if totalItems <= maxVisible {
 		scrollOffset = 0
 	} else {
@@ -801,10 +822,16 @@ func (m Model) viewDirBrowser() string {
 				sb.WriteString("  " + d.Name)
 			}
 		} else {
-			// Action button
-			launchLabel := "\u25b6 launch " + agentName + " here"
+			// Action button(s)
+			var launchLabel string
 			if m.settingsDirPick || m.setupDirPick {
 				launchLabel = "\u25b6 add this directory"
+			} else if hasChoice && l.idx == embeddedIdx {
+				launchLabel = "\u25b6 launch " + agentName + " here (embedded)"
+			} else if hasChoice {
+				launchLabel = "\u25b6 launch " + agentName + " here (" + primarySource + ")"
+			} else {
+				launchLabel = "\u25b6 launch " + agentName + " here"
 			}
 			if selected {
 				sb.WriteString(selectedStyle.Render("> " + launchLabel))
@@ -819,12 +846,9 @@ func (m Model) viewDirBrowser() string {
 	var hints []string
 	hints = append(hints, "enter:select")
 	if !m.settingsDirPick && !m.setupDirPick {
-		hints = append(hints, "l/\u2192:open")
+		hints = append(hints, "\u2192:open")
 	}
 	hints = append(hints, "h/\u2190:back")
-	if !m.settingsDirPick && !m.setupDirPick && len(m.availableAgents) > 1 {
-		hints = append(hints, "t:toggle")
-	}
 	hints = append(hints, "esc:cancel")
 	sb.WriteString(footerStyle.Render(" " + strings.Join(hints, "  ")))
 	return sb.String()
@@ -846,8 +870,8 @@ func (m Model) viewHelp() string {
 	help := `Key Bindings:
   j/k, arrows   Navigate project list
   v              Toggle agent screen stream
-  l              Launch agent in a project
-  t              Toggle agent type (Claude/Codex/OpenCode)
+  n              New agent in a directory
+  t              Cycle agent type (Claude/Codex/OpenCode)
   s              Cycle sort column
   S              Reverse sort direction
   f              Focus agent's terminal tab
@@ -1038,9 +1062,17 @@ func (m Model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	recentCount := m.browserRecentCount()
-	// Total items: recent + dirs + 1 launch action
-	total := recentCount + len(m.browserDirs) + 1
-	launchIdx := total - 1
+	_, hasChoice := m.hasLaunchChoice()
+	actionCount := 1
+	if hasChoice {
+		actionCount = 2
+	}
+	total := recentCount + len(m.browserDirs) + actionCount
+	launchIdx := recentCount + len(m.browserDirs)
+	embeddedIdx := -1
+	if hasChoice {
+		embeddedIdx = launchIdx + 1
+	}
 
 	switch {
 	case key.Matches(msg, keys.Escape):
@@ -1084,7 +1116,7 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, keys.Launch), key.Matches(msg, keys.Right):
-		// l/→: descend into directory
+		// n/→: descend into directory
 		if m.browserCursor < recentCount {
 			recent := m.browserRecentProjects()
 			p := recent[m.browserCursor]
@@ -1141,15 +1173,18 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Launch action at bottom
+		// Launch action(s) at bottom
 		if m.browserCursor == launchIdx {
-			return m.launchFromBrowser(m.browserPath, filepath.Base(m.browserPath))
+			return m.launchFromBrowserOn(m.browserPath, filepath.Base(m.browserPath), "")
+		}
+		if hasChoice && m.browserCursor == embeddedIdx {
+			return m.launchFromBrowserOn(m.browserPath, filepath.Base(m.browserPath), "pty")
 		}
 		// Recent item — launch immediately
 		if m.browserCursor < recentCount {
 			recent := m.browserRecentProjects()
 			p := recent[m.browserCursor]
-			return m.launchFromBrowser(p.Dir, p.Name)
+			return m.launchFromBrowserOn(p.Dir, p.Name, "")
 		}
 		// Directory entry — descend
 		dirIdx := m.browserCursor - recentCount
@@ -1195,14 +1230,14 @@ func (m Model) addSetupWatchDirFromBrowser(dirPath string) (Model, tea.Cmd) {
 	})
 }
 
-func (m Model) launchFromBrowser(dirPath, name string) (Model, tea.Cmd) {
+func (m Model) launchFromBrowserOn(dirPath, name, source string) (Model, tea.Cmd) {
 	m.store.AddProject(dirPath)
 	_ = m.store.SaveProjects()
 	m.rows = buildRows(storeAdapter{m.store})
 	sortRows(m.rows, m.sortCol, m.sortDesc)
 	m.view = viewProjectList
 	m.statusText = fmt.Sprintf("Launching %s for %s...", agentTypeLabel(m.defaultAgent), name)
-	return m, launchAgent(m.backend, dirPath, m.defaultAgent)
+	return m, launchAgent(m.backend, dirPath, m.defaultAgent, source)
 }
 
 func (m Model) browserRecentProjects() []*model.Project {
@@ -1226,17 +1261,55 @@ func (m Model) browserRecentCount() int {
 }
 
 // browserMaxVisible returns how many selectable items fit in the browser.
-// Overhead: header (2) + section labels + launch action line + blank lines + footer (2).
+// Overhead: header (2) + section labels + path label + launch action line(s) + blank lines + footer (2).
 func (m Model) browserMaxVisible() int {
-	overhead := 6 // header(2) + launch blank + launch line + footer margin + footer
-	if len(m.browserRecentProjects()) > 0 {
-		overhead += 2 // "recent" label + blank line after
+	overhead := 7 // header(2) + launch blank + path label + launch line + footer margin + footer
+	if _, hasChoice := m.hasLaunchChoice(); hasChoice {
+		overhead++ // second action line (embedded)
+	}
+	if m.settingsDirPick || m.setupDirPick {
+		overhead-- // no path label in dir pick mode
+	}
+	recent := m.browserRecentProjects()
+	if len(recent) > 0 {
+		overhead += 2 // "recent" label + blank separator after
+		if len(m.browserDirs) > 0 {
+			overhead++ // "browse" label
+		}
 	}
 	max := m.height - overhead
 	if max < 1 {
 		max = 1
 	}
 	return max
+}
+
+// hasLaunchChoice returns the primary source and true when the primary backend
+// is not PTY and PTY is available as an integration, giving the user a choice
+// between launching in the integration or the embedded terminal.
+func (m Model) hasLaunchChoice() (string, bool) {
+	if m.settingsDirPick || m.setupDirPick {
+		return "", false
+	}
+	cb, ok := m.backend.(*terminal.CachedBackend)
+	if !ok {
+		return "", false
+	}
+	comp, ok := cb.Inner().(*terminal.CompositeBackend)
+	if !ok {
+		return "", false
+	}
+	ps := comp.PrimarySource()
+	if ps == "pty" {
+		return "", false
+	}
+	// Check that PTY is available as an integration.
+	for _, integ := range comp.Integrations() {
+		if integ.Source == "pty" {
+			return ps, true
+		}
+	}
+	return "", false
 }
 
 func (m *Model) adjustBrowserScroll() {
@@ -1805,20 +1878,12 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 	}
 	_ = m.store.SaveProjects()
 
-	// Determine source from the composite's primary backend.
-	source := "pty"
-	if cb, ok := m.backend.(*terminal.CachedBackend); ok {
-		if comp, ok := cb.Inner().(*terminal.CompositeBackend); ok {
-			source = comp.PrimarySource()
-		}
-	}
-
 	as := &model.AgentSession{
 		ProjectDir: msg.ProjectDir,
 		SessionID:  msg.SessionID,
 		Type:       msg.AgentType,
 		Status:     model.StatusWorking,
-		Source:     source,
+		Source:     msg.Source,
 	}
 	m.store.SetSession(as)
 
