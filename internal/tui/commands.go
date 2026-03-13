@@ -14,6 +14,7 @@ import (
 	"github.com/sethdeckard/atria/internal/terminal/iterm"
 	"github.com/sethdeckard/atria/internal/terminal/kitty"
 	"github.com/sethdeckard/atria/internal/terminal/tmux"
+	weztermbackend "github.com/sethdeckard/atria/internal/terminal/wezterm"
 )
 
 func checkBackend(backend terminal.Backend) tea.Cmd {
@@ -159,6 +160,8 @@ func integrationMeta(name string) (prefix, source string) {
 		return "tmux:", "tmux"
 	case "kitty":
 		return "kitty:", "kitty"
+	case "wezterm":
+		return "wezterm:", "wezterm"
 	default:
 		return name + ":", name
 	}
@@ -237,6 +240,10 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			kt := kitty.NewClient(cfg.KittenPath)
 			probeErr = kt.Available()
 			backend = kt
+		case "wezterm":
+			wt := weztermbackend.NewClient(cfg.WezTermPath)
+			probeErr = wt.Available()
+			backend = wt
 		}
 
 		if probeErr != nil {
@@ -255,7 +262,8 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 		// Mark active only when the environment matches.
 		if (name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app") ||
 			(name == "tmux" && os.Getenv("TMUX") != "") ||
-			(name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "") {
+			(name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "") ||
+			(name == "wezterm" && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "")) {
 			status.Active = true
 		}
 
@@ -289,6 +297,13 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			}
 			composite.SetPrimary(backend, "kitty")
 			status.Launch = true
+		} else if name == "wezterm" && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") &&
+			composite.PrimarySource() != "tmux" && composite.PrimarySource() != "kitty" {
+			if composite.PrimarySource() == "pty" {
+				demotePTY()
+			}
+			composite.SetPrimary(backend, "wezterm")
+			status.Launch = true
 		} else if name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app" && composite.PrimarySource() == "pty" {
 			demotePTY()
 			composite.SetPrimary(backend, "iterm")
@@ -318,6 +333,9 @@ func derivePrimary(integrations []terminal.Integration, ptyClient terminal.Backe
 	}
 	if b, ok := integMap["kitty"]; ok && os.Getenv("KITTY_WINDOW_ID") != "" {
 		return b, "kitty"
+	}
+	if b, ok := integMap["wezterm"]; ok && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") {
+		return b, "wezterm"
 	}
 	if b, ok := integMap["iterm"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
 		return b, "iterm"

@@ -14,6 +14,7 @@ import (
 	"github.com/sethdeckard/atria/internal/terminal/kitty"
 	ptybackend "github.com/sethdeckard/atria/internal/terminal/pty"
 	"github.com/sethdeckard/atria/internal/terminal/tmux"
+	weztermbackend "github.com/sethdeckard/atria/internal/terminal/wezterm"
 	"github.com/sethdeckard/atria/internal/tui"
 )
 
@@ -137,6 +138,22 @@ func main() {
 				bs.Active = true
 			}
 			backendStatuses = append(backendStatuses, bs)
+		case "wezterm":
+			bs := tui.BackendStatus{Name: "wezterm", Enabled: true}
+			wt := weztermbackend.NewClient(cfg.WezTermPath)
+			if err := wt.Available(); err != nil {
+				bs.Reason = err.Error()
+				backendStatuses = append(backendStatuses, bs)
+				continue
+			}
+			availableIntegrations["wezterm"] = wt
+			integrations = append(integrations, terminal.Integration{
+				Prefix: "wezterm:", Source: "wezterm", Backend: wt,
+			})
+			if os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "" {
+				bs.Active = true
+			}
+			backendStatuses = append(backendStatuses, bs)
 		default:
 			fmt.Fprintf(os.Stderr, "unknown integration: %s\n", name)
 		}
@@ -152,6 +169,9 @@ func main() {
 	if !configuredSet["kitty"] {
 		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "kitty"})
 	}
+	if !configuredSet["wezterm"] {
+		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "wezterm"})
+	}
 
 	// Derive launch target from environment + available integrations.
 	// Prefer tmux (most specific), then iTerm, then PTY.
@@ -163,6 +183,9 @@ func main() {
 	} else if b, ok := availableIntegrations["kitty"]; ok && os.Getenv("KITTY_WINDOW_ID") != "" {
 		primary = b
 		primarySource = "kitty"
+	} else if b, ok := availableIntegrations["wezterm"]; ok && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") {
+		primary = b
+		primarySource = "wezterm"
 	} else if b, ok := availableIntegrations["iterm2"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
 		primary = b
 		primarySource = "iterm"
@@ -172,6 +195,7 @@ func main() {
 	for i, bs := range backendStatuses {
 		if bs.Active && ((bs.Name == "tmux" && primarySource == "tmux") ||
 			(bs.Name == "kitty" && primarySource == "kitty") ||
+			(bs.Name == "wezterm" && primarySource == "wezterm") ||
 			(bs.Name == "iterm2" && primarySource == "iterm")) {
 			backendStatuses[i].Launch = true
 		}

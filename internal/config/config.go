@@ -26,6 +26,7 @@ type Config struct {
 	TmuxPath     string   `toml:"tmux_path"`
 	TmuxSession  string   `toml:"tmux_session"`
 	KittenPath   string   `toml:"kitten_path"`
+	WezTermPath  string   `toml:"wezterm_path"`
 	DataDir      string   `toml:"data_dir"`
 	MonitorDir   string   `toml:"monitor_dir"`
 	CacheTTL     int      `toml:"cache_ttl"`
@@ -62,6 +63,7 @@ func Load(path string) (*Config, error) {
 	cfg.MonitorDir = expandHome(cfg.MonitorDir)
 	cfg.TmuxPath = expandHome(cfg.TmuxPath)
 	cfg.KittenPath = expandHome(cfg.KittenPath)
+	cfg.WezTermPath = expandHome(cfg.WezTermPath)
 	cfg.LaunchDir = expandHome(cfg.LaunchDir)
 
 	for i, dir := range cfg.WatchDirs {
@@ -110,7 +112,8 @@ func (cfg *Config) Save(path string) error {
 	sb.WriteString("# Terminal integrations for agent discovery and launching\n")
 	sb.WriteString("# Available: \"iterm2\" (macOS, requires iTerm2 Python API),\n")
 	sb.WriteString("#            \"tmux\" (requires running inside tmux),\n")
-	sb.WriteString("#            \"kitty\" (requires Kitty remote control)\n")
+	sb.WriteString("#            \"kitty\" (requires Kitty remote control),\n")
+	sb.WriteString("#            \"wezterm\" (requires a running WezTerm instance)\n")
 	writeSliceField(&sb, "integrations", cfg.Integrations, nil)
 	sb.WriteString("\n")
 
@@ -157,6 +160,15 @@ func (cfg *Config) Save(path string) error {
 		sb.WriteString(fmt.Sprintf("kitten_path = %q\n", contractHome(cfg.KittenPath)))
 	} else {
 		sb.WriteString("# kitten_path = \"kitten\"\n")
+	}
+	sb.WriteString("\n")
+
+	// wezterm settings
+	sb.WriteString("# WezTerm backend settings\n")
+	if cfg.WezTermPath != "" {
+		sb.WriteString(fmt.Sprintf("wezterm_path = %q\n", contractHome(cfg.WezTermPath)))
+	} else {
+		sb.WriteString("# wezterm_path = \"wezterm\"\n")
 	}
 	sb.WriteString("\n")
 

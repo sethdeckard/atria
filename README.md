@@ -6,7 +6,7 @@ Agent multiplexer for your terminal.
 
 atria is a TUI dashboard for managing multiple AI coding agents running across your terminal environment. It discovers running agents, shows their real-time status (working, idle, needs input), and lets you send prompts — all from a single view.
 
-Comes with a built-in terminal multiplexer ready to launch agents out of the box. Optional integrations discover agents already running in iTerm2, Kitty, or tmux.
+Comes with a built-in terminal multiplexer ready to launch agents out of the box. Optional integrations discover agents already running in iTerm2, Kitty, WezTerm, or tmux.
 
 ![atria demo](demo.gif)
 
@@ -91,12 +91,13 @@ Integrations let atria discover agents already running in other terminals and la
 
 - **iTerm2** — discovers agents in iTerm2 tabs/panes; launches as native tabs when running inside iTerm2
 - **Kitty** — discovers agents in Kitty windows; launches as native windows when running inside Kitty
+- **WezTerm** — discovers agents in WezTerm panes/tabs; launches as native windows when running inside WezTerm
 - **tmux** — discovers agents in tmux windows; launches in a detached tmux session
 
 Enable in config or toggle from the settings screen (`I`):
 
 ```toml
-integrations = ["iterm2", "tmux", "kitty"]
+integrations = ["iterm2", "tmux", "kitty", "wezterm"]
 ```
 
 Each discovered agent is managed through its native integration — focusing an iTerm2-discovered agent switches to its iTerm2 tab, focusing a Kitty agent switches to its Kitty window, while focusing a PTY agent opens the embedded terminal view.
@@ -129,6 +130,19 @@ listen_on unix:/tmp/kitty-{kitty_pid}
 ```toml
 integrations = ["kitty"]
 # kitten_path = "kitten"
+```
+
+### WezTerm
+
+Communicates via the `wezterm cli` over a Unix socket (auto-discovered).
+
+**Requirements:**
+- A running WezTerm instance (the CLI auto-discovers its socket)
+
+**Config:**
+```toml
+integrations = ["wezterm"]
+# wezterm_path = "wezterm"
 ```
 
 ### tmux

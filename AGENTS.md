@@ -34,6 +34,7 @@ internal/
   terminal/cache.go              # Cached session list with TTL
   terminal/cwd.go                # CWD discovery strategies (shared)
   terminal/kitty/client.go       # Kitty backend (kitten @ CLI via socket)
+  terminal/wezterm/client.go     # WezTerm backend (wezterm cli)
   terminal/iterm/proto/api.proto  # iTerm2 protobuf spec (trimmed)
   terminal/iterm/proto/api.pb.go  # Generated protobuf Go code
   terminal/iterm/conn.go         # iTerm2 WebSocket connection manager
@@ -133,6 +134,31 @@ Uses the `kitten @` CLI over a Unix socket (`KITTY_LISTEN_ON`) to avoid TTY-base
 
 **MonitorOutput:** Unsupported (no-op with error). Screen reads via `get-text --extent screen` are the primary status mechanism.
 
+### WezTerm (`integrations = ["wezterm"]`)
+
+Uses WezTerm's `wezterm cli` over a Unix socket (auto-discovered via `WEZTERM_UNIX_SOCKET`). No external dependencies beyond the `wezterm` binary.
+
+**Requirements:**
+- A running WezTerm instance (`wezterm cli` auto-discovers the Unix socket)
+
+**Config options:**
+- `wezterm_path` — path to wezterm binary (default: found via `$PATH`)
+
+**CLI commands used:**
+- `wezterm cli list --format json` — flat JSON array with `pane_id`, `title`, `cwd`, `tty_name`
+- `wezterm cli get-text --pane-id <ID>` — screen content
+- `wezterm cli send-text --pane-id <ID> --no-paste` — send text via stdin
+- `wezterm cli spawn` — launch new tab (default: in current window)
+- `wezterm cli activate-pane --pane-id <ID>` — focus pane
+
+**Session mapping:** Each WezTerm pane becomes a session. The pane ID serves as the session ID. Pane titles are used for session names (agent detection works via title). CWD and TTY are available directly from list output (no `ps` lookup needed, unlike Kitty).
+
+**Focus behavior:**
+- `activate-pane --pane-id <id>` to switch to the agent's WezTerm pane
+- Works when Atria runs inside WezTerm
+
+**MonitorOutput:** Unsupported (no-op with error). Screen reads via `get-text` are the primary status mechanism.
+
 ### PTY (built-in, always available)
 
 Built-in terminal multiplexer — no external dependencies. Each agent runs in its own pseudo-terminal with a vt10x emulator. Screen reads come directly from the in-memory buffer (sub-millisecond, no subprocesses).
@@ -161,29 +187,33 @@ Built-in terminal multiplexer — no external dependencies. Each agent runs in i
 
 ### Composite Architecture
 
-PTY is always the base, and iTerm2/tmux act as **discovery integrations** that find existing agent sessions.
+PTY is always the base, and iTerm2/tmux/Kitty/WezTerm act as **discovery integrations** that find existing agent sessions.
 
 ```
 CachedBackend → CompositeBackend
   primary: pty.Client (launch + manage)
   integrations:
-    - iterm.Client  (discover + read)
-    - tmux.Client   (discover + read)
+    - iterm.Client    (discover + read)
+    - tmux.Client     (discover + read)
+    - kitty.Client    (discover + read)
+    - wezterm.Client  (discover + read)
 ```
 
-- **Primary** backend handles `NewSession()` (launches). Derived from environment + available integrations: tmux in tmux, iTerm in iTerm, PTY otherwise.
+- **Primary** backend handles `NewSession()` (launches). Derived from environment + available integrations: tmux in tmux, Kitty in Kitty, WezTerm in WezTerm, iTerm in iTerm, PTY otherwise.
 - **Integrations** contribute to `ListSessions()` and handle `ReadScreen/SendText/FocusSession/GetVar` for their own sessions.
-- **Session ID routing**: integration sessions get prefixed (`iterm:`, `tmux:`, `pty:`). The composite strips prefixes when delegating. When PTY is primary, its sessions are unprefixed (`pty-N`).
+- **Session ID routing**: integration sessions get prefixed (`iterm:`, `tmux:`, `kitty:`, `wezterm:`, `pty:`). The composite strips prefixes when delegating. When PTY is primary, its sessions are unprefixed (`pty-N`).
 - **Deduplication**: sessions sharing the same TTY are deduplicated (primary wins).
-- **Focus**: PTY sessions (`Source == "pty"`) open the embedded terminal view. Integration sessions delegate to native focus (iTerm tab switch, tmux select-window).
+- **Focus**: PTY sessions (`Source == "pty"`) open the embedded terminal view. Integration sessions delegate to native focus (iTerm tab switch, tmux select-window, Kitty/WezTerm focus).
 
 **Config:**
 ```toml
-integrations = ["iterm2", "tmux"]  # discovery backends to probe
+integrations = ["iterm2", "tmux", "kitty", "wezterm"]  # discovery backends to probe
 ```
 
 **Launch target selection** (no config needed — derived automatically):
 - `$TMUX` set + tmux integration available → launch via tmux
+- `$KITTY_WINDOW_ID` set + kitty integration available → launch via Kitty
+- `$TERM_PROGRAM == "WezTerm"` or `$WEZTERM_UNIX_SOCKET` set + wezterm integration available → launch via WezTerm
 - `$TERM_PROGRAM == "iTerm.app"` + iterm2 integration available → launch via iTerm
 - Otherwise → launch via PTY
 

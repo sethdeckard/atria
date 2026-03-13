@@ -113,6 +113,8 @@ func envDetected(name string) bool {
 		return os.Getenv("TERM_PROGRAM") == "iTerm.app"
 	case "kitty":
 		return os.Getenv("KITTY_WINDOW_ID") != ""
+	case "wezterm":
+		return os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != ""
 	}
 	return false
 }
@@ -136,20 +138,25 @@ func setupStepDescription(step int, cfg *config.Config) string {
 		inTmux := os.Getenv("TMUX") != ""
 		inITerm := os.Getenv("TERM_PROGRAM") == "iTerm.app"
 		inKitty := os.Getenv("KITTY_WINDOW_ID") != ""
+		inWezTerm := os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != ""
 
 		switch {
 		case inTmux && inITerm:
 			return fmt.Sprintf("You're running inside tmux and iTerm2. Enabling these integrations\nlets %s discover agent sessions in your tmux windows and iTerm tabs and panes.", atria)
 		case inTmux && inKitty:
 			return fmt.Sprintf("You're running inside tmux and Kitty. Enabling these integrations\nlets %s discover agent sessions in your tmux windows and Kitty tabs.", atria)
+		case inTmux && inWezTerm:
+			return fmt.Sprintf("You're running inside tmux and WezTerm. Enabling these integrations\nlets %s discover agent sessions in your tmux windows and WezTerm panes.", atria)
 		case inTmux:
 			return fmt.Sprintf("You're running inside tmux. Enabling the tmux integration lets\n%s discover agent sessions in your tmux windows.", atria)
 		case inITerm:
 			return fmt.Sprintf("You're running inside iTerm2. Enabling the iterm2 integration lets\n%s discover agent sessions in your iTerm tabs and panes.", atria)
 		case inKitty:
 			return fmt.Sprintf("You're running inside Kitty. Enabling the kitty integration lets\n%s discover agent sessions in your Kitty tabs.", atria)
+		case inWezTerm:
+			return fmt.Sprintf("You're running inside WezTerm. Enabling the wezterm integration lets\n%s discover agent sessions in your WezTerm panes.", atria)
 		default:
-			return fmt.Sprintf("Integrations let %s discover agent sessions running in\nexternal terminal multiplexers like tmux, iTerm2, or Kitty.", atria)
+			return fmt.Sprintf("Integrations let %s discover agent sessions running in\nexternal terminal multiplexers like tmux, iTerm2, Kitty, or WezTerm.", atria)
 		}
 
 	case 1:
@@ -196,6 +203,13 @@ func integrationHint(name string, info StatusInfo) string {
 		}
 		if bs.Enabled && !bs.Active {
 			return "Start a tmux session and run Atria inside it."
+		}
+	case "wezterm":
+		if bs.Enabled && !bs.Active && bs.Reason != "" {
+			return "Requires a running WezTerm instance."
+		}
+		if !bs.Enabled && !envDetected(name) {
+			return "Enable inside WezTerm to discover agent sessions."
 		}
 	}
 	return ""
