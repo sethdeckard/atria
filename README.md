@@ -6,7 +6,7 @@ Agent multiplexer for your terminal.
 
 atria is a TUI dashboard for managing multiple AI coding agents running across your terminal environment. It discovers running agents, shows their real-time status (working, idle, needs input), and lets you send prompts — all from a single view.
 
-Comes with a built-in terminal multiplexer ready to launch agents out of the box. Optional integrations discover agents already running in iTerm2, Kitty, WezTerm, or tmux.
+Comes with a built-in terminal multiplexer ready to launch agents out of the box. Optional integrations discover agents already running in iTerm2, Kitty, tmux, or WezTerm.
 
 ![atria demo](demo.gif)
 
@@ -91,13 +91,13 @@ Integrations let atria discover agents already running in other terminals and la
 
 - **iTerm2** — discovers agents in iTerm2 tabs/panes; launches as native tabs when running inside iTerm2
 - **Kitty** — discovers agents in Kitty windows; launches as native windows when running inside Kitty
-- **WezTerm** — discovers agents in WezTerm panes/tabs; launches as native windows when running inside WezTerm
 - **tmux** — discovers agents in tmux windows; launches in a detached tmux session
+- **WezTerm** — discovers agents in WezTerm panes/tabs; launches as native windows when running inside WezTerm
 
 Enable in config or toggle from the settings screen (`I`):
 
 ```toml
-integrations = ["iterm2", "tmux", "kitty", "wezterm"]
+integrations = ["iterm2", "kitty", "tmux", "wezterm"]
 ```
 
 Each discovered agent is managed through its native integration — focusing an iTerm2-discovered agent switches to its iTerm2 tab, focusing a Kitty agent switches to its Kitty window, while focusing a PTY agent opens the embedded terminal view.
@@ -132,19 +132,6 @@ integrations = ["kitty"]
 # kitten_path = "kitten"
 ```
 
-### WezTerm
-
-Communicates via the `wezterm cli` over a Unix socket (auto-discovered).
-
-**Requirements:**
-- A running WezTerm instance (the CLI auto-discovers its socket)
-
-**Config:**
-```toml
-integrations = ["wezterm"]
-# wezterm_path = "wezterm"
-```
-
 ### tmux
 
 Agent sessions run as windows inside a detached tmux session (default: `atria`).
@@ -158,6 +145,19 @@ integrations = ["tmux"]
 
 The tmux default `allow-rename on` is required for Claude Code's terminal title to propagate. To interact with agents directly: `tmux attach -t atria`.
 
+### WezTerm
+
+Communicates via the `wezterm cli` over a Unix socket (auto-discovered).
+
+**Requirements:**
+- A running WezTerm instance (the CLI auto-discovers its socket)
+
+**Config:**
+```toml
+integrations = ["wezterm"]
+# wezterm_path = "wezterm"
+```
+
 ## FAQ
 
 ### What problem does atria solve?
@@ -170,7 +170,7 @@ tmux and terminal tabs manage terminals. atria manages agent sessions — it add
 
 ### Does atria replace tmux or my terminal app?
 
-No. atria works alongside your existing terminal setup. It includes a built-in PTY backend for standalone use but also integrates with iTerm2, Kitty, WezTerm, and tmux.
+No. atria works alongside your existing terminal setup. It includes a built-in PTY backend for standalone use but also integrates with iTerm2, Kitty, tmux, and WezTerm.
 
 ### What is the PTY backend?
 
@@ -178,7 +178,7 @@ The built-in PTY backend lets atria launch and manage agent sessions directly wi
 
 ### What do integrations do?
 
-Integrations let atria discover agent sessions already running in supported terminal environments (iTerm2, Kitty, WezTerm, tmux) and use those environments for launching and focusing sessions.
+Integrations let atria discover agent sessions already running in supported terminal environments (iTerm2, Kitty, tmux, WezTerm) and use those environments for launching and focusing sessions.
 
 ### What does "discovery" mean?
 
