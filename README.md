@@ -158,6 +158,48 @@ integrations = ["tmux"]
 
 The tmux default `allow-rename on` is required for Claude Code's terminal title to propagate. To interact with agents directly: `tmux attach -t atria`.
 
+## FAQ
+
+### What problem does atria solve?
+
+If you run multiple AI coding agents across projects and terminal sessions, atria gives you a single dashboard to discover them, see their status, send prompts, and switch focus — instead of manually tracking each one.
+
+### How is this different from tmux or terminal tabs?
+
+tmux and terminal tabs manage terminals. atria manages agent sessions — it adds agent discovery, status detection, prompt routing, and a unified view across backends. Think of your terminal app as where sessions run; atria is the control layer on top.
+
+### Does atria replace tmux or my terminal app?
+
+No. atria works alongside your existing terminal setup. It includes a built-in PTY backend for standalone use but also integrates with iTerm2, Kitty, WezTerm, and tmux.
+
+### What is the PTY backend?
+
+The built-in PTY backend lets atria launch and manage agent sessions directly without requiring an external terminal multiplexer. It's the default — install atria and start using it.
+
+### What do integrations do?
+
+Integrations let atria discover agent sessions already running in supported terminal environments (iTerm2, Kitty, WezTerm, tmux) and use those environments for launching and focusing sessions.
+
+### What does "discovery" mean?
+
+Discovery means atria detects running agent sessions in supported backends and shows them in the dashboard automatically. If you already have Claude Code running in a tmux window, atria can surface that session without requiring a relaunch.
+
+### Do I have to run all agents through atria?
+
+No. You can launch agents through atria's PTY backend or let it discover agents already running elsewhere. The goal is to work with existing workflows.
+
+### Can atria show sessions from multiple backends at once?
+
+Yes. The dashboard can show sessions from the built-in PTY backend and any enabled integrations simultaneously.
+
+### How does atria detect agent status?
+
+atria reads the bottom of each agent's terminal screen every few seconds and matches against known UI patterns (prompts, spinners, permission dialogs) to classify status as working, idle, needs input, or error.
+
+### Which agents are supported?
+
+Claude Code, Codex, and OpenCode — terminal-oriented agents that can be launched and monitored from the command line.
+
 ## Debug
 
 Run with `--debug` to log screen read diagnostics to `/tmp/atria-debug.log`.
