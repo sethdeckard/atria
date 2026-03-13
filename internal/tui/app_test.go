@@ -367,77 +367,6 @@ func TestAgentLaunchedMsgError(t *testing.T) {
 	}
 }
 
-func TestDeleteProject(t *testing.T) {
-	store := makeStore(t)
-	store.Projects = makeProjects("/a/alpha", "/a/beta")
-	for _, p := range store.Projects {
-		store.SetSession(&model.AgentSession{
-			ProjectDir: p.Dir,
-			SessionID:  "sess-" + p.Name,
-			Type:       model.AgentClaude,
-			Status:     model.StatusIdle,
-		})
-	}
-	m := newTestModelWithStore(&mockBackend{}, store)
-	m.width = 80
-
-	updated, _ := m.Update(keyMsg("d"))
-	um := modelFrom(updated)
-	if len(um.store.Projects) != 1 {
-		t.Fatalf("expected 1 project after delete, got %d", len(um.store.Projects))
-	}
-	if !strings.Contains(um.statusText, "Removed") {
-		t.Errorf("expected removed message, got %q", um.statusText)
-	}
-}
-
-func TestDeleteLastProjectAdjustsCursor(t *testing.T) {
-	store := makeStore(t)
-	store.Projects = makeProjects("/a/alpha", "/a/beta")
-	for _, p := range store.Projects {
-		store.SetSession(&model.AgentSession{
-			ProjectDir: p.Dir,
-			SessionID:  "sess-" + p.Name,
-			Type:       model.AgentClaude,
-			Status:     model.StatusIdle,
-		})
-	}
-	m := newTestModelWithStore(&mockBackend{}, store)
-	m.width = 80
-	m.cursor = 1 // select last
-
-	updated, _ := m.Update(keyMsg("d"))
-	um := modelFrom(updated)
-	if um.cursor != 0 {
-		t.Errorf("expected cursor to adjust to 0, got %d", um.cursor)
-	}
-}
-
-func TestDeleteProjectRemovesSessions(t *testing.T) {
-	store := makeStore(t)
-	store.Projects = makeProjects("/a/myproject")
-	store.SetSession(&model.AgentSession{
-		ProjectDir: "/a/myproject",
-		SessionID:  "sess-1",
-		Type:       model.AgentClaude,
-		Status:     model.StatusWorking,
-	})
-	store.SetSession(&model.AgentSession{
-		ProjectDir: "/a/myproject",
-		SessionID:  "sess-2",
-		Type:       model.AgentCodex,
-		Status:     model.StatusIdle,
-	})
-	m := newTestModelWithStore(&mockBackend{}, store)
-	m.width = 80
-
-	updated, _ := m.Update(keyMsg("d"))
-	um := modelFrom(updated)
-	if len(um.store.Sessions) != 0 {
-		t.Errorf("expected 0 sessions after delete, got %d", len(um.store.Sessions))
-	}
-}
-
 func TestOpenChatNoRows(t *testing.T) {
 	store := makeStore(t)
 	// No projects/sessions — empty dashboard
@@ -2096,7 +2025,7 @@ func TestSortKeyCyclesColumn(t *testing.T) {
 }
 
 func TestColumnHeaderSortIndicator(t *testing.T) {
-	header := renderColumnHeaders(20, 10, 20, 100, sortByAgent, false)
+	header := renderColumnHeaders(20, 10, 20, 100, sortByAgent, false, false, 0)
 	if !strings.Contains(header, "agent▲") {
 		t.Errorf("expected agent▲ in header, got %q", header)
 	}
@@ -2104,12 +2033,12 @@ func TestColumnHeaderSortIndicator(t *testing.T) {
 		t.Error("non-active column should not have sort indicator")
 	}
 
-	header = renderColumnHeaders(20, 10, 20, 100, sortByAgent, true)
+	header = renderColumnHeaders(20, 10, 20, 100, sortByAgent, true, false, 0)
 	if !strings.Contains(header, "agent▼") {
 		t.Errorf("expected agent▼ in header for descending, got %q", header)
 	}
 
-	header = renderColumnHeaders(20, 10, 20, 100, sortByStatus, false)
+	header = renderColumnHeaders(20, 10, 20, 100, sortByStatus, false, false, 0)
 	if !strings.Contains(header, "status▲") {
 		t.Errorf("expected status▲ in header, got %q", header)
 	}
@@ -2814,5 +2743,89 @@ func TestConfigSavedMsgRollback(t *testing.T) {
 	}
 	if um.cfg.PtyCols != 120 {
 		t.Errorf("expected PtyCols rolled back to 120, got %d", um.cfg.PtyCols)
+	}
+}
+
+func TestEnvColumnShownWithIntegration(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/alpha", "/a/beta")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/alpha",
+		SessionID:  "tmux:sess-alpha",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+		Source:     "tmux",
+	})
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/beta",
+		SessionID:  "pty-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+		Source:     "pty",
+	})
+	// Add a session with empty Source to verify it shows blank (not "embedded")
+	store.Projects = append(store.Projects, &model.Project{Dir: "/a/gamma", Name: "gamma"})
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/gamma",
+		SessionID:  "unknown-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+		Source:     "",
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 120
+	m.height = 40
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	v := m.View()
+	if !strings.Contains(v, "env") {
+		t.Error("expected 'env' column header when integration sessions exist")
+	}
+	if !strings.Contains(v, "tmux") {
+		t.Error("expected 'tmux' label in env column")
+	}
+	if !strings.Contains(v, "embedded") {
+		t.Error("expected 'embedded' label for PTY session")
+	}
+	// Empty Source should show blank, not "embedded"
+	lines := strings.Split(v, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "gamma") {
+			if strings.Contains(line, "embedded") {
+				t.Error("empty Source should show blank in env column, not 'embedded'")
+			}
+			break
+		}
+	}
+}
+
+func TestEnvColumnHiddenPtyOnly(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/alpha", "/a/beta")
+	for _, p := range store.Projects {
+		store.SetSession(&model.AgentSession{
+			ProjectDir: p.Dir,
+			SessionID:  "pty-" + p.Name,
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+			Source:     "pty",
+		})
+	}
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 120
+	m.height = 40
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	v := m.View()
+	// "env" should not appear as a column header; note "agent" contains "en" but not "env" as a standalone word
+	lines := strings.Split(v, "\n")
+	for _, line := range lines {
+		// Check the header line (contains "agent" and "type")
+		if strings.Contains(line, "agent") && strings.Contains(line, "type") {
+			if strings.Contains(line, "env") {
+				t.Error("expected no 'env' column header when all sessions are PTY-only")
+			}
+			break
+		}
 	}
 }

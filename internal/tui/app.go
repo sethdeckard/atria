@@ -989,9 +989,6 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Focus):
 		return m.focusSelected()
 
-	case key.Matches(msg, keys.Delete):
-		return m.deleteSelected()
-
 	case key.Matches(msg, keys.Batch):
 		if !m.backendOK {
 			m.statusText = "Backend unavailable"
