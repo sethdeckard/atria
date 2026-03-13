@@ -122,6 +122,9 @@ const headerLineCount = 3
 // footerLineCount is lines for the footer (margin + content).
 const footerLineCount = 3
 
+// timeColWidth is the fixed column budget for the "updated" / time column.
+const timeColWidth = 10
+
 func renderHeader(width int) string {
 	return renderTitleBar("agents", width)
 }
@@ -146,7 +149,7 @@ func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int, col sor
 	}
 
 	// status + updated fill the rest
-	remaining := totalWidth - lipgloss.Width(name) - typeWidth - dirWidth - 10
+	remaining := totalWidth - lipgloss.Width(name) - typeWidth - dirWidth - timeColWidth
 	if showEnv {
 		remaining -= envWidth
 	}
@@ -206,7 +209,7 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 
 	// Status gets a fixed width; directory absorbs remaining space
 	statusWidth := 22
-	dirWidth := width - (nameWidth + 2) - typeWidth - statusWidth - 10
+	dirWidth := width - (nameWidth + 2) - typeWidth - statusWidth - timeColWidth
 	if showEnv {
 		dirWidth -= envWidth
 	}
@@ -286,17 +289,26 @@ func agentTypeLabel(t model.AgentType) string {
 	}
 }
 
-// formatRow builds a single-line row. When plain is true, no inner styles are
-// applied so a row-level style can wrap the whole line cleanly.
-func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, plain bool, showEnv bool, envWidth int) string {
+// rowColumns holds pre-computed, unstyled column strings for a single row.
+type rowColumns struct {
+	name      string
+	agent     string
+	env       string
+	status    string
+	statusSty lipgloss.Style
+	dir       string
+	time      string
+	remaining int
+}
+
+func computeRowColumns(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth, spinnerFrame int, showEnv bool, envWidth int) rowColumns {
 	name := r.displayName
 	if len(name) > nameWidth-2 {
 		name = name[:nameWidth-3] + "\u2026"
 	}
-	name = fmt.Sprintf("  %-*s", nameWidth, name)
+	nameStr := fmt.Sprintf("  %-*s", nameWidth, name)
 
-	agentStr := agentTypeLabel(r.session.Type)
-	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
+	agentCol := fmt.Sprintf("%-*s", typeWidth, agentTypeLabel(r.session.Type))
 
 	envCol := ""
 	if showEnv {
@@ -312,15 +324,11 @@ func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spi
 	statusStr, style := formatStatus(r.session, spinnerFrame)
 
 	timeStr := ""
-	timeVisual := ""
 	if !r.session.LastActivity.IsZero() {
-		timeVisual = relativeTime(r.session.LastActivity)
-		timeStr = timeVisual
+		timeStr = relativeTime(r.session.LastActivity)
 	}
 
-	// Build the line — use fixed time column width (matching header's -10) so
-	// status/directory columns don't shift as timeVisual length changes.
-	remaining := totalWidth - lipgloss.Width(name) - typeWidth - dirWidth - 10
+	remaining := totalWidth - lipgloss.Width(nameStr) - typeWidth - dirWidth - timeColWidth
 	if showEnv {
 		remaining -= envWidth
 	}
@@ -331,68 +339,43 @@ func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spi
 		statusStr = statusStr[:remaining-1] + "\u2026"
 	}
 
-	// Pad status to fixed column width so directory aligns consistently
-	statusCol := lipgloss.NewStyle().Width(remaining).Render(statusStr)
-	if !plain {
-		statusCol = style.Width(remaining).Render(statusStr)
+	return rowColumns{
+		name:      nameStr,
+		agent:     agentCol,
+		env:       envCol,
+		status:    statusStr,
+		statusSty: style,
+		dir:       dirCol,
+		time:      timeStr,
+		remaining: remaining,
 	}
+}
 
-	return name + agentCol + envCol + statusCol + dirCol + timeStr
+// formatRow builds a single-line row. When plain is true, no inner styles are
+// applied so a row-level style can wrap the whole line cleanly.
+func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, plain bool, showEnv bool, envWidth int) string {
+	c := computeRowColumns(r, nameWidth, typeWidth, dirWidth, totalWidth, spinnerFrame, showEnv, envWidth)
+	statusCol := lipgloss.NewStyle().Width(c.remaining).Render(c.status)
+	if !plain {
+		statusCol = c.statusSty.Width(c.remaining).Render(c.status)
+	}
+	return c.name + c.agent + c.env + statusCol + c.dir + c.time
 }
 
 // formatSelectedRow builds a selected row where the status retains its color
 // on a purple background, while other columns get white text on purple.
 func formatSelectedRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, showEnv bool, envWidth int) string {
-	name := r.displayName
-	if len(name) > nameWidth-2 {
-		name = name[:nameWidth-3] + "\u2026"
-	}
-	nameStr := fmt.Sprintf("  %-*s", nameWidth, name)
-
-	agentStr := agentTypeLabel(r.session.Type)
-	agentCol := fmt.Sprintf("%-*s", typeWidth, agentStr)
-
-	envCol := ""
-	if showEnv {
-		envCol = fmt.Sprintf("%-*s", envWidth, envLabel(r.session.Source))
-	}
-
-	dir := shortenPath(r.project.Dir)
-	if len(dir) > dirWidth-2 {
-		dir = dir[:dirWidth-3] + "\u2026"
-	}
-	dirCol := fmt.Sprintf("%-*s", dirWidth, dir)
-
-	statusStr, style := formatStatus(r.session, spinnerFrame)
-
-	timeVisual := ""
-	if !r.session.LastActivity.IsZero() {
-		timeVisual = relativeTime(r.session.LastActivity)
-	}
-
-	remaining := totalWidth - lipgloss.Width(nameStr) - typeWidth - dirWidth - 10
-	if showEnv {
-		remaining -= envWidth
-	}
-	if remaining < 2 {
-		remaining = 2
-	}
-	if lipgloss.Width(statusStr) > remaining {
-		statusStr = statusStr[:remaining-1] + "\u2026"
-	}
-
-	// Render each column with selected background
-	selName := selectedTextStyle.Render(nameStr)
-	selAgent := selectedTextStyle.Render(agentCol)
+	c := computeRowColumns(r, nameWidth, typeWidth, dirWidth, totalWidth, spinnerFrame, showEnv, envWidth)
 	selEnv := ""
 	if showEnv {
-		selEnv = selectedTextStyle.Render(envCol)
+		selEnv = selectedTextStyle.Render(c.env)
 	}
-	selStatus := withSelectedBg(style).Bold(true).Width(remaining).Render(statusStr)
-	selDir := selectedTextStyle.Render(dirCol)
-	selTime := selectedTextStyle.Render(timeVisual)
-
-	return selName + selAgent + selEnv + selStatus + selDir + selTime
+	selStatus := withSelectedBg(c.statusSty).Bold(true).Width(c.remaining).Render(c.status)
+	return selectedTextStyle.Render(c.name) +
+		selectedTextStyle.Render(c.agent) +
+		selEnv + selStatus +
+		selectedTextStyle.Render(c.dir) +
+		selectedTextStyle.Render(c.time)
 }
 
 func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Style) {

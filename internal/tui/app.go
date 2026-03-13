@@ -875,7 +875,6 @@ func (m Model) viewHelp() string {
   s              Cycle sort column
   S              Reverse sort direction
   f              Focus agent's terminal tab
-  d              Remove project from list
   B              Batch send to multiple agents
   Enter          Open chat view
   Ctrl+\         Return from terminal view

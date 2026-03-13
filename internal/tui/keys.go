@@ -58,7 +58,7 @@ var keys = keyMap{
 	),
 	Delete: key.NewBinding(
 		key.WithKeys("d"),
-		key.WithHelp("d", "remove project"),
+		key.WithHelp("d", "remove watch dir"),
 	),
 	Batch: key.NewBinding(
 		key.WithKeys("B"),
