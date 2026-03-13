@@ -192,7 +192,7 @@ No. You can launch agents through atria's PTY backend or let it discover agents 
 
 ### Can atria show sessions from multiple backends at once?
 
-Yes. The dashboard can show sessions from the built-in PTY backend and any enabled integrations simultaneously.
+Yes. The dashboard can show sessions from the built-in PTY backend and any active integrations simultaneously.
 
 ### How does atria detect agent status?
 
