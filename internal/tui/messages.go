@@ -28,6 +28,7 @@ type PromptSentMsg struct {
 
 // StatusUpdatedMsg is sent when agent status has been checked.
 type StatusUpdatedMsg struct {
+	SessionID  string
 	ProjectDir string
 	Status     model.AgentStatus
 	Activity   string
@@ -36,6 +37,7 @@ type StatusUpdatedMsg struct {
 
 // MonitorStartedMsg is sent after starting a monitor process.
 type MonitorStartedMsg struct {
+	SessionID  string
 	ProjectDir string
 	PID        int
 	LogPath    string
@@ -88,6 +90,7 @@ type ScreenReadMsg struct {
 type AgentDiscoveredMsg struct {
 	SessionID string
 	AgentType model.AgentType
+	Source    string // backend source ("pty", "iterm", "tmux", etc.)
 	Dir       string // resolved working directory, empty if not found
 }
 

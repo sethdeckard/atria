@@ -114,6 +114,7 @@ func startMonitor(backend terminal.Backend, sessionID, logPath, patterns string,
 	return func() tea.Msg {
 		pid, err := backend.MonitorOutput(sessionID, logPath, patterns)
 		return MonitorStartedMsg{
+			SessionID:  sessionID,
 			ProjectDir: projectDir,
 			PID:        pid,
 			LogPath:    logPath,
@@ -401,6 +402,7 @@ func discoverAgent(backend terminal.Backend, sess terminal.Session, agentType mo
 		return AgentDiscoveredMsg{
 			SessionID: sess.ID,
 			AgentType: agentType,
+			Source:    sess.Source,
 			Dir:       dir,
 		}
 	}
@@ -408,4 +410,9 @@ func discoverAgent(backend terminal.Backend, sess terminal.Session, agentType mo
 
 func shellEscape(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+}
+
+// sanitizeForPath replaces characters unsafe for filenames with underscores.
+func sanitizeForPath(s string) string {
+	return strings.NewReplacer(":", "_", "/", "_", "\\", "_").Replace(s)
 }

@@ -1822,11 +1822,25 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		}
 	}
 
-	// Remove sessions for dead iTerm sessions and exited agents.
+	// Remove sessions for dead integration sessions and exited agents.
+	// Skip sessions whose integration source failed (transient error),
+	// since their absence from liveIDs doesn't mean they're gone.
+	var failedSet map[string]bool
+	if cb, ok := m.backend.(*terminal.CachedBackend); ok {
+		if comp, ok := cb.Inner().(*terminal.CompositeBackend); ok {
+			for _, src := range comp.FailedSources() {
+				if failedSet == nil {
+					failedSet = make(map[string]bool)
+				}
+				failedSet[src] = true
+			}
+		}
+	}
+
 	// Collect IDs first to avoid mutating the slice during iteration.
 	var deadIDs []string
 	for _, s := range m.store.Sessions {
-		if !liveIDs[s.SessionID] {
+		if !liveIDs[s.SessionID] && !failedSet[s.Source] {
 			deadIDs = append(deadIDs, s.SessionID)
 		}
 	}
@@ -1866,6 +1880,7 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 		ProjectDir: msg.Dir,
 		SessionID:  msg.SessionID,
 		Type:       msg.AgentType,
+		Source:     msg.Source,
 		Status:     model.StatusWorking,
 	}
 	m.store.SetSession(as)
@@ -1873,8 +1888,9 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 	m.rows = buildRows(storeAdapter{m.store})
 	sortRows(m.rows, m.sortCol, m.sortDesc)
 
-	// Start monitoring
-	logPath := filepath.Join(m.monitorDir, filepath.Base(msg.Dir)+".log")
+	// Start monitoring — use session ID in log path to avoid collisions
+	// when multiple agents share the same project directory.
+	logPath := filepath.Join(m.monitorDir, sanitizeForPath(msg.SessionID)+".log")
 	cmds := []tea.Cmd{startMonitor(m.backend, msg.SessionID, logPath,
 		monitorPatterns, msg.Dir)}
 	if cmd := m.ensureSpinner(); cmd != nil {
@@ -1918,8 +1934,9 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 	sortRows(m.rows, m.sortCol, m.sortDesc)
 	m.statusText = fmt.Sprintf("Launched %s for %s", msg.AgentType, filepath.Base(msg.ProjectDir))
 
-	// Start monitoring
-	logPath := filepath.Join(m.monitorDir, filepath.Base(msg.ProjectDir)+".log")
+	// Start monitoring — use session ID in log path to avoid collisions
+	// when multiple agents share the same project directory.
+	logPath := filepath.Join(m.monitorDir, sanitizeForPath(msg.SessionID)+".log")
 	var cmds []tea.Cmd
 	cmds = append(cmds, startMonitor(m.backend, msg.SessionID, logPath,
 		monitorPatterns, msg.ProjectDir))
@@ -1936,7 +1953,11 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
-	as := m.store.FirstSession(msg.ProjectDir)
+	as := m.store.SessionByID(msg.SessionID)
+	if as == nil {
+		// Fall back to ProjectDir for backwards compatibility
+		as = m.store.FirstSession(msg.ProjectDir)
+	}
 	if as == nil {
 		return m, nil
 	}
@@ -1994,7 +2015,12 @@ func (m Model) handleMonitorStarted(msg MonitorStartedMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	as := m.store.FirstSession(msg.ProjectDir)
+	as := m.store.SessionByID(msg.SessionID)
+	if as == nil {
+		// Fall back to ProjectDir — the session ID may have been remapped
+		// by an integration toggle while the monitor start was in flight.
+		as = m.store.FirstSession(msg.ProjectDir)
+	}
 	if as != nil {
 		as.MonitorPID = msg.PID
 		as.MonitorLog = msg.LogPath

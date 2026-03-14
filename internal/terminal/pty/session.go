@@ -1,7 +1,6 @@
 package pty
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"strings"
@@ -22,11 +21,14 @@ type session struct {
 	name        string // from OSC title escapes
 	exited      bool
 	bellPending bool
+	inOSC       bool // tracks whether we're inside an OSC escape sequence across reads
+	escPending  bool // true when last byte of previous read was ESC (for split ESC] or ESC\)
 	done        chan struct{}
 }
 
 // readLoop reads from the PTY and feeds data to the vt10x terminal.
-// It intercepts bell characters (\x07) before they are consumed by vt10x.
+// It intercepts bell characters (\x07) before they are consumed by vt10x,
+// distinguishing real bells from BEL bytes that terminate OSC sequences.
 func (s *session) readLoop() {
 	defer close(s.done)
 	buf := make([]byte, readBufSize)
@@ -35,10 +37,11 @@ func (s *session) readLoop() {
 		if n > 0 {
 			data := buf[:n]
 
-			// Check for bell characters in the raw data.
-			// Note: \x07 also terminates OSC sequences, but we accept the
-			// minor false-positive risk since the status classifier handles it.
-			hasBell := bytes.Contains(data, []byte(bellChar))
+			// Count real bell characters, excluding BEL that terminates OSC sequences.
+			// State persists across reads since sequences can span buffer boundaries.
+			s.mu.Lock()
+			bells := countBells(data, &s.inOSC, &s.escPending)
+			s.mu.Unlock()
 
 			s.term.Write(data)
 
@@ -46,7 +49,7 @@ func (s *session) readLoop() {
 			title := s.term.Title()
 
 			s.mu.Lock()
-			if hasBell {
+			if bells > 0 {
 				s.bellPending = true
 			}
 			if title != "" {
@@ -61,6 +64,65 @@ func (s *session) readLoop() {
 			return
 		}
 	}
+}
+
+// countBells counts real bell characters (\x07) in data, excluding BEL bytes
+// that terminate OSC escape sequences (\x1b]...\x07). The inOSC and escPending
+// states are persisted across calls to handle sequences that span buffer
+// boundaries. escPending covers both ESC] (OSC start) and ESC\ (ST end)
+// being split across reads.
+func countBells(data []byte, inOSC *bool, escPending *bool) int {
+	bells := 0
+	for i := 0; i < len(data); i++ {
+		// Handle ESC that was the last byte of the previous read.
+		if *escPending {
+			*escPending = false
+			if *inOSC {
+				// Inside OSC: ESC\ is ST (terminates OSC).
+				if data[i] == '\\' {
+					*inOSC = false
+					continue
+				}
+				// Not a ST — stay inside OSC, fall through to normal processing.
+			} else {
+				// Outside OSC: ESC] starts an OSC sequence.
+				if data[i] == ']' {
+					*inOSC = true
+					continue
+				}
+				// Not an OSC start — the ESC was something else, fall through.
+			}
+		}
+
+		if *inOSC {
+			if data[i] == '\x07' {
+				*inOSC = false // BEL terminates OSC — not a real bell
+			} else if data[i] == '\x1b' {
+				if i+1 < len(data) {
+					if data[i+1] == '\\' {
+						*inOSC = false // ST (\x1b\) terminates OSC
+						i++
+					}
+				} else {
+					*escPending = true
+				}
+			}
+		} else {
+			if data[i] == '\x1b' {
+				if i+1 < len(data) {
+					if data[i+1] == ']' {
+						*inOSC = true
+						i++
+					}
+				} else {
+					*escPending = true
+				}
+			} else if data[i] == '\x07' {
+				bells++
+			}
+		}
+	}
+	return bells
 }
 
 // readScreen returns the last N lines from the vt10x screen buffer.

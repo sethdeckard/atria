@@ -18,6 +18,7 @@ import (
 type mockBackend struct {
 	available    error
 	sessions     []terminal.Session
+	listErr      error
 	newSessionID string
 	newSessionErr error
 	sendTextLog  []string
@@ -29,7 +30,7 @@ type mockBackend struct {
 }
 
 func (m *mockBackend) Available() error                        { return m.available }
-func (m *mockBackend) ListSessions() ([]terminal.Session, error) { return m.sessions, nil }
+func (m *mockBackend) ListSessions() ([]terminal.Session, error) { return m.sessions, m.listErr }
 func (m *mockBackend) NewSession() (string, error) {
 	return m.newSessionID, m.newSessionErr
 }
@@ -1059,6 +1060,40 @@ func TestSessionsRefreshedRemovesDeadSessions(t *testing.T) {
 	}
 }
 
+func TestSessionsRefreshedKeepsSessionFromFailedIntegration(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "iterm:sess-abc",
+		Type:       model.AgentClaude,
+		Source:     "iterm",
+		Status:     model.StatusWorking,
+	})
+
+	// Set up composite with a failing iterm integration.
+	ptyBackend := &mockBackend{sessions: []terminal.Session{}}
+	itermBackend := &mockBackend{listErr: errors.New("connection refused")}
+	comp := terminal.NewCompositeBackend(ptyBackend, "pty", []terminal.Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: itermBackend},
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	cached := terminal.NewCachedBackend(comp, 5)
+	m.backend = cached
+
+	// Trigger ListSessions on the composite to populate failedSources
+	// (mirrors what refreshSessions does before returning SessionsRefreshedMsg).
+	sessions, _ := cached.ListSessions()
+
+	// Refresh returns only primary sessions (iterm failed).
+	// The iterm session should survive because iterm is in failedSources.
+	updated, _ := m.Update(SessionsRefreshedMsg{Sessions: sessions})
+	um := modelFrom(updated)
+	if um.store.SessionByID("iterm:sess-abc") == nil {
+		t.Error("expected iterm session to survive when integration failed")
+	}
+}
+
 func TestSessionsRefreshedRemovesExitedAgent(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
@@ -1371,17 +1406,53 @@ func TestStatusUpdatedMsg(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, store)
 
 	updated, _ := m.Update(StatusUpdatedMsg{
+		SessionID:  "sess-1",
 		ProjectDir: "/a/myproject",
 		Status:     model.StatusNeedsInput,
 		Attention:  "Allow file edit? [y/n]",
 	})
 	um := modelFrom(updated)
-	session := um.store.FirstSession("/a/myproject")
+	session := um.store.SessionByID("sess-1")
 	if session.Status != model.StatusNeedsInput {
 		t.Errorf("expected needs_input, got %q", session.Status)
 	}
 	if session.Attention != "Allow file edit? [y/n]" {
 		t.Errorf("expected attention text, got %q", session.Attention)
+	}
+}
+
+func TestStatusUpdatedMultipleAgentsSameDir(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+	})
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-2",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Update only sess-2 — sess-1 should remain unchanged.
+	updated, _ := m.Update(StatusUpdatedMsg{
+		SessionID:  "sess-2",
+		ProjectDir: "/a/myproject",
+		Status:     model.StatusNeedsInput,
+		Attention:  "Allow?",
+	})
+	um := modelFrom(updated)
+	s1 := um.store.SessionByID("sess-1")
+	s2 := um.store.SessionByID("sess-2")
+	if s1.Status != model.StatusWorking {
+		t.Errorf("sess-1 should stay working, got %q", s1.Status)
+	}
+	if s2.Status != model.StatusNeedsInput {
+		t.Errorf("sess-2 should be needs_input, got %q", s2.Status)
 	}
 }
 
@@ -1400,6 +1471,7 @@ func TestStatusUpdatedAddsToChat(t *testing.T) {
 	m.chat.setSize(80, 40)
 
 	updated, _ := m.Update(StatusUpdatedMsg{
+		SessionID:  "sess-1",
 		ProjectDir: "/a/myproject",
 		Status:     model.StatusNeedsInput,
 		Attention:  "Continue?",
@@ -1427,12 +1499,13 @@ func TestMonitorStartedMsg(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, store)
 
 	updated, _ := m.Update(MonitorStartedMsg{
+		SessionID:  "sess-1",
 		ProjectDir: "/a/myproject",
 		PID:        1234,
 		LogPath:    "/tmp/monitors/myproject.log",
 	})
 	um := modelFrom(updated)
-	session := um.store.FirstSession("/a/myproject")
+	session := um.store.SessionByID("sess-1")
 	if session.MonitorPID != 1234 {
 		t.Errorf("expected PID 1234, got %d", session.MonitorPID)
 	}
@@ -1441,6 +1514,71 @@ func TestMonitorStartedMsg(t *testing.T) {
 	}
 	if len(um.monitorPIDs) != 1 || um.monitorPIDs[0] != 1234 {
 		t.Errorf("expected monitorPIDs [1234], got %v", um.monitorPIDs)
+	}
+}
+
+func TestMonitorStartedFallsBackAfterRemap(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	// Session was remapped from "pty-0" to "pty:pty-0" by integration toggle.
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "pty:pty-0",
+		Type:       model.AgentClaude,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// MonitorStartedMsg arrives with the OLD session ID (in-flight before remap).
+	updated, _ := m.Update(MonitorStartedMsg{
+		SessionID:  "pty-0",
+		ProjectDir: "/a/myproject",
+		PID:        9999,
+		LogPath:    "/tmp/monitors/pty-0.log",
+	})
+	um := modelFrom(updated)
+
+	// Should fall back to FirstSession and still record the monitor.
+	session := um.store.SessionByID("pty:pty-0")
+	if session.MonitorPID != 9999 {
+		t.Errorf("expected PID 9999 after remap fallback, got %d", session.MonitorPID)
+	}
+	if session.MonitorLog != "/tmp/monitors/pty-0.log" {
+		t.Errorf("expected log path after remap fallback, got %q", session.MonitorLog)
+	}
+}
+
+func TestMonitorStartedMultipleAgentsSameDir(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Type:       model.AgentClaude,
+	})
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-2",
+		Type:       model.AgentClaude,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	// Send monitor started for sess-2 specifically.
+	updated, _ := m.Update(MonitorStartedMsg{
+		SessionID:  "sess-2",
+		ProjectDir: "/a/myproject",
+		PID:        5678,
+		LogPath:    "/tmp/monitors/sess-2.log",
+	})
+	um := modelFrom(updated)
+
+	// sess-2 should get the PID, not sess-1.
+	s1 := um.store.SessionByID("sess-1")
+	s2 := um.store.SessionByID("sess-2")
+	if s1.MonitorPID != 0 {
+		t.Errorf("sess-1 should not have monitor PID, got %d", s1.MonitorPID)
+	}
+	if s2.MonitorPID != 5678 {
+		t.Errorf("sess-2 expected PID 5678, got %d", s2.MonitorPID)
 	}
 }
 

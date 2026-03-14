@@ -20,6 +20,7 @@ type CompositeBackend struct {
 	primary       Backend
 	primarySource string // "pty", "iterm", "tmux"
 	integrations  []Integration
+	failedSources []string // sources whose ListSessions failed on last call
 }
 
 // NewCompositeBackend creates a composite that delegates launches to primary
@@ -45,18 +46,25 @@ func (c *CompositeBackend) Available() error {
 // Integration sessions are prefixed and tagged with Source.
 // Deduplication by TTY ensures the same terminal isn't listed twice.
 func (c *CompositeBackend) ListSessions() ([]Session, error) {
+	// Snapshot backends under read lock — the actual ListSessions calls
+	// (which may involve subprocesses/sockets) run without holding any lock,
+	// so interactive paths (SendText, ReadScreen, etc.) are not blocked.
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-	primary, err := c.primary.ListSessions()
+	primary := c.primary
+	primarySource := c.primarySource
+	integrations := make([]Integration, len(c.integrations))
+	copy(integrations, c.integrations)
+	c.mu.RUnlock()
+
+	primarySessions, err := primary.ListSessions()
 	if err != nil {
 		return nil, fmt.Errorf("primary backend: %w", err)
 	}
 
 	// Track TTYs from primary for deduplication.
 	seenTTY := make(map[string]bool)
-	primarySource := c.primarySource
 	var result []Session
-	for _, s := range primary {
+	for _, s := range primarySessions {
 		s.Source = primarySource
 		result = append(result, s)
 		if s.TTY != "" {
@@ -64,10 +72,12 @@ func (c *CompositeBackend) ListSessions() ([]Session, error) {
 		}
 	}
 
-	for _, integ := range c.integrations {
+	var failedSources []string
+	for _, integ := range integrations {
 		sessions, err := integ.Backend.ListSessions()
 		if err != nil {
 			// Integration errors are non-fatal — skip silently.
+			failedSources = append(failedSources, integ.Source)
 			continue
 		}
 		for _, s := range sessions {
@@ -84,7 +94,21 @@ func (c *CompositeBackend) ListSessions() ([]Session, error) {
 		}
 	}
 
+	// Only the failedSources assignment needs write access.
+	c.mu.Lock()
+	c.failedSources = failedSources
+	c.mu.Unlock()
+
 	return result, nil
+}
+
+// FailedSources returns the integration sources that failed during the last
+// ListSessions call. This allows callers to skip cleanup for sessions
+// belonging to transiently unavailable integrations.
+func (c *CompositeBackend) FailedSources() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.failedSources
 }
 
 // NewSession always delegates to the primary backend.

@@ -112,6 +112,90 @@ func TestIsExited(t *testing.T) {
 	}
 }
 
+func TestCountBells(t *testing.T) {
+	tests := []struct {
+		name           string
+		data           string
+		initInOSC      bool
+		initEscPending bool
+		wantBells      int
+		wantInOSC      bool
+		wantEscPending bool
+	}{
+		{"bare bell", "\x07", false, false, 1, false, false},
+		{"multiple bare bells", "\x07\x07\x07", false, false, 3, false, false},
+		{"no bells", "hello world", false, false, 0, false, false},
+		{"OSC title with BEL terminator", "\x1b]0;my-title\x07", false, false, 0, false, false},
+		{"OSC title with ST terminator", "\x1b]0;my-title\x1b\\", false, false, 0, false, false},
+		{"OSC then real bell", "\x1b]0;title\x07\x07", false, false, 1, false, false},
+		{"real bell then OSC", "\x07\x1b]0;title\x07", false, false, 1, false, false},
+		{"OSC split across reads - start", "\x1b]0;tit", false, false, 0, true, false},
+		{"OSC split across reads - end BEL", "le\x07", true, false, 0, false, false},
+		{"BEL terminates OSC not real bell", "\x07", true, false, 0, false, false},
+		// ST (\x1b\) split across reads while inside OSC
+		{"ST split - ESC at end of read", "\x1b]0;title\x1b", false, false, 0, true, true},
+		{"ST split - backslash continues", "\\", true, true, 0, false, false},
+		{"ST split - non-backslash continues", "x", true, true, 0, true, false},
+		{"ST split then real bell", "\\\x07", true, true, 1, false, false},
+		// OSC introducer (\x1b]) split across reads
+		{"OSC start split - ESC at end", "text\x1b", false, false, 0, false, true},
+		{"OSC start split - ] continues", "]0;title\x07", false, true, 0, false, false},
+		{"OSC start split - non-] continues", "[A", false, true, 0, false, false},
+		{"OSC start split - BEL after non-]", "[A\x07", false, true, 1, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inOSC := tt.initInOSC
+			escPending := tt.initEscPending
+			bells := countBells([]byte(tt.data), &inOSC, &escPending)
+			if bells != tt.wantBells {
+				t.Errorf("countBells() = %d, want %d", bells, tt.wantBells)
+			}
+			if inOSC != tt.wantInOSC {
+				t.Errorf("inOSC = %v, want %v", inOSC, tt.wantInOSC)
+			}
+			if escPending != tt.wantEscPending {
+				t.Errorf("escPending = %v, want %v", escPending, tt.wantEscPending)
+			}
+		})
+	}
+}
+
+func TestOSCTitleDoesNotTriggerBell(t *testing.T) {
+	s := newTestSession()
+
+	// Simulate readLoop processing: write OSC title sequence
+	data := []byte("\x1b]0;✳ my-agent\x07")
+	s.mu.Lock()
+	bells := countBells(data, &s.inOSC, &s.escPending)
+	if bells > 0 {
+		s.bellPending = true
+	}
+	s.mu.Unlock()
+	s.term.Write(data)
+
+	if s.bellPending {
+		t.Error("OSC title BEL should not trigger bellPending")
+	}
+}
+
+func TestBareBellTriggersBellPending(t *testing.T) {
+	s := newTestSession()
+
+	// Simulate readLoop processing: bare bell
+	data := []byte("some output\x07")
+	s.mu.Lock()
+	bells := countBells(data, &s.inOSC, &s.escPending)
+	if bells > 0 {
+		s.bellPending = true
+	}
+	s.mu.Unlock()
+
+	if !s.bellPending {
+		t.Error("bare \\x07 should trigger bellPending")
+	}
+}
+
 func TestReadScreenWithOSCTitle(t *testing.T) {
 	s := newTestSession()
 

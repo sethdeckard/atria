@@ -154,6 +154,28 @@ func TestRemoveString(t *testing.T) {
 	}
 }
 
+func TestSanitizeForPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"pty-0", "pty-0"},
+		{"iterm:session-abc", "iterm_session-abc"},
+		{"tmux:%1", "tmux_%1"},
+		{"wezterm:42", "wezterm_42"},
+		{"path/with/slashes", "path_with_slashes"},
+		{"back\\slash", "back_slash"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := sanitizeForPath(tt.input)
+			if got != tt.want {
+				t.Errorf("sanitizeForPath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestContainsString(t *testing.T) {
 	tests := []struct {
 		name     string

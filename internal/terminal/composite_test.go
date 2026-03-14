@@ -565,6 +565,70 @@ func TestComposite_NewSessionOn_Unknown(t *testing.T) {
 	}
 }
 
+func TestComposite_FailedSourcesTracked(t *testing.T) {
+	primary := &trackingBackend{
+		mockBackend: mockBackend{
+			sessions: []Session{{ID: "pty-0", Name: "claude"}},
+		},
+	}
+	failingInteg := &trackingBackend{
+		listErr: errors.New("connection refused"),
+	}
+	healthyInteg := &trackingBackend{
+		mockBackend: mockBackend{
+			sessions: []Session{{ID: "s1", Name: "codex", TTY: "/dev/ttys001"}},
+		},
+	}
+
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: failingInteg},
+		{Prefix: "tmux:", Source: "tmux", Backend: healthyInteg},
+	})
+
+	sessions, err := comp.ListSessions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should have primary + healthy integration, not the failing one.
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(sessions))
+	}
+
+	failed := comp.FailedSources()
+	if len(failed) != 1 || failed[0] != "iterm" {
+		t.Errorf("expected FailedSources [iterm], got %v", failed)
+	}
+}
+
+func TestComposite_FailedSourcesClearedOnSuccess(t *testing.T) {
+	integ := &trackingBackend{
+		listErr: errors.New("connection refused"),
+	}
+	primary := &trackingBackend{
+		mockBackend: mockBackend{sessions: []Session{{ID: "pty-0"}}},
+	}
+
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: integ},
+	})
+
+	// First call — integration fails.
+	comp.ListSessions()
+	if len(comp.FailedSources()) != 1 {
+		t.Fatal("expected 1 failed source")
+	}
+
+	// Fix the integration.
+	integ.listErr = nil
+	integ.sessions = []Session{{ID: "s1", Name: "claude"}}
+
+	// Second call — integration succeeds.
+	comp.ListSessions()
+	if len(comp.FailedSources()) != 0 {
+		t.Errorf("expected 0 failed sources after recovery, got %v", comp.FailedSources())
+	}
+}
+
 func TestComposite_MissingIntegrationReturnsError(t *testing.T) {
 	primary := &trackingBackend{}
 
