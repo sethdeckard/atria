@@ -23,6 +23,12 @@ func TestDetectAgent(t *testing.T) {
 		{"opencode lowercase", "opencode", model.AgentOpenCode},
 		{"opencode in title", "OC | Reading file (opencode)", model.AgentOpenCode},
 		{"opencode in session name", "my-opencode-session", model.AgentOpenCode},
+		{"copilot lowercase", "copilot", model.AgentCopilot},
+		{"copilot in session name", "my-copilot-session", model.AgentCopilot},
+		{"copilot uppercase", "COPILOT", model.AgentCopilot},
+		{"copilot mixed case", "GitHub Copilot", model.AgentCopilot},
+		{"copilot robot prefix", "🤖 Asking clarifying question", model.AgentCopilot},
+		{"copilot robot only", "🤖", model.AgentCopilot},
 		{"plain session", "my-project", ""},
 		{"empty string", "", ""},
 		{"bash session", "bash", ""},
@@ -55,6 +61,8 @@ func TestExtractActivity(t *testing.T) {
 		{"nested parens stripped last", "✳ Foo (bar) (baz)", "Foo (bar)"},
 		{"opencode title", "OC | Reading file (opencode)", "Reading file"},
 		{"opencode title no suffix", "OC | Editing code", "Editing code"},
+		{"copilot robot prefix", "🤖 Asking clarifying question", "Asking clarifying question"},
+		{"copilot no prefix", "GitHub Copilot", "GitHub Copilot"},
 	}
 
 	for _, tt := range tests {

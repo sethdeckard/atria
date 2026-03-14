@@ -283,6 +283,8 @@ func agentTypeLabel(t model.AgentType) string {
 		return "Codex"
 	case model.AgentOpenCode:
 		return "OpenCode"
+	case model.AgentCopilot:
+		return "Copilot"
 	default:
 		s := string(t)
 		return strings.ToUpper(s[:1]) + s[1:]

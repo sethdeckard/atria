@@ -11,6 +11,7 @@ const (
 	AgentClaude   AgentType = "claude"
 	AgentCodex    AgentType = "codex"
 	AgentOpenCode AgentType = "opencode"
+	AgentCopilot  AgentType = "copilot"
 )
 
 type AgentStatus string

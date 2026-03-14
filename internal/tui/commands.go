@@ -61,6 +61,8 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType model.Ag
 			cmd = "codex"
 		case model.AgentOpenCode:
 			cmd = "opencode"
+		case model.AgentCopilot:
+			cmd = "copilot"
 		}
 		shellCmd := fmt.Sprintf("cd %s && %s", shellEscape(projectDir), cmd)
 		err = backend.RunCommand(sessionID, shellCmd)
@@ -76,9 +78,30 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType model.Ag
 	}
 }
 
-func sendPrompt(backend terminal.Backend, sessionID, text string, projectDir string) tea.Cmd {
+func sendPrompt(backend terminal.Backend, sessionID, text string, projectDir string, agentType model.AgentType) tea.Cmd {
 	return func() tea.Msg {
-		err := backend.SendText(sessionID, text)
+		prompt := text
+		// Copilot's input interprets Enter as newline, not submit.
+		// Replace newlines with spaces to avoid triggering / command menu.
+		if agentType == model.AgentCopilot {
+			prompt = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(prompt)
+			prompt = strings.TrimSpace(prompt)
+		}
+		// Copilot drops Enter when bulk text is sent to a short
+		// terminal. Send character-by-character to match how focus
+		// mode forwards keystrokes individually.
+		if agentType == model.AgentCopilot {
+			for _, r := range prompt {
+				if err := backend.SendText(sessionID, string(r)); err != nil {
+					return PromptSentMsg{ProjectDir: projectDir, Err: err}
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			time.Sleep(50 * time.Millisecond)
+			err := backend.SendText(sessionID, "\r")
+			return PromptSentMsg{ProjectDir: projectDir, Err: err}
+		}
+		err := backend.SendText(sessionID, prompt)
 		if err != nil {
 			return PromptSentMsg{ProjectDir: projectDir, Err: err}
 		}
@@ -109,7 +132,7 @@ func startMonitor(backend terminal.Backend, sessionID, logPath, patterns string,
 
 func readScreen(backend terminal.Backend, sessionID, projectDir string) tea.Cmd {
 	return func() tea.Msg {
-		content, err := backend.ReadScreen(sessionID, 25)
+		content, err := backend.ReadScreen(sessionID, 40)
 		return ScreenReadMsg{
 			SessionID:  sessionID,
 			ProjectDir: projectDir,

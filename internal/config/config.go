@@ -118,7 +118,7 @@ func (cfg *Config) Save(path string) error {
 	sb.WriteString("\n")
 
 	// default_agent
-	sb.WriteString("# Default agent to launch: \"claude\", \"codex\", or \"opencode\"\n")
+	sb.WriteString("# Default agent to launch: \"claude\", \"codex\", \"opencode\", or \"copilot\"\n")
 	if cfg.DefaultAgent != "" {
 		sb.WriteString(fmt.Sprintf("default_agent = %q\n", cfg.DefaultAgent))
 	} else {

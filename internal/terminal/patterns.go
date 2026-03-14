@@ -71,10 +71,28 @@ var openCodePatterns = &AgentPatterns{
 	},
 }
 
+var copilotPatterns = &AgentPatterns{
+	NeedsInput: []*regexp.Regexp{
+		regexp.MustCompile(`Do you trust the files in this folder`),
+		regexp.MustCompile(`Permission request`),
+		regexp.MustCompile(`Enter to (?:confirm|select)`),
+	},
+	Working: []*regexp.Regexp{
+		regexp.MustCompile(`[○◎●] Thinking`),
+		regexp.MustCompile(`Esc to cancel`),
+	},
+	WorkingExclude: []*regexp.Regexp{},
+	Idle: []*regexp.Regexp{
+		regexp.MustCompile(`❯`),
+		regexp.MustCompile(`\? for shortcuts`),
+	},
+}
+
 var agentPatternRegistry = map[model.AgentType]*AgentPatterns{
 	model.AgentClaude:   claudePatterns,
 	model.AgentCodex:    codexPatterns,
 	model.AgentOpenCode: openCodePatterns,
+	model.AgentCopilot:  copilotPatterns,
 }
 
 // Shared patterns that apply to all agent types.

@@ -15,6 +15,7 @@ Comes with a built-in terminal multiplexer ready to launch agents out of the box
 - **Claude Code** (`claude`)
 - **Codex** (`codex`)
 - **OpenCode** (`opencode`)
+- **GitHub Copilot** (`copilot`)
 
 ## Quick Start
 
@@ -43,7 +44,7 @@ atria scans your watch directories for projects and lets you launch and manage a
 ## Requirements
 
 - macOS or Linux
-- At least one supported agent on `$PATH`: `claude`, `codex`, or `opencode`
+- At least one supported agent on `$PATH`: `claude`, `codex`, `opencode`, or `copilot`
 
 ## Configuration
 
@@ -53,7 +54,7 @@ Create or edit `~/.config/atria/config.toml`:
 # Directories to watch for projects
 watch_dirs = ["~/projects"]
 
-# Default agent to launch: "claude", "codex", or "opencode"
+# Default agent to launch: "claude", "codex", "opencode", or "copilot"
 # default_agent = "claude"
 
 # Terminal dimensions for built-in PTY sessions
@@ -71,7 +72,6 @@ You can also configure everything interactively from the settings screen (`I` ke
 | `Enter` | Open chat view to send a prompt |
 | `l` | Launch a new agent (choose backend if an integration is active) |
 | `f` | Focus (switch to) the agent's terminal |
-| `d` | Delete an agent session |
 | `I` | Open settings |
 | `S` | Open setup wizard |
 | `s` | Cycle sort column |
@@ -200,7 +200,7 @@ atria reads the bottom of each agent's terminal screen every few seconds and mat
 
 ### Which agents are supported?
 
-Claude Code, Codex, and OpenCode — terminal-oriented agents that can be launched and monitored from the command line.
+Claude Code, Codex, OpenCode, and GitHub Copilot — terminal-oriented agents that can be launched and monitored from the command line.
 
 ## Debug
 

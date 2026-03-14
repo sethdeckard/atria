@@ -18,5 +18,8 @@ func detectAvailableAgents() []model.AgentType {
 	if _, err := exec.LookPath("opencode"); err == nil {
 		agents = append(agents, model.AgentOpenCode)
 	}
+	if _, err := exec.LookPath("copilot"); err == nil {
+		agents = append(agents, model.AgentCopilot)
+	}
 	return agents
 }

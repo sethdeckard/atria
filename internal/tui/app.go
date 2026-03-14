@@ -148,7 +148,7 @@ func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs 
 	// Resolve default agent from config, falling back to first available.
 	var defaultAgent model.AgentType
 	switch model.AgentType(defaultAgentCfg) {
-	case model.AgentClaude, model.AgentCodex:
+	case model.AgentClaude, model.AgentCodex, model.AgentOpenCode, model.AgentCopilot:
 		// Validate it's actually available.
 		found := false
 		for _, a := range available {
@@ -1026,6 +1026,7 @@ func (m Model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Escape):
 		m.view = viewProjectList
 		m.statusText = ""
+		m.adjustScroll()
 		return m, nil
 
 	case key.Matches(msg, keys.CtrlD):
@@ -1047,7 +1048,7 @@ func (m Model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusText = "No agent session"
 			return m, nil
 		}
-		return m, sendPrompt(m.backend, session.SessionID, text, session.ProjectDir)
+		return m, sendPrompt(m.backend, session.SessionID, text, session.ProjectDir, session.Type)
 	}
 
 	// Pass to textarea
@@ -1698,7 +1699,7 @@ func (m Model) dispatchBatch(template string) (Model, tea.Cmd) {
 			continue
 		}
 		prompt := strings.ReplaceAll(template, "{name}", r.project.Name)
-		cmds = append(cmds, sendPrompt(m.backend, r.session.SessionID, prompt, r.project.Dir))
+		cmds = append(cmds, sendPrompt(m.backend, r.session.SessionID, prompt, r.project.Dir, r.session.Type))
 		sent++
 	}
 	m.statusText = fmt.Sprintf("Batch sent to %d agents", sent)
@@ -1990,8 +1991,8 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	if m.debugLog != nil {
 		proj := filepath.Base(msg.ProjectDir)
 		escaped := strings.ReplaceAll(content, "\n", "\\n")
-		m.debugLog.Printf("[screen] %s prev=%s new=%s changed=%v match=%q content=%q",
-			proj, as.Status, status, screenChanged, matchLine, escaped)
+		m.debugLog.Printf("[screen] %s sid=%s src=%s prev=%s new=%s changed=%v match=%q content=%q",
+			proj, msg.SessionID, as.Source, as.Status, status, screenChanged, matchLine, escaped)
 	}
 
 	if status == "" {

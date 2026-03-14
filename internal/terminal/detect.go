@@ -8,6 +8,7 @@ import (
 
 // DetectAgent returns the agent type from a session name, or "" if not an agent.
 // Claude: name starts with ✳ (U+2733) or contains "claude" (case-insensitive)
+// Copilot: name starts with 🤖 (U+1F916) or contains "copilot" (case-insensitive)
 // Codex: name contains "codex" (case-insensitive)
 func DetectAgent(name string) model.AgentType {
 	lower := strings.ToLower(name)
@@ -18,6 +19,10 @@ func DetectAgent(name string) model.AgentType {
 
 	if strings.Contains(lower, "opencode") {
 		return model.AgentOpenCode
+	}
+
+	if strings.HasPrefix(name, "\U0001F916") || strings.Contains(lower, "copilot") {
+		return model.AgentCopilot
 	}
 
 	if strings.Contains(lower, "codex") {
@@ -42,6 +47,11 @@ func ExtractActivity(name string) string {
 	// Strip "OC | " prefix for OpenCode sessions.
 	if strings.HasPrefix(s, "OC | ") {
 		s = strings.TrimPrefix(s, "OC | ")
+	}
+
+	// Strip "🤖 " prefix for Copilot sessions.
+	if strings.HasPrefix(s, "\U0001F916 ") {
+		s = strings.TrimPrefix(s, "\U0001F916 ")
 	}
 
 	// Remove a trailing parenthesized suffix, e.g. " (sourcekit-lsp)" or " (opencode)".
