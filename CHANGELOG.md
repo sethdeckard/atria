@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.3.0
+
+- GitHub Copilot support as a first-class agent alongside Claude Code, Codex, and OpenCode
+- Startup upgrade checks, with install hints for Homebrew and `go install` users
+- `update_check = false` config option to disable startup upgrade checks
+- Safer debug logging with metadata-only `--debug`, an explicit `--debug-unsafe` mode for raw terminal output, and private per-user log storage
+- Quit confirmation when embedded PTY sessions are still running
+- Session reliability fixes for launch-target selection, tmux session handling, and PTY cleanup on exit
+- Recent projects in directory browser navigate to the directory instead of launching immediately, allowing backend choice
+- Fix phantom duplicate sessions when integration auto-title inherits embedded agent name
+- Fix tall screen reads in iTerm, Kitty, WezTerm, and tmux integrations
+- Dashboard polish: status-colored stream panel, responsive layout, 2-segment directory paths, color-coded agent types
+
 ## v0.2.0
 
 - Per-launch backend choice: directory browser shows launch actions for both the active integration and embedded terminal
