@@ -61,6 +61,7 @@ type Model struct {
 	height       int
 	statusText   string
 	showHelp     bool
+	confirmQuit  bool
 	sortCol      sortColumn
 	sortDesc     bool
 
@@ -904,8 +905,29 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.confirmQuit && !key.Matches(msg, keys.Quit) {
+		m.confirmQuit = false
+		m.statusText = ""
+		if key.Matches(msg, keys.Escape) {
+			return m, nil
+		}
+	}
+
 	switch {
 	case key.Matches(msg, keys.Quit):
+		if !m.confirmQuit {
+			ptyCount := 0
+			for _, s := range m.store.Sessions {
+				if s.Source == "pty" {
+					ptyCount++
+				}
+			}
+			if ptyCount > 0 {
+				m.confirmQuit = true
+				m.statusText = fmt.Sprintf("%d embedded session(s) will be lost. Press q to confirm, esc to cancel.", ptyCount)
+				return m, nil
+			}
+		}
 		return m, tea.Quit
 
 	case key.Matches(msg, keys.Help):
