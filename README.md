@@ -60,6 +60,9 @@ watch_dirs = ["~/projects"]
 # Terminal dimensions for built-in PTY sessions
 # pty_cols = 120
 # pty_rows = 40
+
+# Check for updates on startup (default: true)
+# update_check = true
 ```
 
 You can also configure everything interactively from the settings screen (`I` key).

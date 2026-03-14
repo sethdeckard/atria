@@ -36,7 +36,14 @@ type Config struct {
 	PtyRows      int      `toml:"pty_rows"`
 	FocusMode    string   `toml:"focus_mode"`
 
+	UpdateCheck  *bool    `toml:"update_check"`
 	Integrations []string `toml:"integrations"` // ["iterm2", "tmux"]
+}
+
+// UpdateCheckEnabled returns whether the upgrade check is enabled.
+// Defaults to true when not explicitly set.
+func (c *Config) UpdateCheckEnabled() bool {
+	return c.UpdateCheck == nil || *c.UpdateCheck
 }
 
 // DefaultPath returns the default configuration file path.
@@ -169,6 +176,15 @@ func (cfg *Config) Save(path string) error {
 		sb.WriteString(fmt.Sprintf("wezterm_path = %q\n", contractHome(cfg.WezTermPath)))
 	} else {
 		sb.WriteString("# wezterm_path = \"wezterm\"\n")
+	}
+	sb.WriteString("\n")
+
+	// update_check
+	sb.WriteString("# Check for updates on startup\n")
+	if cfg.UpdateCheck != nil && !*cfg.UpdateCheck {
+		sb.WriteString("update_check = false\n")
+	} else {
+		sb.WriteString("# update_check = true\n")
 	}
 	sb.WriteString("\n")
 

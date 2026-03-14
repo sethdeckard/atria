@@ -101,6 +101,16 @@ func buildSetupDefaultItems(cfg *config.Config, agents []model.AgentType) []sett
 		}
 	}
 
+	// update check
+	updateLabel := "enabled"
+	if !cfg.UpdateCheckEnabled() {
+		updateLabel = "disabled"
+	}
+	items = append(items, settingsItem{
+		section: "config", label: "  update check", itemType: "choice",
+		value: updateLabel, key: "update_check",
+	})
+
 	return items
 }
 
@@ -536,6 +546,27 @@ func (m Model) selectSetupRadio(item settingsItem) (Model, tea.Cmd) {
 }
 
 func (m Model) cycleSetupChoice(item settingsItem) (Model, tea.Cmd) {
+	if item.key == "update_check" {
+		enabled := !m.cfg.UpdateCheckEnabled()
+		prevUpdateCheck := m.cfg.UpdateCheck
+		prevVersion := m.upgradeVersion
+		prevHint := m.upgradeHint
+		m.cfg.UpdateCheck = &enabled
+		if !enabled {
+			m.upgradeVersion = ""
+			m.upgradeHint = ""
+		}
+		m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
+		save := saveConfig(m.cfg, m.configPath, func(rm *Model) {
+			rm.cfg.UpdateCheck = prevUpdateCheck
+			rm.upgradeVersion = prevVersion
+			rm.upgradeHint = prevHint
+		})
+		if enabled {
+			return m, tea.Batch(save, checkUpgrade(Version))
+		}
+		return m, save
+	}
 	if item.key != "default_agent" {
 		return m, nil
 	}

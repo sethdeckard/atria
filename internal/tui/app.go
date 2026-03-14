@@ -210,7 +210,9 @@ func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	cmds = append(cmds, checkBackend(m.backend))
 	cmds = append(cmds, tickCmd())
-	cmds = append(cmds, checkUpgrade(Version))
+	if m.cfg == nil || m.cfg.UpdateCheckEnabled() {
+		cmds = append(cmds, checkUpgrade(Version))
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -297,8 +299,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case UpgradeAvailableMsg:
-		m.upgradeVersion = msg.LatestVersion
-		m.upgradeHint = msg.InstallHint
+		if m.cfg == nil || m.cfg.UpdateCheckEnabled() {
+			m.upgradeVersion = msg.LatestVersion
+			m.upgradeHint = msg.InstallHint
+		}
 		return m, nil
 
 	case IntegrationToggledMsg:
@@ -1603,6 +1607,27 @@ func (m Model) openSettingsDirPicker() (Model, tea.Cmd) {
 }
 
 func (m Model) cycleSettingsChoice(item settingsItem) (Model, tea.Cmd) {
+	if item.key == "update_check" {
+		enabled := !m.cfg.UpdateCheckEnabled()
+		prevUpdateCheck := m.cfg.UpdateCheck
+		prevVersion := m.upgradeVersion
+		prevHint := m.upgradeHint
+		m.cfg.UpdateCheck = &enabled
+		if !enabled {
+			m.upgradeVersion = ""
+			m.upgradeHint = ""
+		}
+		m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+		save := saveConfig(m.cfg, m.configPath, func(rm *Model) {
+			rm.cfg.UpdateCheck = prevUpdateCheck
+			rm.upgradeVersion = prevVersion
+			rm.upgradeHint = prevHint
+		})
+		if enabled {
+			return m, tea.Batch(save, checkUpgrade(Version))
+		}
+		return m, save
+	}
 	if item.key != "default_agent" {
 		return m, nil
 	}

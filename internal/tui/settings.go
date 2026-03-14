@@ -106,6 +106,16 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 		value: tmuxSession, key: "tmux_session",
 	})
 
+	// update check
+	updateLabel := "enabled"
+	if !cfg.UpdateCheckEnabled() {
+		updateLabel = "disabled"
+	}
+	items = append(items, settingsItem{
+		section: "config", label: "  update check", itemType: "choice",
+		value: updateLabel, key: "update_check",
+	})
+
 	return items
 }
 

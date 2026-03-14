@@ -297,6 +297,65 @@ func TestSaveCreatesParentDirs(t *testing.T) {
 	}
 }
 
+func TestUpdateCheckEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    *bool
+		expected bool
+	}{
+		{"nil (default)", nil, true},
+		{"explicit true", boolPtr(true), true},
+		{"explicit false", boolPtr(false), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{UpdateCheck: tc.value}
+			if got := cfg.UpdateCheckEnabled(); got != tc.expected {
+				t.Errorf("UpdateCheckEnabled() = %v, want %v", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestUpdateCheckSaveRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	// Save with update_check = false
+	cfg := &Config{UpdateCheck: boolPtr(false)}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	if !strings.Contains(string(content), "update_check = false") {
+		t.Errorf("expected uncommented update_check = false, got:\n%s", content)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded.UpdateCheckEnabled() {
+		t.Error("expected UpdateCheckEnabled() = false after round-trip")
+	}
+
+	// Save with nil (default) — should be commented
+	cfg2 := &Config{}
+	if err := cfg2.Save(path); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+	content, _ = os.ReadFile(path)
+	if !strings.Contains(string(content), "# update_check = true") {
+		t.Errorf("expected commented update_check, got:\n%s", content)
+	}
+}
+
+func boolPtr(v bool) *bool { return &v }
+
 func TestLoadDefaultAgent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
