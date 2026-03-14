@@ -62,7 +62,11 @@ func TestExtractActivity(t *testing.T) {
 		{"opencode title", "OC | Reading file (opencode)", "Reading file"},
 		{"opencode title no suffix", "OC | Editing code", "Editing code"},
 		{"copilot robot prefix", "🤖 Asking clarifying question", "Asking clarifying question"},
-		{"copilot no prefix", "GitHub Copilot", "GitHub Copilot"},
+		{"copilot no prefix", "GitHub Copilot", ""},
+		{"product name claude code", "Claude Code", ""},
+		{"product name codex", "codex", ""},
+		{"product name opencode", "OpenCode", ""},
+		{"product name claude", "✳ Claude Code", ""},
 	}
 
 	for _, tt := range tests {

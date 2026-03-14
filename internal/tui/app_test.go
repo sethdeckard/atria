@@ -2071,12 +2071,12 @@ func TestFormatStatus(t *testing.T) {
 		attention string
 		contains  string
 	}{
-		{model.StatusWorking, "", "", "Working..."},
+		{model.StatusWorking, "", "", "working..."},
 		{model.StatusWorking, "Running tests", "", "Running tests"},
 		{model.StatusIdle, "", "", "idle"},
 		{model.StatusIdle, "Atria Agent Orchestration", "", "Atria Agent Orchestration"},
 		{model.StatusNeedsInput, "", "Allow edit?", "Allow edit?"},
-		{model.StatusNeedsInput, "", "", "Needs input"},
+		{model.StatusNeedsInput, "", "", "needs input"},
 		{model.StatusError, "", "", "error"},
 		{model.StatusError, "", "Crash!", "Crash!"},
 	}

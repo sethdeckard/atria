@@ -385,7 +385,7 @@ func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Sty
 	case model.StatusNeedsInput:
 		text := "\u26a0 " + s.Attention
 		if text == "\u26a0 " {
-			text = "\u26a0 Needs input"
+			text = "\u26a0 needs input"
 		}
 		return text, statusNeedsInputStyle
 	case model.StatusWorking:
@@ -394,7 +394,7 @@ func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Sty
 		if s.Activity != "" {
 			text += s.Activity
 		} else {
-			text += "Working..."
+			text += "working..."
 		}
 		return text, statusWorkingStyle
 	case model.StatusIdle:
@@ -411,7 +411,7 @@ func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Sty
 		return text, statusErrorStyle
 	default:
 		spin := spinnerFrames[spinnerFrame%len(spinnerFrames)]
-		return spin + " Working...", statusWorkingStyle
+		return spin + " working...", statusWorkingStyle
 	}
 }
 

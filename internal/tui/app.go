@@ -1724,9 +1724,11 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	for _, sess := range msg.Sessions {
 		if as := m.store.SessionByID(sess.ID); as != nil {
 			activity := terminal.ExtractActivity(sess.Name)
-			if activity != "" && activity != as.Activity {
+			if activity != as.Activity {
 				as.Activity = activity
-				as.LastActivity = time.Now()
+				if activity != "" {
+					as.LastActivity = time.Now()
+				}
 			}
 			// Re-type if the session name now indicates a different agent.
 			// This handles pane reuse (e.g. Claude exits, Codex starts in same pane).

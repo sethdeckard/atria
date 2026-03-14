@@ -61,5 +61,14 @@ func ExtractActivity(name string) string {
 		}
 	}
 
-	return strings.TrimSpace(s)
+	s = strings.TrimSpace(s)
+
+	// If the result is just a known product name, return "" so the UI
+	// shows "idle" instead of the product name as activity.
+	switch strings.ToLower(s) {
+	case "claude code", "claude", "codex", "openai codex", "opencode", "github copilot", "copilot":
+		return ""
+	}
+
+	return s
 }
