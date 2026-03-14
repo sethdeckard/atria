@@ -56,13 +56,17 @@ func (c *Client) Available() error {
 }
 
 // ListSessions returns all active (non-exited) sessions.
+// Exited sessions are cleaned up (fd closed, process reaped) but kept in the
+// map so they remain addressable for ReadScreen until Close().
 func (c *Client) ListSessions() ([]terminal.Session, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	var sessions []terminal.Session
+	var needsCleanup []*session
+	sessions := make([]terminal.Session, 0, len(c.sessions))
 	for _, s := range c.sessions {
 		if s.isExited() {
+			if !s.isCleaned() {
+				needsCleanup = append(needsCleanup, s)
+			}
 			continue
 		}
 		sessions = append(sessions, terminal.Session{
@@ -70,6 +74,12 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 			Name: s.getName(),
 		})
 	}
+	c.mu.Unlock()
+
+	for _, s := range needsCleanup {
+		cleanupSession(s)
+	}
+
 	return sessions, nil
 }
 
@@ -206,8 +216,7 @@ func (c *Client) Resize(cols, rows int) {
 	}
 }
 
-// Close closes PTY fds (unblocking reader goroutines), sends SIGTERM to all
-// child processes, and waits briefly for reader goroutines to finish.
+// Close cleans up all sessions (both live and exited).
 func (c *Client) Close() {
 	c.mu.Lock()
 	sessions := make([]*session, 0, len(c.sessions))
@@ -217,18 +226,31 @@ func (c *Client) Close() {
 	c.mu.Unlock()
 
 	for _, s := range sessions {
-		// Close ptmx first to unblock the readLoop
-		s.ptmx.Close()
+		cleanupSession(s)
+	}
+}
+
+// cleanupSession is best-effort and idempotent — safe to call on
+// already-exited or previously-cleaned sessions. Errors from
+// Close/Signal/Kill are ignored; s.done is the real completion signal.
+func cleanupSession(s *session) {
+	s.mu.Lock()
+	if s.cleaned {
+		s.mu.Unlock()
+		return
+	}
+	s.cleaned = true
+	s.mu.Unlock()
+
+	s.ptmx.Close()
+	if s.cmd.Process != nil {
+		s.cmd.Process.Signal(syscall.SIGTERM)
+	}
+	select {
+	case <-s.done:
+	case <-time.After(shutdownTimeout):
 		if s.cmd.Process != nil {
-			s.cmd.Process.Signal(syscall.SIGTERM)
-		}
-		// Wait for readLoop with timeout
-		select {
-		case <-s.done:
-		case <-time.After(shutdownTimeout):
-			if s.cmd.Process != nil {
-				s.cmd.Process.Kill()
-			}
+			s.cmd.Process.Kill()
 		}
 	}
 }

@@ -302,6 +302,62 @@ func TestMultipleSessions(t *testing.T) {
 	}
 }
 
+func TestListSessionsCleansUpExited(t *testing.T) {
+	c := NewClient(80, 24)
+	defer c.Close()
+
+	id, err := c.NewSession()
+	if err != nil {
+		t.Fatalf("NewSession() error: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Exit the shell
+	if err := c.SendText(id, "exit\r"); err != nil {
+		t.Fatalf("SendText() error: %v", err)
+	}
+
+	// Poll until ListSessions returns empty (exited sessions are excluded).
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		sessions, err := c.ListSessions()
+		if err != nil {
+			t.Fatalf("ListSessions() error: %v", err)
+		}
+		if len(sessions) == 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Session remains addressable for ReadScreen (UI can still render it).
+	_, err = c.ReadScreen(id, 25)
+	if err != nil {
+		t.Errorf("ReadScreen should still work on exited session, got: %v", err)
+	}
+
+	// Verify resources were cleaned up (session marked as cleaned).
+	s, _ := c.getSession(id)
+	if s == nil {
+		t.Fatal("expected session to remain in map")
+	}
+	if !s.isCleaned() {
+		t.Error("expected session to be cleaned after ListSessions")
+	}
+
+	// ListSessions stays stable — no panic, no stale entries.
+	sessions, err := c.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() error: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
+	}
+
+	// Close doesn't panic on already-cleaned session.
+}
+
 func TestFocusSessionNoop(t *testing.T) {
 	c := NewClient(80, 24)
 	err := c.FocusSession("pty-0")

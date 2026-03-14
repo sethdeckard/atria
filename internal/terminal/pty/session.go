@@ -20,6 +20,7 @@ type session struct {
 	mu          sync.Mutex
 	name        string // from OSC title escapes
 	exited      bool
+	cleaned     bool // true after cleanupSession has run
 	bellPending bool
 	inOSC       bool // tracks whether we're inside an OSC escape sequence across reads
 	escPending  bool // true when last byte of previous read was ESC (for split ESC] or ESC\)
@@ -164,4 +165,11 @@ func (s *session) isExited() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.exited
+}
+
+// isCleaned returns whether cleanupSession has already run for this session.
+func (s *session) isCleaned() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cleaned
 }
