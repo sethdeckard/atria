@@ -193,10 +193,7 @@ func main() {
 
 	// Mark launch targets in status info.
 	for i, bs := range backendStatuses {
-		if bs.Active && ((bs.Name == "tmux" && primarySource == "tmux") ||
-			(bs.Name == "kitty" && primarySource == "kitty") ||
-			(bs.Name == "wezterm" && primarySource == "wezterm") ||
-			(bs.Name == "iterm2" && primarySource == "iterm")) {
+		if bs.Active && tui.MatchesPrimarySource(bs, primarySource) {
 			backendStatuses[i].Launch = true
 		}
 	}

@@ -341,7 +341,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// primary is unchanged — leave existing Launch flags alone.
 			if msg.NewPrimary != "" {
 				for i, bs := range m.statusInfo.Backends {
-					isNew := bs.Name == msg.NewPrimary || (bs.Name == "iterm2" && msg.NewPrimary == "iterm")
+					isNew := MatchesPrimarySource(bs, msg.NewPrimary)
 					m.statusInfo.Backends[i].Launch = isNew
 				}
 			}

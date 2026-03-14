@@ -9,6 +9,16 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 )
 
+// MatchesPrimarySource reports whether a backend status entry corresponds
+// to the given composite primary source name. Handles the iterm2→iterm mapping.
+func MatchesPrimarySource(bs BackendStatus, source string) bool {
+	if bs.Name == source {
+		return true
+	}
+	// Config uses "iterm2", composite uses "iterm".
+	return bs.Name == "iterm2" && source == "iterm"
+}
+
 // BackendStatus describes the state of a backend for the settings screen.
 type BackendStatus struct {
 	Name    string // "pty", "iterm2", "tmux"
