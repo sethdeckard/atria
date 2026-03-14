@@ -291,10 +291,26 @@ func agentTypeLabel(t model.AgentType) string {
 	}
 }
 
+func agentTypeStyle(t model.AgentType) lipgloss.Style {
+	switch t {
+	case model.AgentClaude:
+		return agentClaudeStyle
+	case model.AgentCodex:
+		return agentCodexStyle
+	case model.AgentOpenCode:
+		return agentOpenCodeStyle
+	case model.AgentCopilot:
+		return agentCopilotStyle
+	default:
+		return normalStyle
+	}
+}
+
 // rowColumns holds pre-computed, unstyled column strings for a single row.
 type rowColumns struct {
 	name      string
 	agent     string
+	agentSty  lipgloss.Style
 	env       string
 	status    string
 	statusSty lipgloss.Style
@@ -344,6 +360,7 @@ func computeRowColumns(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth,
 	return rowColumns{
 		name:      nameStr,
 		agent:     agentCol,
+		agentSty:  agentTypeStyle(r.session.Type),
 		env:       envCol,
 		status:    statusStr,
 		statusSty: style,
@@ -357,11 +374,13 @@ func computeRowColumns(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth,
 // applied so a row-level style can wrap the whole line cleanly.
 func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, plain bool, showEnv bool, envWidth int) string {
 	c := computeRowColumns(r, nameWidth, typeWidth, dirWidth, totalWidth, spinnerFrame, showEnv, envWidth)
+	agentCol := c.agent
 	statusCol := lipgloss.NewStyle().Width(c.remaining).Render(c.status)
 	if !plain {
+		agentCol = c.agentSty.Render(c.agent)
 		statusCol = c.statusSty.Width(c.remaining).Render(c.status)
 	}
-	return c.name + c.agent + c.env + statusCol + c.dir + c.time
+	return c.name + agentCol + c.env + statusCol + c.dir + c.time
 }
 
 // formatSelectedRow builds a selected row where the status retains its color
@@ -372,9 +391,10 @@ func formatSelectedRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth 
 	if showEnv {
 		selEnv = selectedTextStyle.Render(c.env)
 	}
+	selAgent := withSelectedBg(c.agentSty).Bold(true).Render(c.agent)
 	selStatus := withSelectedBg(c.statusSty).Bold(true).Width(c.remaining).Render(c.status)
 	return selectedTextStyle.Render(c.name) +
-		selectedTextStyle.Render(c.agent) +
+		selAgent +
 		selEnv + selStatus +
 		selectedTextStyle.Render(c.dir) +
 		selectedTextStyle.Render(c.time)

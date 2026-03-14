@@ -80,6 +80,18 @@ var (
 
 	brandingStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#555555"})
+
+	agentClaudeStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#b07020", Dark: "#e0a050"})
+
+	agentCodexStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#2d7d46", Dark: "#6bc98a"})
+
+	agentOpenCodeStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#2d5fa1", Dark: "#6ca6f0"})
+
+	agentCopilotStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#b04080", Dark: "#e070b0"})
 )
 
 var selectedBg = lipgloss.AdaptiveColor{Light: "#d0d0ff", Dark: "#3a3a5c"}
