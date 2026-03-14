@@ -2864,6 +2864,98 @@ func TestIntegrationToggledMsgRemapsIDs(t *testing.T) {
 	}
 }
 
+func TestIntegrationToggledClearsOldLaunchFlag(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.cfg = &config.Config{}
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.statusInfo = StatusInfo{
+		Backends: []BackendStatus{
+			{Name: "pty", Enabled: true, Active: true, Launch: true},
+			{Name: "tmux", Enabled: false},
+		},
+	}
+
+	// Toggle tmux on — it becomes the new launch target.
+	msg := IntegrationToggledMsg{
+		Name:       "tmux",
+		Status:     BackendStatus{Name: "tmux", Enabled: true, Active: true, Launch: true},
+		NewPrimary: "tmux",
+	}
+	updated, _ := m.Update(msg)
+	um := modelFrom(updated)
+
+	for _, bs := range um.statusInfo.Backends {
+		if bs.Name == "pty" && bs.Launch {
+			t.Error("expected PTY Launch to be cleared after tmux became launch target")
+		}
+		if bs.Name == "tmux" && !bs.Launch {
+			t.Error("expected tmux Launch to be true")
+		}
+	}
+}
+
+func TestIntegrationToggledRestoresLaunchOnDisable(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.cfg = &config.Config{}
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.statusInfo = StatusInfo{
+		Backends: []BackendStatus{
+			{Name: "pty", Enabled: true, Active: true, Launch: false},
+			{Name: "tmux", Enabled: true, Active: true, Launch: true},
+		},
+	}
+
+	// Disable tmux — PTY should become the launch target.
+	msg := IntegrationToggledMsg{
+		Name:       "tmux",
+		Status:     BackendStatus{Name: "tmux", Enabled: false},
+		NewPrimary: "pty",
+	}
+	updated, _ := m.Update(msg)
+	um := modelFrom(updated)
+
+	for _, bs := range um.statusInfo.Backends {
+		if bs.Name == "pty" && !bs.Launch {
+			t.Error("expected PTY Launch to be restored after tmux disabled")
+		}
+		if bs.Name == "tmux" && bs.Launch {
+			t.Error("expected tmux Launch to be cleared after disable")
+		}
+	}
+}
+
+func TestIntegrationToggledPreservesLaunchOnProbeFail(t *testing.T) {
+	store := makeStore(t)
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.cfg = &config.Config{}
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.statusInfo = StatusInfo{
+		Backends: []BackendStatus{
+			{Name: "pty", Enabled: true, Active: true, Launch: true},
+			{Name: "tmux", Enabled: false},
+		},
+	}
+
+	// Toggle tmux on but probe fails — NewPrimary is empty.
+	msg := IntegrationToggledMsg{
+		Name:   "tmux",
+		Status: BackendStatus{Name: "tmux", Enabled: true, Reason: "tmux not found"},
+	}
+	updated, _ := m.Update(msg)
+	um := modelFrom(updated)
+
+	for _, bs := range um.statusInfo.Backends {
+		if bs.Name == "pty" && !bs.Launch {
+			t.Error("expected PTY Launch to be preserved after failed tmux probe")
+		}
+		if bs.Name == "tmux" && bs.Launch {
+			t.Error("expected tmux Launch to remain false after failed probe")
+		}
+	}
+}
+
 func TestConfigSavedMsgRollback(t *testing.T) {
 	m := settingsModel(t)
 	m.cfg.PtyCols = 200

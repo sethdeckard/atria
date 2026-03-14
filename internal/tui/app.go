@@ -329,11 +329,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			// Update statusInfo.
+			// Update the toggled backend's status.
 			for i, bs := range m.statusInfo.Backends {
 				if bs.Name == msg.Name {
 					m.statusInfo.Backends[i] = msg.Status
 					break
+				}
+			}
+			// Reconcile Launch flags when the primary changed. NewPrimary
+			// is empty on error/probe-failure paths where the composite's
+			// primary is unchanged — leave existing Launch flags alone.
+			if msg.NewPrimary != "" {
+				for i, bs := range m.statusInfo.Backends {
+					isNew := bs.Name == msg.NewPrimary || (bs.Name == "iterm2" && msg.NewPrimary == "iterm")
+					m.statusInfo.Backends[i].Launch = isNew
 				}
 			}
 			// Invalidate cache so next tick picks up new sessions.

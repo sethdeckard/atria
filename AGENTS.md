@@ -69,6 +69,7 @@ internal/
 - TUI Model owns all state; terminal/project packages are stateless
 - Use `tea.Batch` for parallel commands, sequential when dependencies exist
 - Monitor processes are OS-level (spawned via os/exec), not goroutines
+- Only active integrations discover sessions — discovery implies focus and chat support. An integration that isn't active (environment doesn't match) must not contribute sessions to the composite.
 
 ## Key Patterns
 

@@ -242,7 +242,7 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 				}
 			}
 
-			return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped}
+			return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped, NewPrimary: composite.PrimarySource()}
 		}
 
 		// Persist first — add to config and save.
@@ -344,7 +344,7 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			status.Launch = true
 		}
 
-		return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped}
+		return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped, NewPrimary: composite.PrimarySource()}
 	}
 }
 

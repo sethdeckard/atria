@@ -96,10 +96,11 @@ type AgentDiscoveredMsg struct {
 
 // IntegrationToggledMsg is sent after toggling an integration on or off.
 type IntegrationToggledMsg struct {
-	Name       string
-	Status     BackendStatus
-	Err        error
+	Name        string
+	Status      BackendStatus
+	Err         error
 	RemappedIDs map[string]string // old session ID → new session ID (e.g. PTY demotion)
+	NewPrimary  string            // source of the new launch target (set on both enable and disable)
 }
 
 // ConfigSavedMsg is sent after persisting config to disk.
