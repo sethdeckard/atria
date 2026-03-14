@@ -45,14 +45,14 @@ func (s *Store) LoadProjects() error {
 // SaveProjects writes projects to dataDir/projects.json, creating the
 // directory if needed.
 func (s *Store) SaveProjects() error {
-	if err := os.MkdirAll(s.dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(s.dataDir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(s.Projects, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.projectsPath(), data, 0o644)
+	return os.WriteFile(s.projectsPath(), data, 0o600)
 }
 
 // AddProject adds a project for dir if it is not already tracked. It sets

@@ -23,6 +23,8 @@ type conn struct {
 	nextID     atomic.Int64
 	socketPath string
 	noPrompt   bool // suppress interactive AppleScript auth
+	cookie     string
+	key        string
 }
 
 // defaultSocketPath returns the standard iTerm2 API socket path.
@@ -35,22 +37,35 @@ func defaultSocketPath() string {
 }
 
 // requestCookieAndKey requests a cookie and key from iTerm2 via AppleScript.
-// Sets ITERM2_COOKIE and ITERM2_KEY environment variables on success.
-func requestCookieAndKey() error {
+// Returns cookie, key, or an error.
+func requestCookieAndKey() (string, string, error) {
 	cmd := exec.Command("/usr/bin/osascript", "-")
 	cmd.Stdin = strings.NewReader(
 		`tell application "iTerm2" to request cookie and key for app named "atria"`)
 	out, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("AppleScript auth failed: %w", err)
+		return "", "", fmt.Errorf("AppleScript auth failed: %w", err)
 	}
 	parts := strings.Fields(strings.TrimSpace(string(out)))
 	if len(parts) != 2 {
-		return fmt.Errorf("unexpected auth response: %s", string(out))
+		return "", "", fmt.Errorf("unexpected auth response: %s", string(out))
 	}
-	os.Setenv("ITERM2_COOKIE", parts[0])
-	os.Setenv("ITERM2_KEY", parts[1])
-	return nil
+	return parts[0], parts[1], nil
+}
+
+// captureAuthFromEnv reads any pre-seeded iTerm2 auth from the current
+// environment and removes it so PTY children cannot inherit the credentials.
+func (c *conn) captureAuthFromEnv() {
+	if c.cookie == "" {
+		c.cookie = os.Getenv("ITERM2_COOKIE")
+	}
+	if c.key == "" {
+		c.key = os.Getenv("ITERM2_KEY")
+	}
+	if c.cookie != "" || c.key != "" {
+		os.Unsetenv("ITERM2_COOKIE")
+		os.Unsetenv("ITERM2_KEY")
+	}
 }
 
 func (c *conn) buildHeaders() http.Header {
@@ -60,11 +75,11 @@ func (c *conn) buildHeaders() http.Header {
 		"x-iterm2-advisory-name":   {"atria"},
 		"x-iterm2-disable-auth-ui": {"true"},
 	}
-	if cookie := os.Getenv("ITERM2_COOKIE"); cookie != "" {
-		headers.Set("x-iterm2-cookie", cookie)
+	if c.cookie != "" {
+		headers.Set("x-iterm2-cookie", c.cookie)
 	}
-	if key := os.Getenv("ITERM2_KEY"); key != "" {
-		headers.Set("x-iterm2-key", key)
+	if c.key != "" {
+		headers.Set("x-iterm2-key", c.key)
 	}
 	return headers
 }
@@ -100,6 +115,7 @@ func (c *conn) connect() error {
 		return fmt.Errorf("iTerm2 socket not found — is iTerm2 running?")
 	}
 
+	c.captureAuthFromEnv()
 	headers := c.buildHeaders()
 
 	// First attempt: use existing credentials (or none).
@@ -121,18 +137,21 @@ func (c *conn) connect() error {
 	}
 
 	// Clear stale credentials and request fresh ones via AppleScript.
-	os.Unsetenv("ITERM2_COOKIE")
-	os.Unsetenv("ITERM2_KEY")
-	if authErr := requestCookieAndKey(); authErr != nil {
+	c.cookie = ""
+	c.key = ""
+	cookie, key, authErr := requestCookieAndKey()
+	if authErr != nil {
 		return fmt.Errorf("iTerm2 auth: %w", authErr)
 	}
+	c.cookie = cookie
+	c.key = key
 
 	// Retry with fresh credentials.
 	headers = c.buildHeaders()
 	ws, _, err = c.dial(sockPath, headers)
 	if err != nil {
-		os.Unsetenv("ITERM2_COOKIE")
-		os.Unsetenv("ITERM2_KEY")
+		c.cookie = ""
+		c.key = ""
 		return fmt.Errorf("WebSocket dial failed after auth: %w", err)
 	}
 

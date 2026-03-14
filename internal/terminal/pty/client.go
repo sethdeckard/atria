@@ -91,7 +91,7 @@ func (c *Client) NewSession() (string, error) {
 	}
 
 	cmd := exec.Command(shell)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(filteredEnv(os.Environ()), "TERM=xterm-256color")
 
 	winSize := &pty.Winsize{
 		Cols: uint16(c.cols),
@@ -126,6 +126,17 @@ func (c *Client) NewSession() (string, error) {
 	}()
 
 	return id, nil
+}
+
+func filteredEnv(env []string) []string {
+	filtered := make([]string, 0, len(env))
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "ITERM2_COOKIE=") || strings.HasPrefix(entry, "ITERM2_KEY=") {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
 }
 
 // SendText writes raw text to the session's PTY.

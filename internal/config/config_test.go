@@ -214,6 +214,14 @@ func TestSave(t *testing.T) {
 	if loaded.TmuxSession != "myatria" {
 		t.Errorf("expected myatria, got %q", loaded.TmuxSession)
 	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat failed: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected config file mode 0600, got %o", got)
+	}
 }
 
 func TestSaveDefaults(t *testing.T) {
@@ -240,6 +248,24 @@ func TestSaveDefaults(t *testing.T) {
 	}
 	if !strings.Contains(s, "# default_agent = \"claude\"") {
 		t.Errorf("expected commented default_agent, got:\n%s", s)
+	}
+}
+
+func TestSaveCreatesPrivateConfigDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested")
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := &Config{}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("Stat failed: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("expected config dir mode 0700, got %o", got)
 	}
 }
 

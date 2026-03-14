@@ -212,7 +212,9 @@ Claude Code, Codex, OpenCode, and GitHub Copilot — terminal-oriented agents th
 
 ## Debug
 
-Run with `--debug` to log screen read diagnostics to `/tmp/atria-debug.log`.
+- `--debug` logs screen-read diagnostics to `~/.config/atria/debug.log` by default, using metadata-only entries that omit raw terminal contents.
+- `--debug-unsafe` logs full raw screen contents to the same file and may capture prompts, paths, secrets, and other sensitive terminal output.
+- If `data_dir` is set in config, the debug log is written to `<data_dir>/debug.log`.
 
 ## License
 

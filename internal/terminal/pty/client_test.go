@@ -1,6 +1,7 @@
 package pty
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +213,68 @@ func TestBellDetection(t *testing.T) {
 	if strings.Contains(content2, "\x07") {
 		t.Error("bell should be consumed after first read")
 	}
+}
+
+func TestFilteredEnvRemovesITermCredentials(t *testing.T) {
+	env := []string{
+		"PATH=/usr/bin",
+		"ITERM2_COOKIE=secret-cookie",
+		"HOME=/tmp/home",
+		"ITERM2_KEY=secret-key",
+	}
+
+	filtered := filteredEnv(env)
+	joined := strings.Join(filtered, "\n")
+	if strings.Contains(joined, "ITERM2_COOKIE=") {
+		t.Fatal("expected ITERM2_COOKIE to be removed")
+	}
+	if strings.Contains(joined, "ITERM2_KEY=") {
+		t.Fatal("expected ITERM2_KEY to be removed")
+	}
+	if !strings.Contains(joined, "PATH=/usr/bin") || !strings.Contains(joined, "HOME=/tmp/home") {
+		t.Fatal("expected unrelated env vars to be preserved")
+	}
+}
+
+func TestChildShellDoesNotInheritITermCredentials(t *testing.T) {
+	t.Setenv("ITERM2_COOKIE", "secret-cookie")
+	t.Setenv("ITERM2_KEY", "secret-key")
+	t.Setenv("SHELL", shellOrDefault())
+
+	c := NewClient(80, 24)
+	defer c.Close()
+
+	id, err := c.NewSession()
+	if err != nil {
+		t.Fatalf("NewSession() error: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	err = c.SendText(id, "printf '%s|%s\\n' \"$ITERM2_COOKIE\" \"$ITERM2_KEY\"\r")
+	if err != nil {
+		t.Fatalf("SendText() error: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	content, err := c.ReadScreen(id, 25)
+	if err != nil {
+		t.Fatalf("ReadScreen() error: %v", err)
+	}
+	if strings.Contains(content, "secret-cookie") || strings.Contains(content, "secret-key") {
+		t.Fatalf("expected child shell to not inherit iTerm credentials, got:\n%s", content)
+	}
+	if !strings.Contains(content, "|") {
+		t.Fatalf("expected printf output marker, got:\n%s", content)
+	}
+}
+
+func shellOrDefault() string {
+	if shell := os.Getenv("SHELL"); shell != "" {
+		return shell
+	}
+	return "/bin/sh"
 }
 
 func TestOSCTitle(t *testing.T) {

@@ -104,7 +104,7 @@ func contractHome(path string) string {
 func (cfg *Config) Save(path string) error {
 	expanded := expandHome(path)
 	dir := filepath.Dir(expanded)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
@@ -215,7 +215,7 @@ func (cfg *Config) Save(path string) error {
 		}
 	}
 
-	return os.WriteFile(expanded, []byte(sb.String()), 0o644)
+	return os.WriteFile(expanded, []byte(sb.String()), 0o600)
 }
 
 // writeSliceField writes a TOML array field, or a commented-out empty array if values is empty.

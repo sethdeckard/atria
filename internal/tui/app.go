@@ -62,10 +62,10 @@ type Model struct {
 	statusText     string
 	upgradeVersion string
 	upgradeHint    string
-	showHelp     bool
-	confirmQuit  bool
-	sortCol      sortColumn
-	sortDesc     bool
+	showHelp       bool
+	confirmQuit    bool
+	sortCol        sortColumn
+	sortDesc       bool
 
 	// Chat view
 	chat          chatView
@@ -120,7 +120,8 @@ type Model struct {
 	monitorPIDs []int
 
 	// Debug logger (nil = no logging)
-	debugLog *log.Logger
+	debugLog       *log.Logger
+	debugLogUnsafe bool
 }
 
 type storeAdapter struct {
@@ -1576,7 +1577,6 @@ func (m *Model) firstEditableSettingsItem() int {
 	return 0
 }
 
-
 func (m Model) toggleSettingsIntegration(item settingsItem) (Model, tea.Cmd) {
 	// Find the backend status.
 	var bs BackendStatus
@@ -2055,9 +2055,14 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 
 	if m.debugLog != nil {
 		proj := filepath.Base(msg.ProjectDir)
-		escaped := strings.ReplaceAll(content, "\n", "\\n")
-		m.debugLog.Printf("[screen] %s sid=%s src=%s prev=%s new=%s changed=%v match=%q content=%q",
-			proj, msg.SessionID, as.Source, as.Status, status, screenChanged, matchLine, escaped)
+		if m.debugLogUnsafe {
+			escaped := strings.ReplaceAll(content, "\n", "\\n")
+			m.debugLog.Printf("[screen] %s sid=%s src=%s prev=%s new=%s changed=%v match=%q content=%q",
+				proj, msg.SessionID, as.Source, as.Status, status, screenChanged, matchLine, escaped)
+		} else {
+			m.debugLog.Printf("[screen] %s sid=%s src=%s prev=%s new=%s changed=%v match=%q",
+				proj, msg.SessionID, as.Source, as.Status, status, screenChanged, matchLine)
+		}
 	}
 
 	if status == "" {
@@ -2199,12 +2204,16 @@ func (m *Model) ensureSpinner() tea.Cmd {
 }
 
 // EnableDebugLog sets up debug logging to the given file path.
-func (m *Model) EnableDebugLog(path string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+func (m *Model) EnableDebugLog(path string, unsafe bool) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	m.debugLog = log.New(f, "", log.Ltime|log.Lmicroseconds)
+	m.debugLogUnsafe = unsafe
 	return nil
 }
 
@@ -2215,5 +2224,5 @@ func isAllBlank(content string) bool {
 }
 
 func EnsureMonitorDir(dir string) error {
-	return os.MkdirAll(dir, 0o755)
+	return os.MkdirAll(dir, 0o700)
 }

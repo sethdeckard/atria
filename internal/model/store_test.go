@@ -42,7 +42,7 @@ func TestAddRemoveProject(t *testing.T) {
 }
 
 func TestProjectPersistence(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "data")
 	s := NewStore(dir)
 
 	s.AddProject("/home/user/alpha")
@@ -70,6 +70,22 @@ func TestProjectPersistence(t *testing.T) {
 	}
 	if s2.Projects[1].Dir != "/home/user/beta" {
 		t.Fatalf("expected beta, got %s", s2.Projects[1].Dir)
+	}
+
+	fileInfo, err := os.Stat(filepath.Join(dir, "projects.json"))
+	if err != nil {
+		t.Fatalf("Stat projects.json: %v", err)
+	}
+	if got := fileInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected projects.json mode 0600, got %o", got)
+	}
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("Stat data dir: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("expected data dir mode 0700, got %o", got)
 	}
 }
 

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,38 +28,18 @@ var (
 
 func main() {
 	tui.Version = version
-	debug := false
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "--version", "-v":
-			fmt.Println(tui.Logo)
-			fmt.Println()
-			fmt.Printf("atria v%s", version)
-			if commit != "" {
-				fmt.Printf(" (%s)", commit[:min(7, len(commit))])
-			}
-			if date != "" {
-				fmt.Printf(" built %s", date)
-			}
-			fmt.Println()
-			return
-		case "--debug":
-			debug = true
-		case "--help", "-h":
-			fmt.Println("atria - Agent multiplexer for your terminal")
-			fmt.Println()
-			fmt.Println("Usage: atria [options]")
-			fmt.Println()
-			fmt.Println("Options:")
-			fmt.Println("  --debug           Log screen reads to /tmp/atria-debug.log")
-			fmt.Println("  --version, -v     Show version information")
-			fmt.Println("  --help, -h        Show this help")
-			fmt.Println()
-			fmt.Println("Config: ~/.config/atria/config.toml")
-			fmt.Println()
-			fmt.Println("On first run, press S to open the setup wizard.")
-			return
-		}
+	opts, err := parseOptions(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n\n%s", err, helpText())
+		os.Exit(2)
+	}
+	if opts.showHelp {
+		fmt.Print(helpText())
+		return
+	}
+	if opts.showVersion {
+		fmt.Print(versionText())
+		return
 	}
 
 	cfg, err := config.Load(config.DefaultPath())
@@ -224,8 +206,8 @@ func main() {
 	m.SetConfig(cfg, configPath)
 	m.SetPTYClient(ptyClient)
 
-	if debug {
-		if err := m.EnableDebugLog("/tmp/atria-debug.log"); err != nil {
+	if opts.debug {
+		if err := m.EnableDebugLog(debugLogPath(cfg.DataDir), opts.debugUnsafe); err != nil {
 			fmt.Fprintf(os.Stderr, "debug log error: %v\n", err)
 		}
 	}
@@ -248,4 +230,68 @@ func main() {
 	if fm, ok := finalModel.(tui.Model); ok {
 		fm.Cleanup()
 	}
+}
+
+type options struct {
+	debug       bool
+	debugUnsafe bool
+	showHelp    bool
+	showVersion bool
+}
+
+func parseOptions(args []string) (options, error) {
+	var opts options
+	fs := flag.NewFlagSet("atria", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.BoolVar(&opts.debug, "debug", false, "")
+	fs.BoolVar(&opts.debugUnsafe, "debug-unsafe", false, "")
+	fs.BoolVar(&opts.showHelp, "help", false, "")
+	fs.BoolVar(&opts.showHelp, "h", false, "")
+	fs.BoolVar(&opts.showVersion, "version", false, "")
+	fs.BoolVar(&opts.showVersion, "v", false, "")
+	if err := fs.Parse(args); err != nil {
+		return options{}, err
+	}
+	if fs.NArg() > 0 {
+		return options{}, fmt.Errorf("unexpected arguments: %v", fs.Args())
+	}
+	if opts.debugUnsafe {
+		opts.debug = true
+	}
+	return opts, nil
+}
+
+func helpText() string {
+	return fmt.Sprintf(`atria - Agent multiplexer for your terminal
+
+Usage: atria [options]
+
+Options:
+  --debug           Log screen-read metadata to %s
+  --debug-unsafe    Log full raw screen contents to %s (may capture secrets)
+  --version, -v     Show version information
+  --help, -h        Show this help
+
+Config: %s
+
+On first run, press S to open the setup wizard.
+`, debugLogPath(config.DefaultDataDir), debugLogPath(config.DefaultDataDir), config.DefaultPath())
+}
+
+func versionText() string {
+	var out string
+	out += tui.Logo + "\n\n"
+	out += fmt.Sprintf("atria v%s", version)
+	if commit != "" {
+		out += fmt.Sprintf(" (%s)", commit[:min(7, len(commit))])
+	}
+	if date != "" {
+		out += fmt.Sprintf(" built %s", date)
+	}
+	out += "\n"
+	return out
+}
+
+func debugLogPath(dataDir string) string {
+	return filepath.Join(dataDir, "debug.log")
 }
