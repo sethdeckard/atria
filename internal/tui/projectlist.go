@@ -275,35 +275,29 @@ func padToWidth(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
+var agentTypeInfo = map[model.AgentType]struct {
+	label string
+	style lipgloss.Style
+}{
+	model.AgentClaude:   {"Claude", agentClaudeStyle},
+	model.AgentCodex:    {"Codex", agentCodexStyle},
+	model.AgentOpenCode: {"OpenCode", agentOpenCodeStyle},
+	model.AgentCopilot:  {"Copilot", agentCopilotStyle},
+}
+
 func agentTypeLabel(t model.AgentType) string {
-	switch t {
-	case model.AgentClaude:
-		return "Claude"
-	case model.AgentCodex:
-		return "Codex"
-	case model.AgentOpenCode:
-		return "OpenCode"
-	case model.AgentCopilot:
-		return "Copilot"
-	default:
-		s := string(t)
-		return strings.ToUpper(s[:1]) + s[1:]
+	if info, ok := agentTypeInfo[t]; ok {
+		return info.label
 	}
+	s := string(t)
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func agentTypeStyle(t model.AgentType) lipgloss.Style {
-	switch t {
-	case model.AgentClaude:
-		return agentClaudeStyle
-	case model.AgentCodex:
-		return agentCodexStyle
-	case model.AgentOpenCode:
-		return agentOpenCodeStyle
-	case model.AgentCopilot:
-		return agentCopilotStyle
-	default:
-		return normalStyle
+	if info, ok := agentTypeInfo[t]; ok {
+		return info.style
 	}
+	return normalStyle
 }
 
 // rowColumns holds pre-computed, unstyled column strings for a single row.

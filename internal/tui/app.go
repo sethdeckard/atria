@@ -148,18 +148,11 @@ func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs 
 
 	// Resolve default agent from config, falling back to first available.
 	var defaultAgent model.AgentType
-	switch model.AgentType(defaultAgentCfg) {
-	case model.AgentClaude, model.AgentCodex, model.AgentOpenCode, model.AgentCopilot:
-		// Validate it's actually available.
-		found := false
-		for _, a := range available {
-			if a == model.AgentType(defaultAgentCfg) {
-				found = true
-				break
-			}
-		}
-		if found {
-			defaultAgent = model.AgentType(defaultAgentCfg)
+	candidate := model.AgentType(defaultAgentCfg)
+	for _, a := range available {
+		if a == candidate {
+			defaultAgent = candidate
+			break
 		}
 	}
 	if defaultAgent == "" {
