@@ -54,12 +54,14 @@ type Model struct {
 	rows  []projectRow
 
 	// UI state
-	view         viewState
-	cursor       int
-	scrollOffset int
-	width        int
-	height       int
-	statusText   string
+	view           viewState
+	cursor         int
+	scrollOffset   int
+	width          int
+	height         int
+	statusText     string
+	upgradeVersion string
+	upgradeHint    string
 	showHelp     bool
 	confirmQuit  bool
 	sortCol      sortColumn
@@ -208,6 +210,7 @@ func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	cmds = append(cmds, checkBackend(m.backend))
 	cmds = append(cmds, tickCmd())
+	cmds = append(cmds, checkUpgrade(Version))
 	return tea.Batch(cmds...)
 }
 
@@ -291,6 +294,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StatusMsg:
 		m.statusText = msg.Text
+		return m, nil
+
+	case UpgradeAvailableMsg:
+		m.upgradeVersion = msg.LatestVersion
+		m.upgradeHint = msg.InstallHint
 		return m, nil
 
 	case IntegrationToggledMsg:
@@ -467,6 +475,9 @@ func (m Model) viewProjectList() string {
 	if m.statusText != "" {
 		sb.WriteString("\n")
 		sb.WriteString(statusBarStyle.Render(m.statusText))
+	} else if m.upgradeVersion != "" {
+		sb.WriteString("\n")
+		sb.WriteString(dimStyle.Render(upgradeNotice(m.upgradeVersion, m.upgradeHint)))
 	}
 
 	return sb.String()
@@ -595,7 +606,7 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 // maxVisibleRows returns how many agent rows fit in the current terminal.
 func (m Model) maxVisibleRows() int {
 	overhead := headerLineCount + footerLineCount
-	if m.statusText != "" {
+	if m.statusText != "" || m.upgradeVersion != "" {
 		overhead++
 	}
 	if m.showHelp {
