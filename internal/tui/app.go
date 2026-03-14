@@ -1694,29 +1694,6 @@ func (m Model) focusSelected() (Model, tea.Cmd) {
 	return m, focusSession(m.backend, r.session.SessionID)
 }
 
-func (m Model) deleteSelected() (Model, tea.Cmd) {
-	if m.cursor < 0 || m.cursor >= len(m.rows) {
-		return m, nil
-	}
-	r := m.rows[m.cursor]
-	// Remove sessions for this project before removing the project,
-	// so they don't linger as orphans consuming tick polls.
-	for _, s := range m.store.GetSessions(r.project.Dir) {
-		delete(m.attentionSessions, s.SessionID)
-		m.store.RemoveSession(s.SessionID)
-	}
-	m.store.RemoveProject(r.project.Dir)
-	_ = m.store.SaveProjects()
-	m.rows = buildRows(storeAdapter{m.store})
-	sortRows(m.rows, m.sortCol, m.sortDesc)
-	if m.cursor >= len(m.rows) && m.cursor > 0 {
-		m.cursor--
-	}
-	m.adjustScroll()
-	m.statusText = fmt.Sprintf("Removed %s", r.project.Name)
-	return m, nil
-}
-
 func (m Model) dispatchBatch(template string) (Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	sent := 0
