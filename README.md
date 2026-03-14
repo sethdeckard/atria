@@ -37,7 +37,7 @@ Comes with a built-in terminal multiplexer ready to launch agents out of the box
    atria
    ```
 
-3. On first run with no config, atria opens a setup wizard to configure watch directories, default agent, and optional integrations. You can also open it later with `S`.
+3. On first run with no config, atria opens a setup wizard to configure watch directories, default agent, and optional integrations. You can also open it later with `S` (when the agent list is empty) or from settings (`I`).
 
 atria scans your watch directories for projects and lets you launch and manage agents in each one. Configuration is stored at `~/.config/atria/config.toml`.
 
@@ -69,12 +69,17 @@ You can also configure everything interactively from the settings screen (`I` ke
 | Key | Action |
 |-----|--------|
 | `j`/`k` or arrows | Navigate agents |
-| `Enter` | Open chat view to send a prompt |
-| `l` | Launch a new agent (choose backend if an integration is active) |
-| `f` | Focus (switch to) the agent's terminal |
-| `I` | Open settings |
-| `S` | Open setup wizard |
+| `v` | Toggle agent screen stream |
+| `n` | Launch a new agent |
+| `t` | Cycle agent type |
 | `s` | Cycle sort column |
+| `S` | Reverse sort / run setup (when empty) |
+| `f` | Focus (switch to) the agent's terminal |
+| `B` | Batch send to multiple agents |
+| `Enter` | Open chat view to send a prompt |
+| `I` | Open settings |
+| `?` | Toggle help |
+| `Ctrl+\` | Return from embedded terminal |
 | `q` / `Ctrl+C` | Quit |
 
 ### Embedded Terminal
@@ -100,7 +105,7 @@ Enable in config or toggle from the settings screen (`I`):
 integrations = ["iterm2", "kitty", "tmux", "wezterm"]
 ```
 
-When an integration is active (i.e., you're running inside that terminal with its integration enabled), pressing `l` to launch offers a choice between the native terminal (e.g., a new tmux window) and the embedded PTY. When no integration is active, agents launch directly in the embedded PTY.
+When an integration is active (i.e., you're running inside that terminal with its integration enabled), pressing `n` to launch offers a choice between the native terminal (e.g., a new tmux window) and the embedded PTY. When no integration is active, agents launch directly in the embedded PTY.
 
 Each discovered agent is managed through its native integration — focusing an iTerm2-discovered agent switches to its iTerm2 tab, focusing a Kitty agent switches to its Kitty window, while focusing a PTY agent opens the embedded terminal view.
 
