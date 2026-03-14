@@ -639,7 +639,7 @@ func TestDirBrowserRootBoundary(t *testing.T) {
 	}
 }
 
-func TestDirBrowserRecentProjects(t *testing.T) {
+func TestDirBrowserRecentEnterNavigates(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = append(store.Projects, &model.Project{
 		Name:           "recent-proj",
@@ -660,17 +660,86 @@ func TestDirBrowserRecentProjects(t *testing.T) {
 		{Path: "/watch/alpha", Name: "alpha"},
 	}
 
-	// Cursor 0 is the recent project. Enter should launch it
+	// Cursor 0 is the recent project. Enter should navigate, not launch
 	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyEnter))
 	um := modelFrom(updated)
-	if um.view != viewProjectList {
-		t.Errorf("expected return to project list, got %d", um.view)
+	if um.view != viewDirBrowser {
+		t.Errorf("expected to stay in dir browser, got %d", um.view)
 	}
-	if !strings.Contains(um.statusText, "Launching Claude for recent-proj") {
-		t.Errorf("expected launching message, got %q", um.statusText)
+	if um.browserSelectLaunchPath != "/a/recent-proj" {
+		t.Errorf("expected browserSelectLaunchPath to be /a/recent-proj, got %q", um.browserSelectLaunchPath)
 	}
 	if cmd == nil {
-		t.Error("expected launch command")
+		t.Error("expected listDir command")
+	}
+	if um.statusText != "" {
+		t.Errorf("expected no status text, got %q", um.statusText)
+	}
+}
+
+func TestDirBrowserRecentNavigateCursorOnLaunch(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = append(store.Projects, &model.Project{
+		Name:           "recent-proj",
+		Dir:            "/a/recent-proj",
+		AddedAt:        time.Now(),
+		LastLaunchedAt: time.Now(),
+	})
+	mb := &mockBackend{newSessionID: "sess-1"}
+	m := newTestModelWithStore(mb, store)
+	m.width = 80
+	m.backendOK = true
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	m.view = viewDirBrowser
+	m.browserSelectLaunchPath = "/a/recent-proj"
+
+	// Simulate DirBrowserMsg arriving after recent selection
+	dirs := []DirBrowserItem{
+		{Path: "/a", Name: "..", IsParent: true},
+		{Path: "/a/recent-proj/sub", Name: "sub"},
+	}
+	updated, _ := m.Update(DirBrowserMsg{Dirs: dirs, CurrentDir: "/a/recent-proj"})
+	um := modelFrom(updated)
+	if um.browserSelectLaunchPath != "" {
+		t.Error("expected browserSelectLaunchPath to be cleared")
+	}
+	// Cursor should be on the launch action: recentCount + len(dirs)
+	recentCount := um.browserRecentCount()
+	expectedCursor := recentCount + len(dirs)
+	if um.browserCursor != expectedCursor {
+		t.Errorf("expected cursor at launch action %d, got %d", expectedCursor, um.browserCursor)
+	}
+	if um.browserPath != "/a/recent-proj" {
+		t.Errorf("expected browserPath /a/recent-proj, got %q", um.browserPath)
+	}
+}
+
+func TestDirBrowserRecentSelectIgnoresMismatchedPath(t *testing.T) {
+	store := makeStore(t)
+	mb := &mockBackend{newSessionID: "sess-1"}
+	m := newTestModelWithStore(mb, store)
+	m.width = 80
+	m.backendOK = true
+	m.availableAgents = []model.AgentType{model.AgentClaude}
+	m.defaultAgent = model.AgentClaude
+	m.view = viewDirBrowser
+	// Flag was set for /a/recent-proj, but user navigated elsewhere before it arrived
+	m.browserSelectLaunchPath = "/a/recent-proj"
+
+	// DirBrowserMsg arrives for a different path
+	dirs := []DirBrowserItem{
+		{Path: "/b", Name: "..", IsParent: true},
+		{Path: "/b/other/sub", Name: "sub"},
+	}
+	updated, _ := m.Update(DirBrowserMsg{Dirs: dirs, CurrentDir: "/b/other"})
+	um := modelFrom(updated)
+	if um.browserSelectLaunchPath != "" {
+		t.Error("expected browserSelectLaunchPath to be cleared even on mismatch")
+	}
+	// Cursor should NOT jump to launch action — should stay at default 0
+	if um.browserCursor != 0 {
+		t.Errorf("expected cursor at 0 for mismatched path, got %d", um.browserCursor)
 	}
 }
 
@@ -927,6 +996,19 @@ func TestDirBrowserEscape(t *testing.T) {
 	um := modelFrom(updated)
 	if um.view != viewProjectList {
 		t.Errorf("expected project list after esc, got %d", um.view)
+	}
+}
+
+func TestDirBrowserEscapeClearsPendingRecentSelection(t *testing.T) {
+	m := newTestModelWithStore(&mockBackend{}, makeStore(t))
+	m.width = 80
+	m.view = viewDirBrowser
+	m.browserSelectLaunchPath = "/some/path"
+
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyEscape))
+	um := modelFrom(updated)
+	if um.browserSelectLaunchPath != "" {
+		t.Error("expected browserSelectLaunchPath to be cleared on Escape")
 	}
 }
 

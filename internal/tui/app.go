@@ -104,10 +104,11 @@ type Model struct {
 	setupReturnView viewState // view to return to when wizard exits
 
 	// Directory browser
-	browserDirs   []DirBrowserItem
-	browserCursor int
-	browserScroll int
-	browserPath   string
+	browserDirs         []DirBrowserItem
+	browserCursor       int
+	browserScroll       int
+	browserPath         string
+	browserSelectLaunchPath string // if non-empty, select launch action when this path loads
 
 	// Batch prompt
 	batchInput textarea.Model
@@ -293,6 +294,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.browserScroll = 0
 		m.browserPath = msg.CurrentDir
 		m.view = viewDirBrowser
+		selectLaunch := m.browserSelectLaunchPath != "" && m.browserSelectLaunchPath == msg.CurrentDir
+		m.browserSelectLaunchPath = ""
+		if selectLaunch && !m.settingsDirPick && !m.setupDirPick {
+			m.browserCursor = m.browserRecentCount() + len(m.browserDirs)
+			m.adjustBrowserScroll()
+		}
 		return m, nil
 
 	case StatusMsg:
@@ -1113,6 +1120,7 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case key.Matches(msg, keys.Escape):
+		m.browserSelectLaunchPath = ""
 		if m.setupDirPick {
 			m.setupDirPick = false
 			m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
@@ -1217,11 +1225,12 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if hasChoice && m.browserCursor == embeddedIdx {
 			return m.launchFromBrowserOn(m.browserPath, filepath.Base(m.browserPath), "pty")
 		}
-		// Recent item — launch immediately
+		// Recent item — navigate to that directory, cursor will land on launch action
 		if m.browserCursor < recentCount {
 			recent := m.browserRecentProjects()
 			p := recent[m.browserCursor]
-			return m.launchFromBrowserOn(p.Dir, p.Name, "")
+			m.browserSelectLaunchPath = p.Dir
+			return m, listDir(p.Dir)
 		}
 		// Directory entry — descend
 		dirIdx := m.browserCursor - recentCount
