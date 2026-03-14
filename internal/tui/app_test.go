@@ -352,6 +352,21 @@ func TestAgentLaunchedMsg(t *testing.T) {
 	if proj == nil || proj.LastLaunchedAt.IsZero() {
 		t.Error("expected LastLaunchedAt to be set on successful launch")
 	}
+
+	// Cursor should move to the newly launched agent.
+	found := false
+	for i, r := range um.rows {
+		if r.session != nil && r.session.SessionID == "sess-1" {
+			if um.cursor != i {
+				t.Errorf("expected cursor at %d (new agent row), got %d", i, um.cursor)
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected new agent to appear in rows")
+	}
 }
 
 func TestAgentLaunchedMsgError(t *testing.T) {
@@ -1755,15 +1770,16 @@ func TestScreenReadBlankTransitionsToIdle(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir: "/a/myproject",
-		SessionID:  "sess-1",
-		Type:       model.AgentClaude,
-		Status:     model.StatusWorking,
-		LastScreen: "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n", // previous blank
+		ProjectDir:     "/a/myproject",
+		SessionID:      "sess-1",
+		Type:           model.AgentClaude,
+		Status:         model.StatusWorking,
+		LastScreen:     "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n", // previous blank
+		UnmatchedReads: 1,                                                     // one prior blank read
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
-	// Second consecutive blank read — should transition to idle
+	// Third consecutive blank read — should transition to idle
 	updated, _ := m.Update(ScreenReadMsg{
 		SessionID:  "sess-1",
 		ProjectDir: "/a/myproject",

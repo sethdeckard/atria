@@ -54,6 +54,9 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType model.Ag
 		if err != nil {
 			return AgentLaunchedMsg{ProjectDir: projectDir, Err: err}
 		}
+		// Focus the new session so the terminal renders its screen buffer.
+		// Without this, iTerm2 may not populate the buffer for background tabs.
+		_ = backend.FocusSession(sessionID)
 		time.Sleep(300 * time.Millisecond)
 		cmd := string(agentType)
 		shellCmd := fmt.Sprintf("cd %s && %s", shellEscape(projectDir), cmd)
@@ -125,6 +128,41 @@ func startMonitor(backend terminal.Backend, sessionID, logPath, patterns string,
 
 func readScreen(backend terminal.Backend, sessionID, projectDir string) tea.Cmd {
 	return func() tea.Msg {
+		content, err := backend.ReadScreen(sessionID, 40)
+		return ScreenReadMsg{
+			SessionID:  sessionID,
+			ProjectDir: projectDir,
+			Content:    content,
+			Err:        err,
+		}
+	}
+}
+
+// launchReadScreen polls the screen until non-blank content appears or
+// maxAttempts is exhausted. This handles varying agent startup times across
+// backends (PTY is instant, iTerm/Kitty may take longer).
+func launchReadScreen(backend terminal.Backend, sessionID, projectDir string) tea.Cmd {
+	return func() tea.Msg {
+		const (
+			initialDelay = 500 * time.Millisecond
+			retryDelay   = 500 * time.Millisecond
+			maxAttempts  = 6 // up to ~3s total
+		)
+		time.Sleep(initialDelay)
+		for i := range maxAttempts {
+			content, err := backend.ReadScreen(sessionID, 40)
+			if err == nil && strings.TrimSpace(content) != "" {
+				return ScreenReadMsg{
+					SessionID:  sessionID,
+					ProjectDir: projectDir,
+					Content:    content,
+				}
+			}
+			if i < maxAttempts-1 {
+				time.Sleep(retryDelay)
+			}
+		}
+		// Return whatever the last read produced.
 		content, err := backend.ReadScreen(sessionID, 40)
 		return ScreenReadMsg{
 			SessionID:  sessionID,

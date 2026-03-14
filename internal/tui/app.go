@@ -1860,6 +1860,9 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	for _, s := range m.store.Sessions {
 		if !liveIDs[s.SessionID] && !failedSet[s.Source] {
 			deadIDs = append(deadIDs, s.SessionID)
+			if m.debugLog != nil {
+				m.debugLog.Printf("[dead] sid=%s src=%s dir=%s (not in liveIDs, source not failed)", s.SessionID, s.Source, filepath.Base(s.ProjectDir))
+			}
 		}
 	}
 	for _, id := range deadIDs {
@@ -1882,6 +1885,9 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 
 func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 	if msg.Dir == "" {
+		if m.debugLog != nil {
+			m.debugLog.Printf("[discover] SKIP sid=%s (empty dir)", msg.SessionID)
+		}
 		return m, nil
 	}
 	// Skip if this session was already tracked (race with multiple ticks)
@@ -1902,6 +1908,9 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 		Status:     model.StatusWorking,
 	}
 	m.store.SetSession(as)
+	if m.debugLog != nil {
+		m.debugLog.Printf("[discover] ADD sid=%s src=%s dir=%s type=%s", msg.SessionID, msg.Source, msg.Dir, msg.AgentType)
+	}
 
 	m.rows = buildRows(storeAdapter{m.store})
 	sortRows(m.rows, m.sortCol, m.sortDesc)
@@ -1947,6 +1956,10 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 		Source:     msg.Source,
 	}
 	m.store.SetSession(as)
+	if m.debugLog != nil {
+		m.debugLog.Printf("[launch] ADD sid=%s src=%s dir=%s type=%s (store now has %d sessions)",
+			msg.SessionID, msg.Source, msg.ProjectDir, msg.AgentType, len(m.store.Sessions))
+	}
 
 	m.rows = buildRows(storeAdapter{m.store})
 	sortRows(m.rows, m.sortCol, m.sortDesc)
@@ -1964,9 +1977,20 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 		}
 		return nil
 	})
+	cmds = append(cmds, launchReadScreen(m.backend, msg.SessionID, msg.ProjectDir))
 	if cmd := m.ensureSpinner(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
+
+	// Move cursor to the newly launched agent.
+	for i, r := range m.rows {
+		if r.session != nil && r.session.SessionID == msg.SessionID {
+			m.cursor = i
+			break
+		}
+	}
+	m.adjustScroll()
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -2049,10 +2073,16 @@ func (m Model) handleMonitorStarted(msg MonitorStartedMsg) (Model, tea.Cmd) {
 
 func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	if msg.Err != nil {
+		if m.debugLog != nil {
+			m.debugLog.Printf("[screen] ERROR sid=%s err=%v", msg.SessionID, msg.Err)
+		}
 		return m, nil
 	}
 	as := m.store.SessionByID(msg.SessionID)
 	if as == nil {
+		if m.debugLog != nil {
+			m.debugLog.Printf("[screen] MISS sid=%s (not in store)", msg.SessionID)
+		}
 		return m, nil
 	}
 	as.ScreenChecked = true
@@ -2091,9 +2121,9 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 			// Multiple consecutive stable reads with no agent patterns —
 			// the agent likely exited and the pane shows a shell.
 			status = model.StatusIdle
-		} else if !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) {
-			// Consecutive blank screen reads while "working" — backend can't
-			// read this session. No evidence the agent is working.
+		} else if !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) && as.UnmatchedReads >= 2 {
+			// Multiple consecutive blank screen reads while "working" —
+			// backend can't read this session. No evidence the agent is working.
 			status = model.StatusIdle
 		} else {
 			return m, nil

@@ -1443,6 +1443,7 @@ func (x *GetBufferRequest) GetLineRange() *LineRange {
 type LineRange struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	ScreenContentsOnly *bool                  `protobuf:"varint,1,opt,name=screen_contents_only,json=screenContentsOnly" json:"screen_contents_only,omitempty"`
+	TrailingLines      *int32                 `protobuf:"varint,2,opt,name=trailing_lines,json=trailingLines" json:"trailing_lines,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1482,6 +1483,13 @@ func (x *LineRange) GetScreenContentsOnly() bool {
 		return *x.ScreenContentsOnly
 	}
 	return false
+}
+
+func (x *LineRange) GetTrailingLines() int32 {
+	if x != nil && x.TrailingLines != nil {
+		return *x.TrailingLines
+	}
+	return 0
 }
 
 type GetBufferResponse struct {
@@ -2285,9 +2293,10 @@ const file_internal_terminal_iterm_proto_api_proto_rawDesc = "" +
 	"\x10GetBufferRequest\x12\x18\n" +
 	"\asession\x18\x01 \x01(\tR\asession\x120\n" +
 	"\n" +
-	"line_range\x18\x02 \x01(\v2\x11.iterm2.LineRangeR\tlineRange\"=\n" +
+	"line_range\x18\x02 \x01(\v2\x11.iterm2.LineRangeR\tlineRange\"d\n" +
 	"\tLineRange\x120\n" +
-	"\x14screen_contents_only\x18\x01 \x01(\bR\x12screenContentsOnly\"\xdb\x01\n" +
+	"\x14screen_contents_only\x18\x01 \x01(\bR\x12screenContentsOnly\x12%\n" +
+	"\x0etrailing_lines\x18\x02 \x01(\x05R\rtrailingLines\"\xdb\x01\n" +
 	"\x11GetBufferResponse\x12<\n" +
 	"\x06status\x18\x01 \x01(\x0e2 .iterm2.GetBufferResponse.Status:\x02OKR\x06status\x120\n" +
 	"\bcontents\x18\x03 \x03(\v2\x14.iterm2.LineContentsR\bcontents\"V\n" +

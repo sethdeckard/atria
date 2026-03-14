@@ -141,6 +141,7 @@ message GetBufferRequest {
 
 message LineRange {
   optional bool screen_contents_only = 1;
+  optional int32 trailing_lines = 2;
 }
 
 message GetBufferResponse {
