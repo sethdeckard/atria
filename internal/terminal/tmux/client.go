@@ -27,15 +27,6 @@ func NewClient(tmuxPath, sessionName string) *Client {
 	return &Client{tmuxPath: tmuxPath, sessionName: sessionName}
 }
 
-// SetSessionName updates the tmux session name used for all operations.
-// An empty name defaults to "atria".
-func (c *Client) SetSessionName(name string) {
-	if name == "" {
-		name = "atria"
-	}
-	c.sessionName = name
-}
-
 // run executes tmux with the given arguments and returns stdout.
 func (c *Client) run(args ...string) ([]byte, error) {
 	cmd := exec.Command(c.tmuxPath, args...)

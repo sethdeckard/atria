@@ -24,24 +24,6 @@ func TestNewClientCustomValues(t *testing.T) {
 	}
 }
 
-func TestSetSessionName(t *testing.T) {
-	c := NewClient("", "")
-	if c.sessionName != "atria" {
-		t.Errorf("expected default sessionName %q, got %q", "atria", c.sessionName)
-	}
-
-	c.SetSessionName("custom")
-	if c.sessionName != "custom" {
-		t.Errorf("expected sessionName %q, got %q", "custom", c.sessionName)
-	}
-
-	// Empty string should reset to default.
-	c.SetSessionName("")
-	if c.sessionName != "atria" {
-		t.Errorf("expected sessionName reset to %q, got %q", "atria", c.sessionName)
-	}
-}
-
 func TestParsePaneList(t *testing.T) {
 	tests := []struct {
 		name     string
