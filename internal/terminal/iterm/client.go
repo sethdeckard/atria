@@ -3,8 +3,6 @@ package iterm
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	"github.com/sethdeckard/atria/internal/terminal"
@@ -26,22 +24,6 @@ func unquoteJSON(s string) string {
 }
 
 //go:generate protoc --go_out=. --go_opt=paths=source_relative proto/api.proto
-
-// ttyForPID returns the controlling TTY for a process by running ps.
-func ttyForPID(pid int) string {
-	if pid <= 0 {
-		return ""
-	}
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "tty=").Output()
-	if err != nil {
-		return ""
-	}
-	tty := strings.TrimSpace(string(out))
-	if tty == "" || tty == "??" {
-		return ""
-	}
-	return "/dev/" + tty
-}
 
 // Client implements terminal.Backend using iTerm2's native protobuf-over-WebSocket API.
 type Client struct {

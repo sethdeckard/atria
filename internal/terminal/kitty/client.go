@@ -11,22 +11,8 @@ import (
 	"github.com/sethdeckard/atria/internal/terminal"
 )
 
-// ttyForPID returns the controlling TTY for a process by running ps.
-// Returns empty string on any failure.
-func ttyForPID(pid int) string {
-	if pid <= 0 {
-		return ""
-	}
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "tty=").Output()
-	if err != nil {
-		return ""
-	}
-	tty := strings.TrimSpace(string(out))
-	if tty == "" || tty == "??" {
-		return ""
-	}
-	return "/dev/" + tty
-}
+// ttyForPID delegates to the shared terminal.TTYForPID helper.
+var ttyForPID = terminal.TTYForPID
 
 // Client implements terminal.Backend using the kitten @ CLI.
 // Communication uses Kitty's Unix socket (KITTY_LISTEN_ON) to avoid

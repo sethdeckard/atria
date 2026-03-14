@@ -21,6 +21,7 @@ type CompositeBackend struct {
 	primarySource string // "pty", "iterm", "tmux"
 	integrations  []Integration
 	failedSources []string // sources whose ListSessions failed on last call
+	selfTTY       string   // Atria's own TTY — sessions matching this are filtered
 }
 
 // NewCompositeBackend creates a composite that delegates launches to primary
@@ -32,6 +33,16 @@ func NewCompositeBackend(primary Backend, primarySource string, integrations []I
 		primarySource: primarySource,
 		integrations:  integrations,
 	}
+}
+
+// SetSelfTTY sets Atria's own controlling TTY so that sessions on this TTY
+// are filtered from ListSessions results. This prevents Atria's own pane
+// from appearing as a phantom agent session when integration backends
+// discover it via auto-title inheritance.
+func (c *CompositeBackend) SetSelfTTY(tty string) {
+	c.mu.Lock()
+	c.selfTTY = tty
+	c.mu.Unlock()
 }
 
 // Available checks the primary backend only. Integration failures are non-fatal.
@@ -52,6 +63,7 @@ func (c *CompositeBackend) ListSessions() ([]Session, error) {
 	c.mu.RLock()
 	primary := c.primary
 	primarySource := c.primarySource
+	selfTTY := c.selfTTY
 	integrations := make([]Integration, len(c.integrations))
 	copy(integrations, c.integrations)
 	c.mu.RUnlock()
@@ -66,6 +78,9 @@ func (c *CompositeBackend) ListSessions() ([]Session, error) {
 	var result []Session
 	for _, s := range primarySessions {
 		s.Source = primarySource
+		if selfTTY != "" && s.TTY == selfTTY {
+			continue
+		}
 		result = append(result, s)
 		if s.TTY != "" {
 			seenTTY[s.TTY] = true
@@ -81,6 +96,9 @@ func (c *CompositeBackend) ListSessions() ([]Session, error) {
 			continue
 		}
 		for _, s := range sessions {
+			if selfTTY != "" && s.TTY == selfTTY {
+				continue
+			}
 			// Deduplicate by TTY.
 			if s.TTY != "" && seenTTY[s.TTY] {
 				continue

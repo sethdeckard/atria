@@ -189,6 +189,9 @@ func main() {
 	}
 
 	backend := terminal.NewCompositeBackend(primary, primarySource, integrations)
+	if selfTTY := terminal.TTYForPID(os.Getpid()); selfTTY != "" {
+		backend.SetSelfTTY(selfTTY)
+	}
 	cached := terminal.NewCachedBackend(backend, cfg.CacheTTL)
 
 	statusInfo := tui.StatusInfo{

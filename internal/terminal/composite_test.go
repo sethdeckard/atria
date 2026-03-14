@@ -629,6 +629,108 @@ func TestComposite_FailedSourcesClearedOnSuccess(t *testing.T) {
 	}
 }
 
+func TestComposite_SelfTTYFiltering(t *testing.T) {
+	tests := []struct {
+		name     string
+		selfTTY  string
+		primary  []Session
+		integ    []Session
+		wantIDs  []string
+	}{
+		{
+			name:    "matching primary TTY removed",
+			selfTTY: "/dev/ttys000",
+			primary: []Session{
+				{ID: "pty-0", Name: "claude", TTY: "/dev/ttys000"},
+				{ID: "pty-1", Name: "codex", TTY: "/dev/ttys001"},
+			},
+			integ:   nil,
+			wantIDs: []string{"pty-1"},
+		},
+		{
+			name:    "matching integration TTY removed",
+			selfTTY: "/dev/ttys000",
+			primary: []Session{
+				{ID: "pty-0", Name: "claude", TTY: "/dev/ttys001"},
+			},
+			integ: []Session{
+				{ID: "s1", Name: "copilot", TTY: "/dev/ttys000"},
+				{ID: "s2", Name: "codex", TTY: "/dev/ttys002"},
+			},
+			wantIDs: []string{"pty-0", "iterm:s2"},
+		},
+		{
+			name:    "different TTY kept",
+			selfTTY: "/dev/ttys000",
+			primary: []Session{
+				{ID: "pty-0", Name: "claude", TTY: "/dev/ttys001"},
+			},
+			integ: []Session{
+				{ID: "s1", Name: "codex", TTY: "/dev/ttys002"},
+			},
+			wantIDs: []string{"pty-0", "iterm:s1"},
+		},
+		{
+			name:    "empty session TTY kept",
+			selfTTY: "/dev/ttys000",
+			primary: []Session{
+				{ID: "pty-0", Name: "claude", TTY: ""},
+			},
+			integ: []Session{
+				{ID: "s1", Name: "codex", TTY: ""},
+			},
+			wantIDs: []string{"pty-0", "iterm:s1"},
+		},
+		{
+			name:    "empty selfTTY no filtering",
+			selfTTY: "",
+			primary: []Session{
+				{ID: "pty-0", Name: "claude", TTY: "/dev/ttys000"},
+			},
+			integ: []Session{
+				{ID: "s1", Name: "codex", TTY: "/dev/ttys000"},
+			},
+			// No self-filtering, but TTY dedup still applies.
+			wantIDs: []string{"pty-0"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			primary := &trackingBackend{
+				mockBackend: mockBackend{sessions: tt.primary},
+			}
+			var integrations []Integration
+			if tt.integ != nil {
+				integrations = []Integration{
+					{Prefix: "iterm:", Source: "iterm", Backend: &trackingBackend{
+						mockBackend: mockBackend{sessions: tt.integ},
+					}},
+				}
+			}
+			comp := NewCompositeBackend(primary, "pty", integrations)
+			comp.SetSelfTTY(tt.selfTTY)
+
+			sessions, err := comp.ListSessions()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var gotIDs []string
+			for _, s := range sessions {
+				gotIDs = append(gotIDs, s.ID)
+			}
+			if len(gotIDs) != len(tt.wantIDs) {
+				t.Fatalf("expected %d sessions %v, got %d %v", len(tt.wantIDs), tt.wantIDs, len(gotIDs), gotIDs)
+			}
+			for i, id := range gotIDs {
+				if id != tt.wantIDs[i] {
+					t.Errorf("session[%d] = %q, want %q", i, id, tt.wantIDs[i])
+				}
+			}
+		})
+	}
+}
+
 func TestComposite_MissingIntegrationReturnsError(t *testing.T) {
 	primary := &trackingBackend{}
 
