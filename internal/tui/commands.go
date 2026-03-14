@@ -324,24 +324,20 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 				demotePTY()
 			}
 			composite.SetPrimary(backend, "tmux")
-			status.Launch = true
 		} else if name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "" && composite.PrimarySource() != "tmux" {
 			if composite.PrimarySource() == "pty" {
 				demotePTY()
 			}
 			composite.SetPrimary(backend, "kitty")
-			status.Launch = true
 		} else if name == "wezterm" && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") &&
 			composite.PrimarySource() != "tmux" && composite.PrimarySource() != "kitty" {
 			if composite.PrimarySource() == "pty" {
 				demotePTY()
 			}
 			composite.SetPrimary(backend, "wezterm")
-			status.Launch = true
 		} else if name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app" && composite.PrimarySource() == "pty" {
 			demotePTY()
 			composite.SetPrimary(backend, "iterm")
-			status.Launch = true
 		}
 
 		return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped, NewPrimary: composite.PrimarySource()}
