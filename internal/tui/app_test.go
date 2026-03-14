@@ -2864,17 +2864,21 @@ func TestIntegrationToggledMsgRemapsIDs(t *testing.T) {
 	}
 }
 
-func TestIntegrationToggledClearsOldLaunchFlag(t *testing.T) {
+func integrationToggleModel(t *testing.T, backends []BackendStatus) Model {
+	t.Helper()
 	store := makeStore(t)
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.cfg = &config.Config{}
 	m.availableAgents = []model.AgentType{model.AgentClaude}
-	m.statusInfo = StatusInfo{
-		Backends: []BackendStatus{
-			{Name: "pty", Enabled: true, Active: true, Launch: true},
-			{Name: "tmux", Enabled: false},
-		},
-	}
+	m.statusInfo = StatusInfo{Backends: backends}
+	return m
+}
+
+func TestIntegrationToggledClearsOldLaunchFlag(t *testing.T) {
+	m := integrationToggleModel(t, []BackendStatus{
+		{Name: "pty", Enabled: true, Active: true, Launch: true},
+		{Name: "tmux", Enabled: false},
+	})
 
 	// Toggle tmux on — it becomes the new launch target.
 	msg := IntegrationToggledMsg{
@@ -2896,16 +2900,10 @@ func TestIntegrationToggledClearsOldLaunchFlag(t *testing.T) {
 }
 
 func TestIntegrationToggledRestoresLaunchOnDisable(t *testing.T) {
-	store := makeStore(t)
-	m := newTestModelWithStore(&mockBackend{}, store)
-	m.cfg = &config.Config{}
-	m.availableAgents = []model.AgentType{model.AgentClaude}
-	m.statusInfo = StatusInfo{
-		Backends: []BackendStatus{
-			{Name: "pty", Enabled: true, Active: true, Launch: false},
-			{Name: "tmux", Enabled: true, Active: true, Launch: true},
-		},
-	}
+	m := integrationToggleModel(t, []BackendStatus{
+		{Name: "pty", Enabled: true, Active: true, Launch: false},
+		{Name: "tmux", Enabled: true, Active: true, Launch: true},
+	})
 
 	// Disable tmux — PTY should become the launch target.
 	msg := IntegrationToggledMsg{
@@ -2927,16 +2925,10 @@ func TestIntegrationToggledRestoresLaunchOnDisable(t *testing.T) {
 }
 
 func TestIntegrationToggledPreservesLaunchOnProbeFail(t *testing.T) {
-	store := makeStore(t)
-	m := newTestModelWithStore(&mockBackend{}, store)
-	m.cfg = &config.Config{}
-	m.availableAgents = []model.AgentType{model.AgentClaude}
-	m.statusInfo = StatusInfo{
-		Backends: []BackendStatus{
-			{Name: "pty", Enabled: true, Active: true, Launch: true},
-			{Name: "tmux", Enabled: false},
-		},
-	}
+	m := integrationToggleModel(t, []BackendStatus{
+		{Name: "pty", Enabled: true, Active: true, Launch: true},
+		{Name: "tmux", Enabled: false},
+	})
 
 	// Toggle tmux on but probe fails — NewPrimary is empty.
 	msg := IntegrationToggledMsg{
