@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 )
 
@@ -15,11 +16,14 @@ type termRefreshMsg struct{}
 
 // termView is the embedded terminal view component for the PTY backend.
 type termView struct {
-	sessionID string
-	backend   terminal.Backend
-	content   string
-	width     int
-	height    int
+	sessionID    string
+	backend      terminal.Backend
+	content      string
+	status       model.AgentStatus
+	agentType    model.AgentType
+	spinnerFrame int
+	width        int
+	height       int
 }
 
 func newTermView(sessionID string, backend terminal.Backend) termView {
@@ -42,13 +46,32 @@ func (tv termView) headerBar() string {
 			}
 		}
 	}
-	left := " " + title
+
+	var icon string
+	var style lipgloss.Style
+	switch tv.status {
+	case model.StatusWorking:
+		icon = spinnerFrames[tv.spinnerFrame%len(spinnerFrames)]
+		style = statusWorkingStyle
+	case model.StatusNeedsInput:
+		icon = "⚠"
+		style = statusNeedsInputStyle
+	case model.StatusError:
+		icon = "✗"
+		style = statusErrorStyle
+	default:
+		icon = "●"
+		style = statusIdleStyle
+	}
+	style = style.Bold(true)
+
+	left := " " + icon + " " + title
 	right := "Ctrl+\\ to return "
 	gap := tv.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
 	}
-	return dimStyle.Render(left + strings.Repeat(" ", gap) + right)
+	return style.Render(left + strings.Repeat(" ", gap) + right)
 }
 
 func (tv termView) render() string {

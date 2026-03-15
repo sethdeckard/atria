@@ -388,6 +388,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err == nil {
 			m.termView.content = content
 		}
+		m.termView.spinnerFrame = m.spinnerFrame
+		for _, s := range m.store.Sessions {
+			if s.SessionID == m.termSessionID {
+				m.termView.status = s.Status
+				break
+			}
+		}
 		return m, termRefreshCmd()
 	}
 
@@ -1811,6 +1818,7 @@ func (m Model) focusSelected() (Model, tea.Cmd) {
 		m.termView = newTermView(r.session.SessionID, m.backend)
 		m.termView.width = m.width
 		m.termView.height = m.height
+		m.termView.agentType = r.session.Type
 		m.view = viewTerminal
 		return m, termRefreshCmd()
 	}
