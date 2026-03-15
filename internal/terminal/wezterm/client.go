@@ -154,16 +154,11 @@ func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return trimToLastN(string(out), lines), nil
+	return terminal.TrimScreenTail(string(out), lines), nil
 }
 
-// trimToLastN returns the last n lines of text.
 func trimToLastN(text string, n int) string {
-	allLines := strings.Split(text, "\n")
-	if len(allLines) > n {
-		allLines = allLines[len(allLines)-n:]
-	}
-	return strings.Join(allLines, "\n")
+	return terminal.TrimScreenTail(text, n)
 }
 
 // GetVar reads a variable from a WezTerm pane. Supported: "path".

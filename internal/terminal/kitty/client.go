@@ -174,13 +174,7 @@ func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	text := string(out)
-	// Trim to last N lines.
-	allLines := strings.Split(text, "\n")
-	if len(allLines) > lines {
-		allLines = allLines[len(allLines)-lines:]
-	}
-	return strings.Join(allLines, "\n"), nil
+	return terminal.TrimScreenTail(string(out), lines), nil
 }
 
 // lookupWindowVar finds a window by ID string and returns the requested variable.

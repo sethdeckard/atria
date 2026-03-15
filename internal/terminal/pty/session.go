@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/hinshun/vt10x"
+	"github.com/sethdeckard/atria/internal/terminal"
 )
 
 const bellChar = "\x07"
@@ -142,10 +143,7 @@ func (s *session) readScreen(lines int) string {
 	if len(allLines) > 0 && allLines[len(allLines)-1] == "" {
 		allLines = allLines[:len(allLines)-1]
 	}
-	if lines > 0 && len(allLines) > lines {
-		allLines = allLines[len(allLines)-lines:]
-	}
-	result := strings.Join(allLines, "\n")
+	result := terminal.TrimScreenTail(strings.Join(allLines, "\n"), lines)
 
 	if bell {
 		result = bellChar + result
