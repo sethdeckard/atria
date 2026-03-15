@@ -104,10 +104,10 @@ type Model struct {
 	setupReturnView viewState // view to return to when wizard exits
 
 	// Directory browser
-	browserDirs         []DirBrowserItem
-	browserCursor       int
-	browserScroll       int
-	browserPath         string
+	browserDirs             []DirBrowserItem
+	browserCursor           int
+	browserScroll           int
+	browserPath             string
 	browserSelectLaunchPath string // if non-empty, select launch action when this path loads
 
 	// Batch prompt
@@ -428,15 +428,23 @@ func (m Model) View() string {
 		content = m.viewHelp() + "\n\n" + content
 	}
 
-	// Pad output to exactly m.height lines so Bubble Tea's alternate screen
-	// doesn't leave ghost lines when the output shrinks between frames
-	// (e.g. statusText appearing/disappearing, status transitions).
-	lines := strings.Count(content, "\n")
-	if lines < m.height-1 {
-		content += strings.Repeat("\n", m.height-1-lines)
+	return normalizeView(content, m.width, m.height)
+}
+
+// normalizeView pads content to exactly width×height.
+func normalizeView(content string, width, height int) string {
+	lines := strings.Split(content, "\n")
+
+	// Clamp to exactly height lines. Overflow causes the alt screen to
+	// scroll, leaving ghost lines that persist across frames.
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for len(lines) < height {
+		lines = append(lines, "")
 	}
 
-	return content
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) viewProjectList() string {
@@ -458,7 +466,7 @@ func (m Model) viewProjectList() string {
 	}
 
 	canSetup := m.canSetup()
-	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, m.availableAgents, maxRows, scrollOffset, m.sortCol, m.sortDesc, canSetup)
+	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, m.availableAgents, maxRows, scrollOffset, m.sortCol, m.sortDesc, canSetup, m.streamOpen)
 	sb.WriteString(list)
 
 	if m.streamOpen {
@@ -508,8 +516,9 @@ func (m Model) viewProjectList() string {
 func renderStreamPanel(session *model.AgentSession, projectName, projectDir string, width, height int) string {
 	var sb strings.Builder
 
-	// Box dimensions: 1 char indent, box is width-1 chars wide
-	boxWidth := width - 1
+	// Keep one terminal column of slack so a visually wider glyph in the
+	// stream content cannot wrap and push the header off-screen.
+	boxWidth := width - 2
 	if boxWidth < 6 {
 		boxWidth = 6
 	}
@@ -655,6 +664,31 @@ func streamPanelHeight(termHeight int) int {
 		h = 25
 	}
 	return h
+}
+
+// rebuildRows rebuilds and sorts the row list, preserving the cursor on
+// the same session. If the previously selected session is no longer present,
+// the cursor is clamped to the last row.
+func (m *Model) rebuildRows() {
+	var prevSessionID string
+	if m.cursor >= 0 && m.cursor < len(m.rows) && m.rows[m.cursor].session != nil {
+		prevSessionID = m.rows[m.cursor].session.SessionID
+	}
+	m.rows = buildRows(storeAdapter{m.store})
+	sortRows(m.rows, m.sortCol, m.sortDesc)
+	if prevSessionID != "" {
+		for i, r := range m.rows {
+			if r.session != nil && r.session.SessionID == prevSessionID {
+				m.cursor = i
+				m.adjustScroll()
+				return
+			}
+		}
+	}
+	if m.cursor >= len(m.rows) && m.cursor > 0 {
+		m.cursor = len(m.rows) - 1
+	}
+	m.adjustScroll()
 }
 
 // adjustScroll ensures the cursor is visible within the scroll window.
@@ -1279,8 +1313,7 @@ func (m Model) addSetupWatchDirFromBrowser(dirPath string) (Model, tea.Cmd) {
 func (m Model) launchFromBrowserOn(dirPath, name, source string) (Model, tea.Cmd) {
 	m.store.AddProject(dirPath)
 	_ = m.store.SaveProjects()
-	m.rows = buildRows(storeAdapter{m.store})
-	sortRows(m.rows, m.sortCol, m.sortDesc)
+	m.rebuildRows()
 	m.view = viewProjectList
 	m.statusText = fmt.Sprintf("Launching %s for %s...", agentTypeLabel(m.defaultAgent), name)
 	return m, launchAgent(m.backend, dirPath, m.defaultAgent, source)
@@ -1870,12 +1903,7 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		m.store.RemoveSession(id)
 	}
 
-	m.rows = buildRows(storeAdapter{m.store})
-	sortRows(m.rows, m.sortCol, m.sortDesc)
-	if m.cursor >= len(m.rows) && m.cursor > 0 {
-		m.cursor = len(m.rows) - 1
-	}
-	m.adjustScroll()
+	m.rebuildRows()
 
 	if cmd := m.ensureSpinner(); cmd != nil {
 		cmds = append(cmds, cmd)
@@ -1912,8 +1940,7 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 		m.debugLog.Printf("[discover] ADD sid=%s src=%s dir=%s type=%s", msg.SessionID, msg.Source, msg.Dir, msg.AgentType)
 	}
 
-	m.rows = buildRows(storeAdapter{m.store})
-	sortRows(m.rows, m.sortCol, m.sortDesc)
+	m.rebuildRows()
 
 	// Start monitoring — use session ID in log path to avoid collisions
 	// when multiple agents share the same project directory.
@@ -1961,9 +1988,17 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 			msg.SessionID, msg.Source, msg.ProjectDir, msg.AgentType, len(m.store.Sessions))
 	}
 
-	m.rows = buildRows(storeAdapter{m.store})
-	sortRows(m.rows, m.sortCol, m.sortDesc)
+	m.rebuildRows()
 	m.statusText = fmt.Sprintf("Launched %s for %s", msg.AgentType, filepath.Base(msg.ProjectDir))
+
+	// Move cursor to the newly launched agent.
+	for i, r := range m.rows {
+		if r.session != nil && r.session.SessionID == msg.SessionID {
+			m.cursor = i
+			break
+		}
+	}
+	m.adjustScroll()
 
 	// Start monitoring — use session ID in log path to avoid collisions
 	// when multiple agents share the same project directory.
@@ -1981,15 +2016,6 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 	if cmd := m.ensureSpinner(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-
-	// Move cursor to the newly launched agent.
-	for i, r := range m.rows {
-		if r.session != nil && r.session.SessionID == msg.SessionID {
-			m.cursor = i
-			break
-		}
-	}
-	m.adjustScroll()
 
 	return m, tea.Batch(cmds...)
 }
@@ -2022,8 +2048,7 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 		m.chat.addEntry(entry)
 	}
 
-	m.rows = buildRows(storeAdapter{m.store})
-	sortRows(m.rows, m.sortCol, m.sortDesc)
+	m.rebuildRows()
 
 	// Bell + attention highlight when status changes to needs_input
 	if msg.Status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
@@ -2155,8 +2180,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		})
 	}
 
-	m.rows = buildRows(storeAdapter{m.store})
-	sortRows(m.rows, m.sortCol, m.sortDesc)
+	m.rebuildRows()
 
 	// Bell on needs_input transition
 	if status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {

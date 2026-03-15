@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
@@ -16,20 +17,20 @@ import (
 // --- mock backend ---
 
 type mockBackend struct {
-	available    error
-	sessions     []terminal.Session
-	listErr      error
-	newSessionID string
+	available     error
+	sessions      []terminal.Session
+	listErr       error
+	newSessionID  string
 	newSessionErr error
-	sendTextLog  []string
-	runCmdLog    []string
-	focusLog     []string
+	sendTextLog   []string
+	runCmdLog     []string
+	focusLog      []string
 	screenContent string
-	getVarVal    string
-	monitorPID   int
+	getVarVal     string
+	monitorPID    int
 }
 
-func (m *mockBackend) Available() error                        { return m.available }
+func (m *mockBackend) Available() error                          { return m.available }
 func (m *mockBackend) ListSessions() ([]terminal.Session, error) { return m.sessions, m.listErr }
 func (m *mockBackend) NewSession() (string, error) {
 	return m.newSessionID, m.newSessionErr
@@ -79,6 +80,15 @@ func modelFrom(tm tea.Model) Model {
 
 func makeStore(t *testing.T) *model.Store {
 	return model.NewStore(t.TempDir())
+}
+
+func assertLinesWithinWidth(t *testing.T, content string, width int) {
+	t.Helper()
+	for i, line := range strings.Split(content, "\n") {
+		if got := lipgloss.Width(line); got > width {
+			t.Fatalf("line %d width = %d, want <= %d: %q", i, got, width, line)
+		}
+	}
 }
 
 func makeProjects(dirs ...string) []*model.Project {
@@ -1199,7 +1209,7 @@ func TestSessionsRefreshedRemovesExitedAgent(t *testing.T) {
 		SessionID:     "sess-exited",
 		Type:          model.AgentCodex,
 		Status:        model.StatusIdle,
-		OrphanTicks:   1, // one tick already accumulated, next refresh triggers removal
+		OrphanTicks:   1,               // one tick already accumulated, next refresh triggers removal
 		LastScreen:    "user@host ~ %", // shell prompt, no agent UI
 		ScreenChecked: true,
 	})
@@ -1775,7 +1785,7 @@ func TestScreenReadBlankTransitionsToIdle(t *testing.T) {
 		Type:           model.AgentClaude,
 		Status:         model.StatusWorking,
 		LastScreen:     "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n", // previous blank
-		UnmatchedReads: 1,                                                     // one prior blank read
+		UnmatchedReads: 1,                                                    // one prior blank read
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -2651,6 +2661,94 @@ func TestStreamPanelHeaderTruncatesLongName(t *testing.T) {
 	}
 }
 
+func TestStreamPanelKeepsSafetyMarginWithWideGlyphs(t *testing.T) {
+	session := &model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentCopilot,
+		Status:     model.StatusIdle,
+		LastScreen: strings.Repeat("💡", 20) + " status line",
+	}
+
+	panel := renderStreamPanel(session, "alpha", "/proj/alpha", 40, 8)
+	assertLinesWithinWidth(t, panel, 39)
+}
+
+func TestProjectListSelectedRowKeepsSafetyMarginWhenStreamOpen(t *testing.T) {
+	rows := []projectRow{
+		{
+			project: &model.Project{Dir: "/proj/alpha", Name: "alpha"},
+			session: &model.AgentSession{
+				ProjectDir:   "/proj/alpha",
+				SessionID:    "s1",
+				Type:         model.AgentCopilot,
+				Status:       model.StatusWorking,
+				Activity:     strings.Repeat("wide 💡 activity ", 6),
+				LastActivity: time.Now(),
+			},
+			displayName: "alpha-agent-with-long-name",
+		},
+	}
+
+	view := renderProjectList(rows, 0, 80, 0, map[string]time.Time{}, model.AgentClaude, nil, 5, 0, sortByAgent, false, false, true)
+	var selectedLine string
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "alpha-agent-with-long-name") {
+			selectedLine = line
+			break
+		}
+	}
+	if selectedLine == "" {
+		t.Fatal("expected selected row in rendered project list")
+	}
+	if got := lipgloss.Width(selectedLine); got > 79 {
+		t.Fatalf("selected row width = %d, want <= 79", got)
+	}
+}
+
+func TestStreamOpenLastSelectionKeepsAgentsHeaderVisible(t *testing.T) {
+	store := makeStore(t)
+	for i := 0; i < 25; i++ {
+		dir := fmt.Sprintf("/proj/agent-%02d", i)
+		store.AddProject(dir)
+		screen := "steady output"
+		if i == 24 {
+			screen = strings.Repeat("💡", 24) + " Copilot needs review"
+		}
+		store.SetSession(&model.AgentSession{
+			ProjectDir: dir,
+			SessionID:  fmt.Sprintf("s%d", i),
+			Type:       model.AgentCopilot,
+			Status:     model.StatusWorking,
+			Activity:   "reviewing changes",
+			LastScreen: screen,
+		})
+	}
+
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 166
+	m.height = 39
+	m.backendOK = true
+	m.streamOpen = true
+	m.rebuildRows()
+
+	first := m.View()
+	if !strings.Contains(first, "agents") {
+		t.Fatal("expected agents header with first row selected")
+	}
+
+	for i := 0; i < len(m.rows)-1; i++ {
+		updated, _ := m.Update(keyMsg("j"))
+		m = modelFrom(updated)
+	}
+
+	last := m.View()
+	if !strings.Contains(last, "agents") {
+		t.Fatal("expected agents header with last row selected")
+	}
+	assertLinesWithinWidth(t, last, 166)
+}
+
 func TestStreamPanelHeight(t *testing.T) {
 	// Small terminal
 	h := streamPanelHeight(10)
@@ -3148,4 +3246,22 @@ func TestEnvColumnHiddenPtyOnly(t *testing.T) {
 			break
 		}
 	}
+}
+
+func TestNormalizeView(t *testing.T) {
+	t.Run("height clamped", func(t *testing.T) {
+		// Too few lines — should pad
+		out := normalizeView("a\nb", 10, 5)
+		lines := strings.Split(out, "\n")
+		if len(lines) != 5 {
+			t.Errorf("got %d lines, want 5", len(lines))
+		}
+
+		// Too many lines — should truncate
+		out = normalizeView("1\n2\n3\n4\n5\n6\n7", 10, 3)
+		lines = strings.Split(out, "\n")
+		if len(lines) != 3 {
+			t.Errorf("got %d lines, want 3", len(lines))
+		}
+	})
 }

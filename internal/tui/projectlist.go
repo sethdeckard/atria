@@ -116,7 +116,8 @@ func statusPriority(s *model.AgentSession) int {
 	}
 }
 
-// headerLines returns the number of lines the header occupies (branding + separator + column headers + blank).
+// headerLineCount is the number of rendered header lines:
+// title bar (2) + column headers (1).
 const headerLineCount = 3
 
 // footerLineCount is lines for the footer (margin + content).
@@ -175,7 +176,7 @@ func envLabel(source string) string {
 	return source
 }
 
-func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, availableAgents []model.AgentType, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool, canSetup bool) string {
+func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, availableAgents []model.AgentType, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool, canSetup bool, streamOpen bool) string {
 	var sb strings.Builder
 
 	sb.WriteString(renderHeader(width))
@@ -223,6 +224,13 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 	sb.WriteString(renderColumnHeaders(nameWidth, typeWidth, dirWidth, width, sortCol, sortDesc, showEnv, envWidth))
 	sb.WriteString("\n")
 
+	rowWidth := width
+	if streamOpen && rowWidth > 1 {
+		// Keep one column of slack so terminals do not visually wrap a row
+		// when styled segments contain glyphs wider than lipgloss reports.
+		rowWidth--
+	}
+
 	// Clamp scroll to keep cursor visible regardless of how maxRows changed
 	if len(rows) <= maxRows || maxRows <= 0 {
 		scrollOffset = 0
@@ -242,25 +250,33 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 		visibleRows = rows[scrollOffset:end]
 	}
 
+	rendered := 0
 	for i, r := range visibleRows {
 		actualIdx := i + scrollOffset
 		_, hasAttention := attentionSessions[r.session.SessionID]
 		isSelected := actualIdx == cursor
 
 		if isSelected && hasAttention {
-			line := formatRow(r, nameWidth, typeWidth, dirWidth, width, spinnerFrame, true, showEnv, envWidth)
-			sb.WriteString(attentionSelectedStyle.Render(padToWidth(line, width)))
+			line := formatRow(r, nameWidth, typeWidth, dirWidth, rowWidth, spinnerFrame, true, showEnv, envWidth)
+			sb.WriteString(attentionSelectedStyle.Render(padToWidth(line, rowWidth)))
 		} else if isSelected {
-			line := formatSelectedRow(r, nameWidth, typeWidth, dirWidth, width, spinnerFrame, showEnv, envWidth)
+			line := formatSelectedRow(r, nameWidth, typeWidth, dirWidth, rowWidth, spinnerFrame, showEnv, envWidth)
 			sb.WriteString(line)
 		} else if hasAttention {
-			line := formatRow(r, nameWidth, typeWidth, dirWidth, width, spinnerFrame, true, showEnv, envWidth)
-			sb.WriteString(attentionRowStyle.Render(padToWidth(line, width)))
+			line := formatRow(r, nameWidth, typeWidth, dirWidth, rowWidth, spinnerFrame, true, showEnv, envWidth)
+			sb.WriteString(attentionRowStyle.Render(padToWidth(line, rowWidth)))
 		} else {
-			line := formatRow(r, nameWidth, typeWidth, dirWidth, width, spinnerFrame, false, showEnv, envWidth)
+			line := formatRow(r, nameWidth, typeWidth, dirWidth, rowWidth, spinnerFrame, false, showEnv, envWidth)
 			sb.WriteString(line)
 		}
 		sb.WriteString("\n")
+		rendered++
+	}
+	// Pad to maxRows so the list always occupies a fixed number of lines.
+	// This prevents the stream panel from shifting and causing ghost artifacts.
+	for rendered < maxRows && maxRows > 0 {
+		sb.WriteString(strings.Repeat(" ", width) + "\n")
+		rendered++
 	}
 
 	return sb.String()
