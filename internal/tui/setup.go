@@ -136,7 +136,7 @@ func setupStepTitle(step int) string {
 	case 1:
 		return "watch directories"
 	case 2:
-		return "defaults"
+		return "default agent"
 	}
 	return ""
 }
