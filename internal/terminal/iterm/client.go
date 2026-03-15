@@ -32,6 +32,13 @@ type Client struct {
 	noPrompt   bool   // suppress interactive AppleScript auth
 }
 
+type lineInfo struct {
+	Grid         int64  `json:"grid"`
+	History      int64  `json:"history"`
+	Overflow     int64  `json:"overflow"`
+	FirstVisible *int64 `json:"first_visible"`
+}
+
 // NewClient creates a new Client. Optional socketPath overrides the default
 // iTerm2 Unix socket location.
 func NewClient(socketPath ...string) *Client {
@@ -121,6 +128,13 @@ func collectSessions(node *pb.SplitTreeNode) []*pb.SessionSummary {
 	return sessions
 }
 
+func tabLeafCount(tab *pb.ListSessionsResponse_Tab) int {
+	if tab == nil {
+		return 0
+	}
+	return len(collectSessions(tab.GetRoot()))
+}
+
 // ListSessions returns all iTerm2 sessions (panes), including those in splits.
 func (c *Client) ListSessions() ([]terminal.Session, error) {
 	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
@@ -191,6 +205,58 @@ func extractFocusedWindowID(fr *pb.FocusResponse) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func lineRangeForVisibleScreen(jsonValue string) (*pb.LineRange, error) {
+	var info lineInfo
+	if err := json.Unmarshal([]byte(jsonValue), &info); err != nil {
+		return nil, fmt.Errorf("parse line info: %w", err)
+	}
+	if info.Grid <= 0 {
+		return nil, fmt.Errorf("invalid grid height %d", info.Grid)
+	}
+	startY := info.Overflow + info.History
+	if info.FirstVisible != nil {
+		startY = *info.FirstVisible
+	}
+	return &pb.LineRange{
+		WindowedCoordRange: &pb.WindowedCoordRange{
+			CoordRange: &pb.CoordRange{
+				Start: &pb.Coord{X: proto.Int32(0), Y: proto.Int64(startY)},
+				End:   &pb.Coord{X: proto.Int32(0), Y: proto.Int64(startY + info.Grid)},
+			},
+		},
+	}, nil
+}
+
+func normalizeBufferText(s string) string {
+	return strings.ReplaceAll(s, "\x00", "")
+}
+
+func isSemanticallyBlank(s string) bool {
+	return strings.TrimSpace(normalizeBufferText(s)) == ""
+}
+
+func joinBufferLines(contents []*pb.LineContents, lines int) string {
+	var allLines []string
+	for _, lc := range contents {
+		allLines = append(allLines, lc.GetText())
+	}
+	if len(allLines) > lines && lines > 0 {
+		end := len(allLines)
+		for i := len(allLines) - 1; i >= 0; i-- {
+			if !isSemanticallyBlank(allLines[i]) {
+				end = i + 1
+				break
+			}
+		}
+		start := end - lines
+		if start < 0 {
+			start = 0
+		}
+		allLines = allLines[start:end]
+	}
+	return strings.Join(allLines, "\n")
 }
 
 // focusedWindowID queries iTerm2's FocusRequest API to find the currently
@@ -281,14 +347,18 @@ func (c *Client) RunCommand(sessionID, cmd string) error {
 // FocusSession activates the session, its tab, and brings the window to front.
 // Uses idempotentRequest since activating is safe to retry.
 func (c *Client) FocusSession(sessionID string) error {
+	return c.activate(&pb.ActivateRequest{
+		Identifier:       &pb.ActivateRequest_SessionId{SessionId: sessionID},
+		SelectTab:        proto.Bool(true),
+		SelectSession:    proto.Bool(true),
+		OrderWindowFront: proto.Bool(true),
+	})
+}
+
+func (c *Client) activate(req *pb.ActivateRequest) error {
 	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
 		Submessage: &pb.ClientOriginatedMessage_ActivateRequest{
-			ActivateRequest: &pb.ActivateRequest{
-				Identifier:       &pb.ActivateRequest_SessionId{SessionId: sessionID},
-				SelectTab:        proto.Bool(true),
-				SelectSession:    proto.Bool(true),
-				OrderWindowFront: proto.Bool(true),
-			},
+			ActivateRequest: req,
 		},
 	})
 	if err != nil {
@@ -301,38 +371,88 @@ func (c *Client) FocusSession(sessionID string) error {
 	return nil
 }
 
-// ReadScreen captures the visible screen contents of a session.
-func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
+func (c *Client) getProperty(sessionID, name string) (string, error) {
 	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
-		Submessage: &pb.ClientOriginatedMessage_GetBufferRequest{
-			GetBufferRequest: &pb.GetBufferRequest{
-				Session: proto.String(sessionID),
-				LineRange: &pb.LineRange{
-					ScreenContentsOnly: proto.Bool(true),
-				},
+		Submessage: &pb.ClientOriginatedMessage_GetPropertyRequest{
+			GetPropertyRequest: &pb.GetPropertyRequest{
+				Identifier: &pb.GetPropertyRequest_SessionId{SessionId: sessionID},
+				Name:       proto.String(name),
 			},
 		},
 	})
 	if err != nil {
 		return "", err
 	}
+	gpr := resp.GetGetPropertyResponse()
+	if gpr == nil {
+		return "", fmt.Errorf("unexpected response type")
+	}
+	if gpr.GetStatus() != pb.GetPropertyResponse_OK {
+		return "", fmt.Errorf("get property failed: %s", gpr.GetStatus().String())
+	}
+	return gpr.GetJsonValue(), nil
+}
+
+func (c *Client) getBufferResponse(sessionID string, lr *pb.LineRange) (*pb.GetBufferResponse, error) {
+	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
+		Submessage: &pb.ClientOriginatedMessage_GetBufferRequest{
+			GetBufferRequest: &pb.GetBufferRequest{
+				Session:       proto.String(sessionID),
+				LineRange:     lr,
+				IncludeStyles: proto.Bool(true),
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	gbr := resp.GetGetBufferResponse()
 	if gbr == nil {
-		return "", fmt.Errorf("unexpected response type")
+		return nil, fmt.Errorf("unexpected response type")
 	}
 	if gbr.GetStatus() != pb.GetBufferResponse_OK {
-		return "", fmt.Errorf("get buffer failed: %s", gbr.GetStatus().String())
+		return nil, fmt.Errorf("get buffer failed: %s", gbr.GetStatus().String())
+	}
+	return gbr, nil
+}
+
+func (c *Client) getBuffer(sessionID string, lr *pb.LineRange, lines int) (string, error) {
+	gbr, err := c.getBufferResponse(sessionID, lr)
+	if err != nil {
+		return "", err
+	}
+	return joinBufferLines(gbr.GetContents(), lines), nil
+}
+
+// ReadScreen captures the visible screen contents of a session.
+func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
+	content, err := c.getBuffer(sessionID, &pb.LineRange{
+		ScreenContentsOnly: proto.Bool(true),
+	}, lines)
+	if err != nil {
+		return "", err
+	}
+	if !isSemanticallyBlank(content) {
+		return content, nil
 	}
 
-	var allLines []string
-	for _, lc := range gbr.GetContents() {
-		allLines = append(allLines, lc.GetText())
+	lineInfoJSON, err := c.getProperty(sessionID, "number_of_lines")
+	if err != nil {
+		return content, nil
 	}
-	if len(allLines) > lines {
-		allLines = allLines[len(allLines)-lines:]
+	lineRange, err := lineRangeForVisibleScreen(lineInfoJSON)
+	if err != nil {
+		return content, nil
 	}
-	return strings.Join(allLines, "\n"), nil
+	visibleContent, err := c.getBuffer(sessionID, lineRange, lines)
+	if err != nil {
+		return content, nil
+	}
+	if !isSemanticallyBlank(visibleContent) {
+		return visibleContent, nil
+	}
+	return visibleContent, nil
 }
 
 // GetVar reads a variable from a session.

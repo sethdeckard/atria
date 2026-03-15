@@ -253,6 +253,95 @@ func TestExtractFocusedWindowID(t *testing.T) {
 	}
 }
 
+func TestLineRangeForVisibleScreen(t *testing.T) {
+	tests := []struct {
+		name      string
+		jsonValue string
+		wantStart int64
+		wantEnd   int64
+	}{
+		{
+			name:      "uses first visible when present",
+			jsonValue: `{"overflow":12,"history":40,"grid":25,"first_visible":50}`,
+			wantStart: 50,
+			wantEnd:   75,
+		},
+		{
+			name:      "falls back to bottom of history",
+			jsonValue: `{"overflow":12,"history":40,"grid":25}`,
+			wantStart: 52,
+			wantEnd:   77,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := lineRangeForVisibleScreen(tt.jsonValue)
+			if err != nil {
+				t.Fatalf("lineRangeForVisibleScreen() error = %v", err)
+			}
+			if got.GetWindowedCoordRange().GetCoordRange().GetStart().GetY() != tt.wantStart {
+				t.Errorf("start y = %d, want %d",
+					got.GetWindowedCoordRange().GetCoordRange().GetStart().GetY(), tt.wantStart)
+			}
+			if got.GetWindowedCoordRange().GetCoordRange().GetEnd().GetY() != tt.wantEnd {
+				t.Errorf("end y = %d, want %d",
+					got.GetWindowedCoordRange().GetCoordRange().GetEnd().GetY(), tt.wantEnd)
+			}
+		})
+	}
+}
+
+func TestLineRangeForVisibleScreenErrors(t *testing.T) {
+	tests := []string{
+		`not json`,
+		`{"overflow":1,"history":2,"grid":0}`,
+	}
+	for _, input := range tests {
+		t.Run(input, func(t *testing.T) {
+			if _, err := lineRangeForVisibleScreen(input); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestJoinBufferLines(t *testing.T) {
+	got := joinBufferLines([]*pb.LineContents{
+		{Text: proto.String("one")},
+		{Text: proto.String("two")},
+		{Text: proto.String("three")},
+	}, 2)
+	if got != "two\nthree" {
+		t.Errorf("joinBufferLines() = %q, want %q", got, "two\nthree")
+	}
+}
+
+func TestJoinBufferLinesAnchorsToLastNonblank(t *testing.T) {
+	var lines []*pb.LineContents
+	for _, text := range []string{"header", "body", "tail"} {
+		lines = append(lines, &pb.LineContents{Text: proto.String(text)})
+	}
+	for i := 0; i < 5; i++ {
+		lines = append(lines, &pb.LineContents{Text: proto.String("")})
+	}
+
+	got := joinBufferLines(lines, 4)
+	want := "header\nbody\ntail"
+	if got != want {
+		t.Errorf("joinBufferLines() = %q, want %q", got, want)
+	}
+}
+
+func TestIsSemanticallyBlankIgnoresNulls(t *testing.T) {
+	if !isSemanticallyBlank("\x00 \x00\t") {
+		t.Fatal("expected NUL-padded whitespace to be blank")
+	}
+	if isSemanticallyBlank("Claude\x00Code") {
+		t.Fatal("expected visible text with NUL separators to be nonblank")
+	}
+}
+
 func TestUnquoteJSON(t *testing.T) {
 	tests := []struct {
 		input, want string

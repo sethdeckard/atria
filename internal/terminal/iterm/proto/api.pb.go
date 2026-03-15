@@ -266,6 +266,65 @@ func (GetBufferResponse_Status) EnumDescriptor() ([]byte, []int) {
 	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{15, 0}
 }
 
+type GetPropertyResponse_Status int32
+
+const (
+	GetPropertyResponse_OK                GetPropertyResponse_Status = 0
+	GetPropertyResponse_UNRECOGNIZED_NAME GetPropertyResponse_Status = 1
+	GetPropertyResponse_INVALID_TARGET    GetPropertyResponse_Status = 2
+)
+
+// Enum value maps for GetPropertyResponse_Status.
+var (
+	GetPropertyResponse_Status_name = map[int32]string{
+		0: "OK",
+		1: "UNRECOGNIZED_NAME",
+		2: "INVALID_TARGET",
+	}
+	GetPropertyResponse_Status_value = map[string]int32{
+		"OK":                0,
+		"UNRECOGNIZED_NAME": 1,
+		"INVALID_TARGET":    2,
+	}
+)
+
+func (x GetPropertyResponse_Status) Enum() *GetPropertyResponse_Status {
+	p := new(GetPropertyResponse_Status)
+	*p = x
+	return p
+}
+
+func (x GetPropertyResponse_Status) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (GetPropertyResponse_Status) Descriptor() protoreflect.EnumDescriptor {
+	return file_internal_terminal_iterm_proto_api_proto_enumTypes[4].Descriptor()
+}
+
+func (GetPropertyResponse_Status) Type() protoreflect.EnumType {
+	return &file_internal_terminal_iterm_proto_api_proto_enumTypes[4]
+}
+
+func (x GetPropertyResponse_Status) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *GetPropertyResponse_Status) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = GetPropertyResponse_Status(num)
+	return nil
+}
+
+// Deprecated: Use GetPropertyResponse_Status.Descriptor instead.
+func (GetPropertyResponse_Status) EnumDescriptor() ([]byte, []int) {
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{22, 0}
+}
+
 type VariableResponse_Status int32
 
 const (
@@ -311,11 +370,11 @@ func (x VariableResponse_Status) String() string {
 }
 
 func (VariableResponse_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_terminal_iterm_proto_api_proto_enumTypes[4].Descriptor()
+	return file_internal_terminal_iterm_proto_api_proto_enumTypes[5].Descriptor()
 }
 
 func (VariableResponse_Status) Type() protoreflect.EnumType {
-	return &file_internal_terminal_iterm_proto_api_proto_enumTypes[4]
+	return &file_internal_terminal_iterm_proto_api_proto_enumTypes[5]
 }
 
 func (x VariableResponse_Status) Number() protoreflect.EnumNumber {
@@ -334,7 +393,7 @@ func (x *VariableResponse_Status) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use VariableResponse_Status.Descriptor instead.
 func (VariableResponse_Status) EnumDescriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{18, 0}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{24, 0}
 }
 
 type FocusChangedNotification_Window_WindowStatus int32
@@ -370,11 +429,11 @@ func (x FocusChangedNotification_Window_WindowStatus) String() string {
 }
 
 func (FocusChangedNotification_Window_WindowStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_terminal_iterm_proto_api_proto_enumTypes[5].Descriptor()
+	return file_internal_terminal_iterm_proto_api_proto_enumTypes[6].Descriptor()
 }
 
 func (FocusChangedNotification_Window_WindowStatus) Type() protoreflect.EnumType {
-	return &file_internal_terminal_iterm_proto_api_proto_enumTypes[5]
+	return &file_internal_terminal_iterm_proto_api_proto_enumTypes[6]
 }
 
 func (x FocusChangedNotification_Window_WindowStatus) Number() protoreflect.EnumNumber {
@@ -393,7 +452,7 @@ func (x *FocusChangedNotification_Window_WindowStatus) UnmarshalJSON(b []byte) e
 
 // Deprecated: Use FocusChangedNotification_Window_WindowStatus.Descriptor instead.
 func (FocusChangedNotification_Window_WindowStatus) EnumDescriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{21, 0, 0}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{27, 0, 0}
 }
 
 type ClientOriginatedMessage struct {
@@ -402,6 +461,7 @@ type ClientOriginatedMessage struct {
 	// Types that are valid to be assigned to Submessage:
 	//
 	//	*ClientOriginatedMessage_GetBufferRequest
+	//	*ClientOriginatedMessage_GetPropertyRequest
 	//	*ClientOriginatedMessage_ListSessionsRequest
 	//	*ClientOriginatedMessage_SendTextRequest
 	//	*ClientOriginatedMessage_CreateTabRequest
@@ -461,6 +521,15 @@ func (x *ClientOriginatedMessage) GetGetBufferRequest() *GetBufferRequest {
 	if x != nil {
 		if x, ok := x.Submessage.(*ClientOriginatedMessage_GetBufferRequest); ok {
 			return x.GetBufferRequest
+		}
+	}
+	return nil
+}
+
+func (x *ClientOriginatedMessage) GetGetPropertyRequest() *GetPropertyRequest {
+	if x != nil {
+		if x, ok := x.Submessage.(*ClientOriginatedMessage_GetPropertyRequest); ok {
+			return x.GetPropertyRequest
 		}
 	}
 	return nil
@@ -528,6 +597,10 @@ type ClientOriginatedMessage_GetBufferRequest struct {
 	GetBufferRequest *GetBufferRequest `protobuf:"bytes,100,opt,name=get_buffer_request,json=getBufferRequest,oneof"`
 }
 
+type ClientOriginatedMessage_GetPropertyRequest struct {
+	GetPropertyRequest *GetPropertyRequest `protobuf:"bytes,112,opt,name=get_property_request,json=getPropertyRequest,oneof"`
+}
+
 type ClientOriginatedMessage_ListSessionsRequest struct {
 	ListSessionsRequest *ListSessionsRequest `protobuf:"bytes,106,opt,name=list_sessions_request,json=listSessionsRequest,oneof"`
 }
@@ -554,6 +627,8 @@ type ClientOriginatedMessage_FocusRequest struct {
 
 func (*ClientOriginatedMessage_GetBufferRequest) isClientOriginatedMessage_Submessage() {}
 
+func (*ClientOriginatedMessage_GetPropertyRequest) isClientOriginatedMessage_Submessage() {}
+
 func (*ClientOriginatedMessage_ListSessionsRequest) isClientOriginatedMessage_Submessage() {}
 
 func (*ClientOriginatedMessage_SendTextRequest) isClientOriginatedMessage_Submessage() {}
@@ -573,6 +648,7 @@ type ServerOriginatedMessage struct {
 	//
 	//	*ServerOriginatedMessage_Error
 	//	*ServerOriginatedMessage_GetBufferResponse
+	//	*ServerOriginatedMessage_GetPropertyResponse
 	//	*ServerOriginatedMessage_ListSessionsResponse
 	//	*ServerOriginatedMessage_SendTextResponse
 	//	*ServerOriginatedMessage_CreateTabResponse
@@ -642,6 +718,15 @@ func (x *ServerOriginatedMessage) GetGetBufferResponse() *GetBufferResponse {
 	if x != nil {
 		if x, ok := x.Submessage.(*ServerOriginatedMessage_GetBufferResponse); ok {
 			return x.GetBufferResponse
+		}
+	}
+	return nil
+}
+
+func (x *ServerOriginatedMessage) GetGetPropertyResponse() *GetPropertyResponse {
+	if x != nil {
+		if x, ok := x.Submessage.(*ServerOriginatedMessage_GetPropertyResponse); ok {
+			return x.GetPropertyResponse
 		}
 	}
 	return nil
@@ -722,6 +807,10 @@ type ServerOriginatedMessage_GetBufferResponse struct {
 	GetBufferResponse *GetBufferResponse `protobuf:"bytes,100,opt,name=get_buffer_response,json=getBufferResponse,oneof"`
 }
 
+type ServerOriginatedMessage_GetPropertyResponse struct {
+	GetPropertyResponse *GetPropertyResponse `protobuf:"bytes,112,opt,name=get_property_response,json=getPropertyResponse,oneof"`
+}
+
 type ServerOriginatedMessage_ListSessionsResponse struct {
 	ListSessionsResponse *ListSessionsResponse `protobuf:"bytes,106,opt,name=list_sessions_response,json=listSessionsResponse,oneof"`
 }
@@ -753,6 +842,8 @@ type ServerOriginatedMessage_Notification struct {
 func (*ServerOriginatedMessage_Error) isServerOriginatedMessage_Submessage() {}
 
 func (*ServerOriginatedMessage_GetBufferResponse) isServerOriginatedMessage_Submessage() {}
+
+func (*ServerOriginatedMessage_GetPropertyResponse) isServerOriginatedMessage_Submessage() {}
 
 func (*ServerOriginatedMessage_ListSessionsResponse) isServerOriginatedMessage_Submessage() {}
 
@@ -1392,6 +1483,7 @@ type GetBufferRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Session       *string                `protobuf:"bytes,1,opt,name=session" json:"session,omitempty"`
 	LineRange     *LineRange             `protobuf:"bytes,2,opt,name=line_range,json=lineRange" json:"line_range,omitempty"`
+	IncludeStyles *bool                  `protobuf:"varint,3,opt,name=include_styles,json=includeStyles" json:"include_styles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1440,10 +1532,18 @@ func (x *GetBufferRequest) GetLineRange() *LineRange {
 	return nil
 }
 
+func (x *GetBufferRequest) GetIncludeStyles() bool {
+	if x != nil && x.IncludeStyles != nil {
+		return *x.IncludeStyles
+	}
+	return false
+}
+
 type LineRange struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	ScreenContentsOnly *bool                  `protobuf:"varint,1,opt,name=screen_contents_only,json=screenContentsOnly" json:"screen_contents_only,omitempty"`
 	TrailingLines      *int32                 `protobuf:"varint,2,opt,name=trailing_lines,json=trailingLines" json:"trailing_lines,omitempty"`
+	WindowedCoordRange *WindowedCoordRange    `protobuf:"bytes,3,opt,name=windowed_coord_range,json=windowedCoordRange" json:"windowed_coord_range,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1492,12 +1592,25 @@ func (x *LineRange) GetTrailingLines() int32 {
 	return 0
 }
 
+func (x *LineRange) GetWindowedCoordRange() *WindowedCoordRange {
+	if x != nil {
+		return x.WindowedCoordRange
+	}
+	return nil
+}
+
 type GetBufferResponse struct {
-	state         protoimpl.MessageState    `protogen:"open.v1"`
-	Status        *GetBufferResponse_Status `protobuf:"varint,1,opt,name=status,enum=iterm2.GetBufferResponse_Status,def=0" json:"status,omitempty"`
-	Contents      []*LineContents           `protobuf:"bytes,3,rep,name=contents" json:"contents,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState    `protogen:"open.v1"`
+	Status *GetBufferResponse_Status `protobuf:"varint,1,opt,name=status,enum=iterm2.GetBufferResponse_Status,def=0" json:"status,omitempty"`
+	// Deprecated: Marked as deprecated in internal/terminal/iterm/proto/api.proto.
+	Range    *Range          `protobuf:"bytes,2,opt,name=range" json:"range,omitempty"`
+	Contents []*LineContents `protobuf:"bytes,3,rep,name=contents" json:"contents,omitempty"`
+	Cursor   *Coord          `protobuf:"bytes,4,opt,name=cursor" json:"cursor,omitempty"`
+	// Deprecated: Marked as deprecated in internal/terminal/iterm/proto/api.proto.
+	NumLinesAboveScreen *int64              `protobuf:"varint,5,opt,name=num_lines_above_screen,json=numLinesAboveScreen" json:"num_lines_above_screen,omitempty"`
+	WindowedCoordRange  *WindowedCoordRange `protobuf:"bytes,6,opt,name=windowed_coord_range,json=windowedCoordRange" json:"windowed_coord_range,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 // Default values for GetBufferResponse fields.
@@ -1542,9 +1655,247 @@ func (x *GetBufferResponse) GetStatus() GetBufferResponse_Status {
 	return Default_GetBufferResponse_Status
 }
 
+// Deprecated: Marked as deprecated in internal/terminal/iterm/proto/api.proto.
+func (x *GetBufferResponse) GetRange() *Range {
+	if x != nil {
+		return x.Range
+	}
+	return nil
+}
+
 func (x *GetBufferResponse) GetContents() []*LineContents {
 	if x != nil {
 		return x.Contents
+	}
+	return nil
+}
+
+func (x *GetBufferResponse) GetCursor() *Coord {
+	if x != nil {
+		return x.Cursor
+	}
+	return nil
+}
+
+// Deprecated: Marked as deprecated in internal/terminal/iterm/proto/api.proto.
+func (x *GetBufferResponse) GetNumLinesAboveScreen() int64 {
+	if x != nil && x.NumLinesAboveScreen != nil {
+		return *x.NumLinesAboveScreen
+	}
+	return 0
+}
+
+func (x *GetBufferResponse) GetWindowedCoordRange() *WindowedCoordRange {
+	if x != nil {
+		return x.WindowedCoordRange
+	}
+	return nil
+}
+
+type Range struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Location      *int64                 `protobuf:"varint,1,opt,name=location" json:"location,omitempty"`
+	Length        *int64                 `protobuf:"varint,2,opt,name=length" json:"length,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Range) Reset() {
+	*x = Range{}
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Range) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Range) ProtoMessage() {}
+
+func (x *Range) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Range.ProtoReflect.Descriptor instead.
+func (*Range) Descriptor() ([]byte, []int) {
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *Range) GetLocation() int64 {
+	if x != nil && x.Location != nil {
+		return *x.Location
+	}
+	return 0
+}
+
+func (x *Range) GetLength() int64 {
+	if x != nil && x.Length != nil {
+		return *x.Length
+	}
+	return 0
+}
+
+type Coord struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	X             *int32                 `protobuf:"varint,1,opt,name=x" json:"x,omitempty"`
+	Y             *int64                 `protobuf:"varint,2,opt,name=y" json:"y,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Coord) Reset() {
+	*x = Coord{}
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Coord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Coord) ProtoMessage() {}
+
+func (x *Coord) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Coord.ProtoReflect.Descriptor instead.
+func (*Coord) Descriptor() ([]byte, []int) {
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *Coord) GetX() int32 {
+	if x != nil && x.X != nil {
+		return *x.X
+	}
+	return 0
+}
+
+func (x *Coord) GetY() int64 {
+	if x != nil && x.Y != nil {
+		return *x.Y
+	}
+	return 0
+}
+
+type CoordRange struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Start         *Coord                 `protobuf:"bytes,1,opt,name=start" json:"start,omitempty"`
+	End           *Coord                 `protobuf:"bytes,2,opt,name=end" json:"end,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CoordRange) Reset() {
+	*x = CoordRange{}
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CoordRange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CoordRange) ProtoMessage() {}
+
+func (x *CoordRange) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CoordRange.ProtoReflect.Descriptor instead.
+func (*CoordRange) Descriptor() ([]byte, []int) {
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CoordRange) GetStart() *Coord {
+	if x != nil {
+		return x.Start
+	}
+	return nil
+}
+
+func (x *CoordRange) GetEnd() *Coord {
+	if x != nil {
+		return x.End
+	}
+	return nil
+}
+
+type WindowedCoordRange struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CoordRange    *CoordRange            `protobuf:"bytes,1,opt,name=coord_range,json=coordRange" json:"coord_range,omitempty"`
+	Columns       *Range                 `protobuf:"bytes,2,opt,name=columns" json:"columns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WindowedCoordRange) Reset() {
+	*x = WindowedCoordRange{}
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WindowedCoordRange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WindowedCoordRange) ProtoMessage() {}
+
+func (x *WindowedCoordRange) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WindowedCoordRange.ProtoReflect.Descriptor instead.
+func (*WindowedCoordRange) Descriptor() ([]byte, []int) {
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *WindowedCoordRange) GetCoordRange() *CoordRange {
+	if x != nil {
+		return x.CoordRange
+	}
+	return nil
+}
+
+func (x *WindowedCoordRange) GetColumns() *Range {
+	if x != nil {
+		return x.Columns
 	}
 	return nil
 }
@@ -1558,7 +1909,7 @@ type LineContents struct {
 
 func (x *LineContents) Reset() {
 	*x = LineContents{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[16]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1570,7 +1921,7 @@ func (x *LineContents) String() string {
 func (*LineContents) ProtoMessage() {}
 
 func (x *LineContents) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[16]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1583,12 +1934,154 @@ func (x *LineContents) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LineContents.ProtoReflect.Descriptor instead.
 func (*LineContents) Descriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{16}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *LineContents) GetText() string {
 	if x != nil && x.Text != nil {
 		return *x.Text
+	}
+	return ""
+}
+
+type GetPropertyRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Identifier:
+	//
+	//	*GetPropertyRequest_WindowId
+	//	*GetPropertyRequest_SessionId
+	Identifier    isGetPropertyRequest_Identifier `protobuf_oneof:"identifier"`
+	Name          *string                         `protobuf:"bytes,2,opt,name=name" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPropertyRequest) Reset() {
+	*x = GetPropertyRequest{}
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPropertyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPropertyRequest) ProtoMessage() {}
+
+func (x *GetPropertyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPropertyRequest.ProtoReflect.Descriptor instead.
+func (*GetPropertyRequest) Descriptor() ([]byte, []int) {
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *GetPropertyRequest) GetIdentifier() isGetPropertyRequest_Identifier {
+	if x != nil {
+		return x.Identifier
+	}
+	return nil
+}
+
+func (x *GetPropertyRequest) GetWindowId() string {
+	if x != nil {
+		if x, ok := x.Identifier.(*GetPropertyRequest_WindowId); ok {
+			return x.WindowId
+		}
+	}
+	return ""
+}
+
+func (x *GetPropertyRequest) GetSessionId() string {
+	if x != nil {
+		if x, ok := x.Identifier.(*GetPropertyRequest_SessionId); ok {
+			return x.SessionId
+		}
+	}
+	return ""
+}
+
+func (x *GetPropertyRequest) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type isGetPropertyRequest_Identifier interface {
+	isGetPropertyRequest_Identifier()
+}
+
+type GetPropertyRequest_WindowId struct {
+	WindowId string `protobuf:"bytes,1,opt,name=window_id,json=windowId,oneof"`
+}
+
+type GetPropertyRequest_SessionId struct {
+	SessionId string `protobuf:"bytes,3,opt,name=session_id,json=sessionId,oneof"`
+}
+
+func (*GetPropertyRequest_WindowId) isGetPropertyRequest_Identifier() {}
+
+func (*GetPropertyRequest_SessionId) isGetPropertyRequest_Identifier() {}
+
+type GetPropertyResponse struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Status        *GetPropertyResponse_Status `protobuf:"varint,1,opt,name=status,enum=iterm2.GetPropertyResponse_Status" json:"status,omitempty"`
+	JsonValue     *string                     `protobuf:"bytes,2,opt,name=json_value,json=jsonValue" json:"json_value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPropertyResponse) Reset() {
+	*x = GetPropertyResponse{}
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPropertyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPropertyResponse) ProtoMessage() {}
+
+func (x *GetPropertyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPropertyResponse.ProtoReflect.Descriptor instead.
+func (*GetPropertyResponse) Descriptor() ([]byte, []int) {
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *GetPropertyResponse) GetStatus() GetPropertyResponse_Status {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return GetPropertyResponse_OK
+}
+
+func (x *GetPropertyResponse) GetJsonValue() string {
+	if x != nil && x.JsonValue != nil {
+		return *x.JsonValue
 	}
 	return ""
 }
@@ -1609,7 +2102,7 @@ type VariableRequest struct {
 
 func (x *VariableRequest) Reset() {
 	*x = VariableRequest{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[17]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1621,7 +2114,7 @@ func (x *VariableRequest) String() string {
 func (*VariableRequest) ProtoMessage() {}
 
 func (x *VariableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[17]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1634,7 +2127,7 @@ func (x *VariableRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VariableRequest.ProtoReflect.Descriptor instead.
 func (*VariableRequest) Descriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{17}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *VariableRequest) GetScope() isVariableRequest_Scope {
@@ -1725,7 +2218,7 @@ type VariableResponse struct {
 
 func (x *VariableResponse) Reset() {
 	*x = VariableResponse{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[18]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1737,7 +2230,7 @@ func (x *VariableResponse) String() string {
 func (*VariableResponse) ProtoMessage() {}
 
 func (x *VariableResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[18]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1750,7 +2243,7 @@ func (x *VariableResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VariableResponse.ProtoReflect.Descriptor instead.
 func (*VariableResponse) Descriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{18}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *VariableResponse) GetStatus() VariableResponse_Status {
@@ -1775,7 +2268,7 @@ type FocusRequest struct {
 
 func (x *FocusRequest) Reset() {
 	*x = FocusRequest{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[19]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1787,7 +2280,7 @@ func (x *FocusRequest) String() string {
 func (*FocusRequest) ProtoMessage() {}
 
 func (x *FocusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[19]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1800,7 +2293,7 @@ func (x *FocusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusRequest.ProtoReflect.Descriptor instead.
 func (*FocusRequest) Descriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{19}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{25}
 }
 
 type FocusResponse struct {
@@ -1812,7 +2305,7 @@ type FocusResponse struct {
 
 func (x *FocusResponse) Reset() {
 	*x = FocusResponse{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[20]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1824,7 +2317,7 @@ func (x *FocusResponse) String() string {
 func (*FocusResponse) ProtoMessage() {}
 
 func (x *FocusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[20]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1837,7 +2330,7 @@ func (x *FocusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusResponse.ProtoReflect.Descriptor instead.
 func (*FocusResponse) Descriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{20}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *FocusResponse) GetNotifications() []*FocusChangedNotification {
@@ -1862,7 +2355,7 @@ type FocusChangedNotification struct {
 
 func (x *FocusChangedNotification) Reset() {
 	*x = FocusChangedNotification{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[21]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1874,7 +2367,7 @@ func (x *FocusChangedNotification) String() string {
 func (*FocusChangedNotification) ProtoMessage() {}
 
 func (x *FocusChangedNotification) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[21]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1887,7 +2380,7 @@ func (x *FocusChangedNotification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusChangedNotification.ProtoReflect.Descriptor instead.
 func (*FocusChangedNotification) Descriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{21}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *FocusChangedNotification) GetEvent() isFocusChangedNotification_Event {
@@ -1971,7 +2464,7 @@ type ListSessionsResponse_Window struct {
 
 func (x *ListSessionsResponse_Window) Reset() {
 	*x = ListSessionsResponse_Window{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[22]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1983,7 +2476,7 @@ func (x *ListSessionsResponse_Window) String() string {
 func (*ListSessionsResponse_Window) ProtoMessage() {}
 
 func (x *ListSessionsResponse_Window) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[22]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2023,7 +2516,7 @@ type ListSessionsResponse_Tab struct {
 
 func (x *ListSessionsResponse_Tab) Reset() {
 	*x = ListSessionsResponse_Tab{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[23]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2035,7 +2528,7 @@ func (x *ListSessionsResponse_Tab) String() string {
 func (*ListSessionsResponse_Tab) ProtoMessage() {}
 
 func (x *ListSessionsResponse_Tab) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[23]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2078,7 +2571,7 @@ type SplitTreeNode_SplitTreeLink struct {
 
 func (x *SplitTreeNode_SplitTreeLink) Reset() {
 	*x = SplitTreeNode_SplitTreeLink{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[24]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2090,7 +2583,7 @@ func (x *SplitTreeNode_SplitTreeLink) String() string {
 func (*SplitTreeNode_SplitTreeLink) ProtoMessage() {}
 
 func (x *SplitTreeNode_SplitTreeLink) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[24]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2157,7 +2650,7 @@ type FocusChangedNotification_Window struct {
 
 func (x *FocusChangedNotification_Window) Reset() {
 	*x = FocusChangedNotification_Window{}
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[25]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2169,7 +2662,7 @@ func (x *FocusChangedNotification_Window) String() string {
 func (*FocusChangedNotification_Window) ProtoMessage() {}
 
 func (x *FocusChangedNotification_Window) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[25]
+	mi := &file_internal_terminal_iterm_proto_api_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2182,7 +2675,7 @@ func (x *FocusChangedNotification_Window) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusChangedNotification_Window.ProtoReflect.Descriptor instead.
 func (*FocusChangedNotification_Window) Descriptor() ([]byte, []int) {
-	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{21, 0}
+	return file_internal_terminal_iterm_proto_api_proto_rawDescGZIP(), []int{27, 0}
 }
 
 func (x *FocusChangedNotification_Window) GetWindowStatus() FocusChangedNotification_Window_WindowStatus {
@@ -2203,10 +2696,11 @@ var File_internal_terminal_iterm_proto_api_proto protoreflect.FileDescriptor
 
 const file_internal_terminal_iterm_proto_api_proto_rawDesc = "" +
 	"\n" +
-	"'internal/terminal/iterm/proto/api.proto\x12\x06iterm2\"\xae\x04\n" +
+	"'internal/terminal/iterm/proto/api.proto\x12\x06iterm2\"\xfe\x04\n" +
 	"\x17ClientOriginatedMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12H\n" +
-	"\x12get_buffer_request\x18d \x01(\v2\x18.iterm2.GetBufferRequestH\x00R\x10getBufferRequest\x12Q\n" +
+	"\x12get_buffer_request\x18d \x01(\v2\x18.iterm2.GetBufferRequestH\x00R\x10getBufferRequest\x12N\n" +
+	"\x14get_property_request\x18p \x01(\v2\x1a.iterm2.GetPropertyRequestH\x00R\x12getPropertyRequest\x12Q\n" +
 	"\x15list_sessions_request\x18j \x01(\v2\x1b.iterm2.ListSessionsRequestH\x00R\x13listSessionsRequest\x12E\n" +
 	"\x11send_text_request\x18k \x01(\v2\x17.iterm2.SendTextRequestH\x00R\x0fsendTextRequest\x12H\n" +
 	"\x12create_tab_request\x18l \x01(\v2\x18.iterm2.CreateTabRequestH\x00R\x10createTabRequest\x12D\n" +
@@ -2214,11 +2708,12 @@ const file_internal_terminal_iterm_proto_api_proto_rawDesc = "" +
 	"\x10variable_request\x18s \x01(\v2\x17.iterm2.VariableRequestH\x00R\x0fvariableRequest\x12;\n" +
 	"\rfocus_request\x18u \x01(\v2\x14.iterm2.FocusRequestH\x00R\ffocusRequestB\f\n" +
 	"\n" +
-	"submessage\"\x98\x05\n" +
+	"submessage\"\xeb\x05\n" +
 	"\x17ServerOriginatedMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x16\n" +
 	"\x05error\x18\x02 \x01(\tH\x00R\x05error\x12K\n" +
-	"\x13get_buffer_response\x18d \x01(\v2\x19.iterm2.GetBufferResponseH\x00R\x11getBufferResponse\x12T\n" +
+	"\x13get_buffer_response\x18d \x01(\v2\x19.iterm2.GetBufferResponseH\x00R\x11getBufferResponse\x12Q\n" +
+	"\x15get_property_response\x18p \x01(\v2\x1b.iterm2.GetPropertyResponseH\x00R\x13getPropertyResponse\x12T\n" +
 	"\x16list_sessions_response\x18j \x01(\v2\x1c.iterm2.ListSessionsResponseH\x00R\x14listSessionsResponse\x12H\n" +
 	"\x12send_text_response\x18k \x01(\v2\x18.iterm2.SendTextResponseH\x00R\x10sendTextResponse\x12K\n" +
 	"\x13create_tab_response\x18l \x01(\v2\x19.iterm2.CreateTabResponseH\x00R\x11createTabResponse\x12G\n" +
@@ -2289,24 +2784,59 @@ const file_internal_terminal_iterm_proto_api_proto_rawDesc = "" +
 	"\x06Status\x12\x06\n" +
 	"\x02OK\x10\x00\x12\x12\n" +
 	"\x0eBAD_IDENTIFIER\x10\x01\x12\x12\n" +
-	"\x0eINVALID_OPTION\x10\x02\"^\n" +
+	"\x0eINVALID_OPTION\x10\x02\"\x85\x01\n" +
 	"\x10GetBufferRequest\x12\x18\n" +
 	"\asession\x18\x01 \x01(\tR\asession\x120\n" +
 	"\n" +
-	"line_range\x18\x02 \x01(\v2\x11.iterm2.LineRangeR\tlineRange\"d\n" +
+	"line_range\x18\x02 \x01(\v2\x11.iterm2.LineRangeR\tlineRange\x12%\n" +
+	"\x0einclude_styles\x18\x03 \x01(\bR\rincludeStyles\"\xb2\x01\n" +
 	"\tLineRange\x120\n" +
 	"\x14screen_contents_only\x18\x01 \x01(\bR\x12screenContentsOnly\x12%\n" +
-	"\x0etrailing_lines\x18\x02 \x01(\x05R\rtrailingLines\"\xdb\x01\n" +
+	"\x0etrailing_lines\x18\x02 \x01(\x05R\rtrailingLines\x12L\n" +
+	"\x14windowed_coord_range\x18\x03 \x01(\v2\x1a.iterm2.WindowedCoordRangeR\x12windowedCoordRange\"\xb2\x03\n" +
 	"\x11GetBufferResponse\x12<\n" +
-	"\x06status\x18\x01 \x01(\x0e2 .iterm2.GetBufferResponse.Status:\x02OKR\x06status\x120\n" +
-	"\bcontents\x18\x03 \x03(\v2\x14.iterm2.LineContentsR\bcontents\"V\n" +
+	"\x06status\x18\x01 \x01(\x0e2 .iterm2.GetBufferResponse.Status:\x02OKR\x06status\x12'\n" +
+	"\x05range\x18\x02 \x01(\v2\r.iterm2.RangeB\x02\x18\x01R\x05range\x120\n" +
+	"\bcontents\x18\x03 \x03(\v2\x14.iterm2.LineContentsR\bcontents\x12%\n" +
+	"\x06cursor\x18\x04 \x01(\v2\r.iterm2.CoordR\x06cursor\x127\n" +
+	"\x16num_lines_above_screen\x18\x05 \x01(\x03B\x02\x18\x01R\x13numLinesAboveScreen\x12L\n" +
+	"\x14windowed_coord_range\x18\x06 \x01(\v2\x1a.iterm2.WindowedCoordRangeR\x12windowedCoordRange\"V\n" +
 	"\x06Status\x12\x06\n" +
 	"\x02OK\x10\x00\x12\x15\n" +
 	"\x11SESSION_NOT_FOUND\x10\x01\x12\x16\n" +
 	"\x12INVALID_LINE_RANGE\x10\x02\x12\x15\n" +
-	"\x11REQUEST_MALFORMED\x10\x03\"\"\n" +
+	"\x11REQUEST_MALFORMED\x10\x03\";\n" +
+	"\x05Range\x12\x1a\n" +
+	"\blocation\x18\x01 \x01(\x03R\blocation\x12\x16\n" +
+	"\x06length\x18\x02 \x01(\x03R\x06length\"#\n" +
+	"\x05Coord\x12\f\n" +
+	"\x01x\x18\x01 \x01(\x05R\x01x\x12\f\n" +
+	"\x01y\x18\x02 \x01(\x03R\x01y\"R\n" +
+	"\n" +
+	"CoordRange\x12#\n" +
+	"\x05start\x18\x01 \x01(\v2\r.iterm2.CoordR\x05start\x12\x1f\n" +
+	"\x03end\x18\x02 \x01(\v2\r.iterm2.CoordR\x03end\"r\n" +
+	"\x12WindowedCoordRange\x123\n" +
+	"\vcoord_range\x18\x01 \x01(\v2\x12.iterm2.CoordRangeR\n" +
+	"coordRange\x12'\n" +
+	"\acolumns\x18\x02 \x01(\v2\r.iterm2.RangeR\acolumns\"\"\n" +
 	"\fLineContents\x12\x12\n" +
-	"\x04text\x18\x01 \x01(\tR\x04text\"\x99\x01\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\"v\n" +
+	"\x12GetPropertyRequest\x12\x1d\n" +
+	"\twindow_id\x18\x01 \x01(\tH\x00R\bwindowId\x12\x1f\n" +
+	"\n" +
+	"session_id\x18\x03 \x01(\tH\x00R\tsessionId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04nameB\f\n" +
+	"\n" +
+	"identifier\"\xad\x01\n" +
+	"\x13GetPropertyResponse\x12:\n" +
+	"\x06status\x18\x01 \x01(\x0e2\".iterm2.GetPropertyResponse.StatusR\x06status\x12\x1d\n" +
+	"\n" +
+	"json_value\x18\x02 \x01(\tR\tjsonValue\";\n" +
+	"\x06Status\x12\x06\n" +
+	"\x02OK\x10\x00\x12\x15\n" +
+	"\x11UNRECOGNIZED_NAME\x10\x01\x12\x12\n" +
+	"\x0eINVALID_TARGET\x10\x02\"\x99\x01\n" +
 	"\x0fVariableRequest\x12\x1f\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tH\x00R\tsessionId\x12\x17\n" +
@@ -2355,79 +2885,97 @@ func file_internal_terminal_iterm_proto_api_proto_rawDescGZIP() []byte {
 	return file_internal_terminal_iterm_proto_api_proto_rawDescData
 }
 
-var file_internal_terminal_iterm_proto_api_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_internal_terminal_iterm_proto_api_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_internal_terminal_iterm_proto_api_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
+var file_internal_terminal_iterm_proto_api_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_internal_terminal_iterm_proto_api_proto_goTypes = []any{
 	(CreateTabResponse_Status)(0),                     // 0: iterm2.CreateTabResponse.Status
 	(SendTextResponse_Status)(0),                      // 1: iterm2.SendTextResponse.Status
 	(ActivateResponse_Status)(0),                      // 2: iterm2.ActivateResponse.Status
 	(GetBufferResponse_Status)(0),                     // 3: iterm2.GetBufferResponse.Status
-	(VariableResponse_Status)(0),                      // 4: iterm2.VariableResponse.Status
-	(FocusChangedNotification_Window_WindowStatus)(0), // 5: iterm2.FocusChangedNotification.Window.WindowStatus
-	(*ClientOriginatedMessage)(nil),                   // 6: iterm2.ClientOriginatedMessage
-	(*ServerOriginatedMessage)(nil),                   // 7: iterm2.ServerOriginatedMessage
-	(*Notification)(nil),                              // 8: iterm2.Notification
-	(*ListSessionsRequest)(nil),                       // 9: iterm2.ListSessionsRequest
-	(*ListSessionsResponse)(nil),                      // 10: iterm2.ListSessionsResponse
-	(*SplitTreeNode)(nil),                             // 11: iterm2.SplitTreeNode
-	(*SessionSummary)(nil),                            // 12: iterm2.SessionSummary
-	(*CreateTabRequest)(nil),                          // 13: iterm2.CreateTabRequest
-	(*CreateTabResponse)(nil),                         // 14: iterm2.CreateTabResponse
-	(*SendTextRequest)(nil),                           // 15: iterm2.SendTextRequest
-	(*SendTextResponse)(nil),                          // 16: iterm2.SendTextResponse
-	(*ActivateRequest)(nil),                           // 17: iterm2.ActivateRequest
-	(*ActivateResponse)(nil),                          // 18: iterm2.ActivateResponse
-	(*GetBufferRequest)(nil),                          // 19: iterm2.GetBufferRequest
-	(*LineRange)(nil),                                 // 20: iterm2.LineRange
-	(*GetBufferResponse)(nil),                         // 21: iterm2.GetBufferResponse
-	(*LineContents)(nil),                              // 22: iterm2.LineContents
-	(*VariableRequest)(nil),                           // 23: iterm2.VariableRequest
-	(*VariableResponse)(nil),                          // 24: iterm2.VariableResponse
-	(*FocusRequest)(nil),                              // 25: iterm2.FocusRequest
-	(*FocusResponse)(nil),                             // 26: iterm2.FocusResponse
-	(*FocusChangedNotification)(nil),                  // 27: iterm2.FocusChangedNotification
-	(*ListSessionsResponse_Window)(nil),               // 28: iterm2.ListSessionsResponse.Window
-	(*ListSessionsResponse_Tab)(nil),                  // 29: iterm2.ListSessionsResponse.Tab
-	(*SplitTreeNode_SplitTreeLink)(nil),               // 30: iterm2.SplitTreeNode.SplitTreeLink
-	(*FocusChangedNotification_Window)(nil),           // 31: iterm2.FocusChangedNotification.Window
+	(GetPropertyResponse_Status)(0),                   // 4: iterm2.GetPropertyResponse.Status
+	(VariableResponse_Status)(0),                      // 5: iterm2.VariableResponse.Status
+	(FocusChangedNotification_Window_WindowStatus)(0), // 6: iterm2.FocusChangedNotification.Window.WindowStatus
+	(*ClientOriginatedMessage)(nil),                   // 7: iterm2.ClientOriginatedMessage
+	(*ServerOriginatedMessage)(nil),                   // 8: iterm2.ServerOriginatedMessage
+	(*Notification)(nil),                              // 9: iterm2.Notification
+	(*ListSessionsRequest)(nil),                       // 10: iterm2.ListSessionsRequest
+	(*ListSessionsResponse)(nil),                      // 11: iterm2.ListSessionsResponse
+	(*SplitTreeNode)(nil),                             // 12: iterm2.SplitTreeNode
+	(*SessionSummary)(nil),                            // 13: iterm2.SessionSummary
+	(*CreateTabRequest)(nil),                          // 14: iterm2.CreateTabRequest
+	(*CreateTabResponse)(nil),                         // 15: iterm2.CreateTabResponse
+	(*SendTextRequest)(nil),                           // 16: iterm2.SendTextRequest
+	(*SendTextResponse)(nil),                          // 17: iterm2.SendTextResponse
+	(*ActivateRequest)(nil),                           // 18: iterm2.ActivateRequest
+	(*ActivateResponse)(nil),                          // 19: iterm2.ActivateResponse
+	(*GetBufferRequest)(nil),                          // 20: iterm2.GetBufferRequest
+	(*LineRange)(nil),                                 // 21: iterm2.LineRange
+	(*GetBufferResponse)(nil),                         // 22: iterm2.GetBufferResponse
+	(*Range)(nil),                                     // 23: iterm2.Range
+	(*Coord)(nil),                                     // 24: iterm2.Coord
+	(*CoordRange)(nil),                                // 25: iterm2.CoordRange
+	(*WindowedCoordRange)(nil),                        // 26: iterm2.WindowedCoordRange
+	(*LineContents)(nil),                              // 27: iterm2.LineContents
+	(*GetPropertyRequest)(nil),                        // 28: iterm2.GetPropertyRequest
+	(*GetPropertyResponse)(nil),                       // 29: iterm2.GetPropertyResponse
+	(*VariableRequest)(nil),                           // 30: iterm2.VariableRequest
+	(*VariableResponse)(nil),                          // 31: iterm2.VariableResponse
+	(*FocusRequest)(nil),                              // 32: iterm2.FocusRequest
+	(*FocusResponse)(nil),                             // 33: iterm2.FocusResponse
+	(*FocusChangedNotification)(nil),                  // 34: iterm2.FocusChangedNotification
+	(*ListSessionsResponse_Window)(nil),               // 35: iterm2.ListSessionsResponse.Window
+	(*ListSessionsResponse_Tab)(nil),                  // 36: iterm2.ListSessionsResponse.Tab
+	(*SplitTreeNode_SplitTreeLink)(nil),               // 37: iterm2.SplitTreeNode.SplitTreeLink
+	(*FocusChangedNotification_Window)(nil),           // 38: iterm2.FocusChangedNotification.Window
 }
 var file_internal_terminal_iterm_proto_api_proto_depIdxs = []int32{
-	19, // 0: iterm2.ClientOriginatedMessage.get_buffer_request:type_name -> iterm2.GetBufferRequest
-	9,  // 1: iterm2.ClientOriginatedMessage.list_sessions_request:type_name -> iterm2.ListSessionsRequest
-	15, // 2: iterm2.ClientOriginatedMessage.send_text_request:type_name -> iterm2.SendTextRequest
-	13, // 3: iterm2.ClientOriginatedMessage.create_tab_request:type_name -> iterm2.CreateTabRequest
-	17, // 4: iterm2.ClientOriginatedMessage.activate_request:type_name -> iterm2.ActivateRequest
-	23, // 5: iterm2.ClientOriginatedMessage.variable_request:type_name -> iterm2.VariableRequest
-	25, // 6: iterm2.ClientOriginatedMessage.focus_request:type_name -> iterm2.FocusRequest
-	21, // 7: iterm2.ServerOriginatedMessage.get_buffer_response:type_name -> iterm2.GetBufferResponse
-	10, // 8: iterm2.ServerOriginatedMessage.list_sessions_response:type_name -> iterm2.ListSessionsResponse
-	16, // 9: iterm2.ServerOriginatedMessage.send_text_response:type_name -> iterm2.SendTextResponse
-	14, // 10: iterm2.ServerOriginatedMessage.create_tab_response:type_name -> iterm2.CreateTabResponse
-	18, // 11: iterm2.ServerOriginatedMessage.activate_response:type_name -> iterm2.ActivateResponse
-	24, // 12: iterm2.ServerOriginatedMessage.variable_response:type_name -> iterm2.VariableResponse
-	26, // 13: iterm2.ServerOriginatedMessage.focus_response:type_name -> iterm2.FocusResponse
-	8,  // 14: iterm2.ServerOriginatedMessage.notification:type_name -> iterm2.Notification
-	28, // 15: iterm2.ListSessionsResponse.windows:type_name -> iterm2.ListSessionsResponse.Window
-	30, // 16: iterm2.SplitTreeNode.links:type_name -> iterm2.SplitTreeNode.SplitTreeLink
-	0,  // 17: iterm2.CreateTabResponse.status:type_name -> iterm2.CreateTabResponse.Status
-	1,  // 18: iterm2.SendTextResponse.status:type_name -> iterm2.SendTextResponse.Status
-	2,  // 19: iterm2.ActivateResponse.status:type_name -> iterm2.ActivateResponse.Status
-	20, // 20: iterm2.GetBufferRequest.line_range:type_name -> iterm2.LineRange
-	3,  // 21: iterm2.GetBufferResponse.status:type_name -> iterm2.GetBufferResponse.Status
-	22, // 22: iterm2.GetBufferResponse.contents:type_name -> iterm2.LineContents
-	4,  // 23: iterm2.VariableResponse.status:type_name -> iterm2.VariableResponse.Status
-	27, // 24: iterm2.FocusResponse.notifications:type_name -> iterm2.FocusChangedNotification
-	31, // 25: iterm2.FocusChangedNotification.window:type_name -> iterm2.FocusChangedNotification.Window
-	29, // 26: iterm2.ListSessionsResponse.Window.tabs:type_name -> iterm2.ListSessionsResponse.Tab
-	11, // 27: iterm2.ListSessionsResponse.Tab.root:type_name -> iterm2.SplitTreeNode
-	12, // 28: iterm2.SplitTreeNode.SplitTreeLink.session:type_name -> iterm2.SessionSummary
-	11, // 29: iterm2.SplitTreeNode.SplitTreeLink.node:type_name -> iterm2.SplitTreeNode
-	5,  // 30: iterm2.FocusChangedNotification.Window.window_status:type_name -> iterm2.FocusChangedNotification.Window.WindowStatus
-	31, // [31:31] is the sub-list for method output_type
-	31, // [31:31] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	20, // 0: iterm2.ClientOriginatedMessage.get_buffer_request:type_name -> iterm2.GetBufferRequest
+	28, // 1: iterm2.ClientOriginatedMessage.get_property_request:type_name -> iterm2.GetPropertyRequest
+	10, // 2: iterm2.ClientOriginatedMessage.list_sessions_request:type_name -> iterm2.ListSessionsRequest
+	16, // 3: iterm2.ClientOriginatedMessage.send_text_request:type_name -> iterm2.SendTextRequest
+	14, // 4: iterm2.ClientOriginatedMessage.create_tab_request:type_name -> iterm2.CreateTabRequest
+	18, // 5: iterm2.ClientOriginatedMessage.activate_request:type_name -> iterm2.ActivateRequest
+	30, // 6: iterm2.ClientOriginatedMessage.variable_request:type_name -> iterm2.VariableRequest
+	32, // 7: iterm2.ClientOriginatedMessage.focus_request:type_name -> iterm2.FocusRequest
+	22, // 8: iterm2.ServerOriginatedMessage.get_buffer_response:type_name -> iterm2.GetBufferResponse
+	29, // 9: iterm2.ServerOriginatedMessage.get_property_response:type_name -> iterm2.GetPropertyResponse
+	11, // 10: iterm2.ServerOriginatedMessage.list_sessions_response:type_name -> iterm2.ListSessionsResponse
+	17, // 11: iterm2.ServerOriginatedMessage.send_text_response:type_name -> iterm2.SendTextResponse
+	15, // 12: iterm2.ServerOriginatedMessage.create_tab_response:type_name -> iterm2.CreateTabResponse
+	19, // 13: iterm2.ServerOriginatedMessage.activate_response:type_name -> iterm2.ActivateResponse
+	31, // 14: iterm2.ServerOriginatedMessage.variable_response:type_name -> iterm2.VariableResponse
+	33, // 15: iterm2.ServerOriginatedMessage.focus_response:type_name -> iterm2.FocusResponse
+	9,  // 16: iterm2.ServerOriginatedMessage.notification:type_name -> iterm2.Notification
+	35, // 17: iterm2.ListSessionsResponse.windows:type_name -> iterm2.ListSessionsResponse.Window
+	37, // 18: iterm2.SplitTreeNode.links:type_name -> iterm2.SplitTreeNode.SplitTreeLink
+	0,  // 19: iterm2.CreateTabResponse.status:type_name -> iterm2.CreateTabResponse.Status
+	1,  // 20: iterm2.SendTextResponse.status:type_name -> iterm2.SendTextResponse.Status
+	2,  // 21: iterm2.ActivateResponse.status:type_name -> iterm2.ActivateResponse.Status
+	21, // 22: iterm2.GetBufferRequest.line_range:type_name -> iterm2.LineRange
+	26, // 23: iterm2.LineRange.windowed_coord_range:type_name -> iterm2.WindowedCoordRange
+	3,  // 24: iterm2.GetBufferResponse.status:type_name -> iterm2.GetBufferResponse.Status
+	23, // 25: iterm2.GetBufferResponse.range:type_name -> iterm2.Range
+	27, // 26: iterm2.GetBufferResponse.contents:type_name -> iterm2.LineContents
+	24, // 27: iterm2.GetBufferResponse.cursor:type_name -> iterm2.Coord
+	26, // 28: iterm2.GetBufferResponse.windowed_coord_range:type_name -> iterm2.WindowedCoordRange
+	24, // 29: iterm2.CoordRange.start:type_name -> iterm2.Coord
+	24, // 30: iterm2.CoordRange.end:type_name -> iterm2.Coord
+	25, // 31: iterm2.WindowedCoordRange.coord_range:type_name -> iterm2.CoordRange
+	23, // 32: iterm2.WindowedCoordRange.columns:type_name -> iterm2.Range
+	4,  // 33: iterm2.GetPropertyResponse.status:type_name -> iterm2.GetPropertyResponse.Status
+	5,  // 34: iterm2.VariableResponse.status:type_name -> iterm2.VariableResponse.Status
+	34, // 35: iterm2.FocusResponse.notifications:type_name -> iterm2.FocusChangedNotification
+	38, // 36: iterm2.FocusChangedNotification.window:type_name -> iterm2.FocusChangedNotification.Window
+	36, // 37: iterm2.ListSessionsResponse.Window.tabs:type_name -> iterm2.ListSessionsResponse.Tab
+	12, // 38: iterm2.ListSessionsResponse.Tab.root:type_name -> iterm2.SplitTreeNode
+	13, // 39: iterm2.SplitTreeNode.SplitTreeLink.session:type_name -> iterm2.SessionSummary
+	12, // 40: iterm2.SplitTreeNode.SplitTreeLink.node:type_name -> iterm2.SplitTreeNode
+	6,  // 41: iterm2.FocusChangedNotification.Window.window_status:type_name -> iterm2.FocusChangedNotification.Window.WindowStatus
+	42, // [42:42] is the sub-list for method output_type
+	42, // [42:42] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_internal_terminal_iterm_proto_api_proto_init() }
@@ -2437,6 +2985,7 @@ func file_internal_terminal_iterm_proto_api_proto_init() {
 	}
 	file_internal_terminal_iterm_proto_api_proto_msgTypes[0].OneofWrappers = []any{
 		(*ClientOriginatedMessage_GetBufferRequest)(nil),
+		(*ClientOriginatedMessage_GetPropertyRequest)(nil),
 		(*ClientOriginatedMessage_ListSessionsRequest)(nil),
 		(*ClientOriginatedMessage_SendTextRequest)(nil),
 		(*ClientOriginatedMessage_CreateTabRequest)(nil),
@@ -2447,6 +2996,7 @@ func file_internal_terminal_iterm_proto_api_proto_init() {
 	file_internal_terminal_iterm_proto_api_proto_msgTypes[1].OneofWrappers = []any{
 		(*ServerOriginatedMessage_Error)(nil),
 		(*ServerOriginatedMessage_GetBufferResponse)(nil),
+		(*ServerOriginatedMessage_GetPropertyResponse)(nil),
 		(*ServerOriginatedMessage_ListSessionsResponse)(nil),
 		(*ServerOriginatedMessage_SendTextResponse)(nil),
 		(*ServerOriginatedMessage_CreateTabResponse)(nil),
@@ -2460,19 +3010,23 @@ func file_internal_terminal_iterm_proto_api_proto_init() {
 		(*ActivateRequest_TabId)(nil),
 		(*ActivateRequest_SessionId)(nil),
 	}
-	file_internal_terminal_iterm_proto_api_proto_msgTypes[17].OneofWrappers = []any{
+	file_internal_terminal_iterm_proto_api_proto_msgTypes[21].OneofWrappers = []any{
+		(*GetPropertyRequest_WindowId)(nil),
+		(*GetPropertyRequest_SessionId)(nil),
+	}
+	file_internal_terminal_iterm_proto_api_proto_msgTypes[23].OneofWrappers = []any{
 		(*VariableRequest_SessionId)(nil),
 		(*VariableRequest_TabId)(nil),
 		(*VariableRequest_App)(nil),
 		(*VariableRequest_WindowId)(nil),
 	}
-	file_internal_terminal_iterm_proto_api_proto_msgTypes[21].OneofWrappers = []any{
+	file_internal_terminal_iterm_proto_api_proto_msgTypes[27].OneofWrappers = []any{
 		(*FocusChangedNotification_ApplicationActive)(nil),
 		(*FocusChangedNotification_Window_)(nil),
 		(*FocusChangedNotification_SelectedTab)(nil),
 		(*FocusChangedNotification_Session)(nil),
 	}
-	file_internal_terminal_iterm_proto_api_proto_msgTypes[24].OneofWrappers = []any{
+	file_internal_terminal_iterm_proto_api_proto_msgTypes[30].OneofWrappers = []any{
 		(*SplitTreeNode_SplitTreeLink_Session)(nil),
 		(*SplitTreeNode_SplitTreeLink_Node)(nil),
 	}
@@ -2481,8 +3035,8 @@ func file_internal_terminal_iterm_proto_api_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_terminal_iterm_proto_api_proto_rawDesc), len(file_internal_terminal_iterm_proto_api_proto_rawDesc)),
-			NumEnums:      6,
-			NumMessages:   26,
+			NumEnums:      7,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

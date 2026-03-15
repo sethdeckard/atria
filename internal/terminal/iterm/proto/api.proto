@@ -10,6 +10,7 @@ message ClientOriginatedMessage {
 
   oneof submessage {
     GetBufferRequest get_buffer_request = 100;
+    GetPropertyRequest get_property_request = 112;
     ListSessionsRequest list_sessions_request = 106;
     SendTextRequest send_text_request = 107;
     CreateTabRequest create_tab_request = 108;
@@ -25,6 +26,7 @@ message ServerOriginatedMessage {
   oneof submessage {
     string error = 2;
     GetBufferResponse get_buffer_response = 100;
+    GetPropertyResponse get_property_response = 112;
     ListSessionsResponse list_sessions_response = 106;
     SendTextResponse send_text_response = 107;
     CreateTabResponse create_tab_response = 108;
@@ -137,11 +139,13 @@ message ActivateResponse {
 message GetBufferRequest {
   optional string session = 1;
   optional LineRange line_range = 2;
+  optional bool include_styles = 3;
 }
 
 message LineRange {
   optional bool screen_contents_only = 1;
   optional int32 trailing_lines = 2;
+  optional WindowedCoordRange windowed_coord_range = 3;
 }
 
 message GetBufferResponse {
@@ -152,11 +156,55 @@ message GetBufferResponse {
     REQUEST_MALFORMED = 3;
   }
   optional Status status = 1 [default = OK];
+  optional Range range = 2 [deprecated=true];
   repeated LineContents contents = 3;
+  optional Coord cursor = 4;
+  optional int64 num_lines_above_screen = 5 [deprecated=true];
+  optional WindowedCoordRange windowed_coord_range = 6;
+}
+
+message Range {
+  optional int64 location = 1;
+  optional int64 length = 2;
+}
+
+message Coord {
+  optional int32 x = 1;
+  optional int64 y = 2;
+}
+
+message CoordRange {
+  optional Coord start = 1;
+  optional Coord end = 2;
+}
+
+message WindowedCoordRange {
+  optional CoordRange coord_range = 1;
+  optional Range columns = 2;
 }
 
 message LineContents {
   optional string text = 1;
+}
+
+// --- Property ---
+
+message GetPropertyRequest {
+  oneof identifier {
+    string window_id = 1;
+    string session_id = 3;
+  }
+  optional string name = 2;
+}
+
+message GetPropertyResponse {
+  enum Status {
+    OK = 0;
+    UNRECOGNIZED_NAME = 1;
+    INVALID_TARGET = 2;
+  }
+  optional Status status = 1;
+  optional string json_value = 2;
 }
 
 // --- Variable ---
