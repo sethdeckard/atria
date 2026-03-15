@@ -2476,22 +2476,119 @@ func TestStreamToggle(t *testing.T) {
 
 func TestMaxVisibleRowsShrinksWithStream(t *testing.T) {
 	store := makeStore(t)
+	for i := 0; i < 50; i++ {
+		dir := fmt.Sprintf("/proj/agent-%02d", i)
+		store.AddProject(dir)
+		store.SetSession(&model.AgentSession{
+			ProjectDir: dir,
+			SessionID:  fmt.Sprintf("s%d", i),
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+		})
+	}
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
 
 	without := m.maxVisibleRows()
 
 	m.streamOpen = true
+	layout := m.projectListLayout()
 	with := m.maxVisibleRows()
 
 	if with >= without {
 		t.Errorf("maxVisibleRows with stream (%d) should be less than without (%d)", with, without)
 	}
-
-	expected := streamPanelHeight(m.height) + 1 // +1 for spacer line
-	if without-with != expected {
-		t.Errorf("difference should be streamPanelHeight+1 (%d), got %d", expected, without-with)
+	if with != layout.maxRows {
+		t.Errorf("maxVisibleRows() = %d, want layout maxRows %d", with, layout.maxRows)
 	}
+	if without-with != layout.panelHeight {
+		t.Errorf("difference should be panelHeight (%d), got %d", layout.panelHeight, without-with)
+	}
+}
+
+func TestProjectListLayoutUsesMinimumPanelForLongLists(t *testing.T) {
+	store := makeStore(t)
+	for i := 0; i < 50; i++ {
+		dir := fmt.Sprintf("/proj/agent-%02d", i)
+		store.AddProject(dir)
+		store.SetSession(&model.AgentSession{
+			ProjectDir: dir,
+			SessionID:  fmt.Sprintf("s%d", i),
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+		})
+	}
+
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.streamOpen = true
+
+	layout := m.projectListLayout()
+	usable := m.height - headerLineCount - footerLineCount - 1
+	wantPanel := (usable + 1) / 2
+
+	if layout.panelHeight != wantPanel {
+		t.Fatalf("panelHeight = %d, want %d", layout.panelHeight, wantPanel)
+	}
+	if layout.maxRows != usable-wantPanel {
+		t.Fatalf("maxRows = %d, want %d", layout.maxRows, usable-wantPanel)
+	}
+}
+
+func TestProjectListLayoutExpandsPanelForShortLists(t *testing.T) {
+	store := makeStore(t)
+	for i := 0; i < 3; i++ {
+		dir := fmt.Sprintf("/proj/agent-%02d", i)
+		store.AddProject(dir)
+		store.SetSession(&model.AgentSession{
+			ProjectDir: dir,
+			SessionID:  fmt.Sprintf("s%d", i),
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+		})
+	}
+
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.streamOpen = true
+
+	layout := m.projectListLayout()
+	usable := m.height - headerLineCount - footerLineCount - 1
+
+	if layout.maxRows != len(m.rows) {
+		t.Fatalf("maxRows = %d, want %d", layout.maxRows, len(m.rows))
+	}
+	if layout.panelHeight != usable-len(m.rows) {
+		t.Fatalf("panelHeight = %d, want %d", layout.panelHeight, usable-len(m.rows))
+	}
+	if layout.panelHeight < (usable+1)/2 {
+		t.Fatalf("panelHeight = %d, want >= %d", layout.panelHeight, (usable+1)/2)
+	}
+}
+
+func TestProjectListLayoutHandlesShortTerminal(t *testing.T) {
+	store := makeStore(t)
+	store.AddProject("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+		LastScreen: "hello",
+	})
+
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.height = 12
+	m.streamOpen = true
+
+	layout := m.projectListLayout()
+	if layout.maxRows < 1 {
+		t.Fatalf("maxRows = %d, want >= 1", layout.maxRows)
+	}
+	if layout.panelHeight < 3 {
+		t.Fatalf("panelHeight = %d, want >= 3", layout.panelHeight)
+	}
+
+	view := m.View()
+	assertLinesWithinWidth(t, view, m.width)
 }
 
 func TestStreamPanelShowsSelectedScreen(t *testing.T) {
@@ -2737,23 +2834,39 @@ func TestStreamOpenLastSelectionKeepsAgentsHeaderVisible(t *testing.T) {
 	assertLinesWithinWidth(t, last, 166)
 }
 
-func TestStreamPanelHeight(t *testing.T) {
-	// Small terminal
-	h := streamPanelHeight(10)
-	if h < 5 {
-		t.Errorf("streamPanelHeight(10) = %d, want >= 5", h)
+func TestShortListKeepsSingleSpacerAbovePanel(t *testing.T) {
+	store := makeStore(t)
+	for i := 0; i < 2; i++ {
+		dir := fmt.Sprintf("/proj/agent-%02d", i)
+		store.AddProject(dir)
+		store.SetSession(&model.AgentSession{
+			ProjectDir: dir,
+			SessionID:  fmt.Sprintf("s%d", i),
+			Type:       model.AgentClaude,
+			Status:     model.StatusIdle,
+			LastScreen: "steady output",
+		})
 	}
 
-	// Normal terminal
-	h = streamPanelHeight(40)
-	if h != 16 {
-		t.Errorf("streamPanelHeight(40) = %d, want 16", h)
-	}
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.streamOpen = true
+	m.rebuildRows()
 
-	// Large terminal — capped at 25
-	h = streamPanelHeight(80)
-	if h != 25 {
-		t.Errorf("streamPanelHeight(80) = %d, want 25 (capped)", h)
+	lines := strings.Split(m.View(), "\n")
+	panelTop := -1
+	for i, line := range lines {
+		if panelTop == -1 && strings.Contains(line, "┌") && strings.Contains(line, "v:close") {
+			panelTop = i
+		}
+	}
+	if panelTop < 2 {
+		t.Fatalf("failed to locate panel top with preceding spacer and row")
+	}
+	if strings.TrimSpace(lines[panelTop-1]) != "" {
+		t.Fatalf("expected spacer line before panel, got %q", lines[panelTop-1])
+	}
+	if !strings.Contains(lines[panelTop-2], "agent-") {
+		t.Fatalf("expected last rendered row above spacer, got %q", lines[panelTop-2])
 	}
 }
 

@@ -450,7 +450,8 @@ func normalizeView(content string, width, height int) string {
 func (m Model) viewProjectList() string {
 	var sb strings.Builder
 
-	maxRows := m.maxVisibleRows()
+	layout := m.projectListLayout()
+	maxRows := layout.maxRows
 
 	// Clamp scrollOffset for this frame in case layout changed without
 	// adjustScroll (e.g. statusText set outside key handlers).
@@ -477,8 +478,7 @@ func (m Model) viewProjectList() string {
 			projectName = m.rows[m.cursor].displayName
 			projectDir = contractHome(m.rows[m.cursor].project.Dir)
 		}
-		panelH := streamPanelHeight(m.height)
-		sb.WriteString(renderStreamPanel(session, projectName, projectDir, m.width, panelH))
+		sb.WriteString(renderStreamPanel(session, projectName, projectDir, m.width, layout.panelHeight))
 	}
 
 	var selected *projectRow
@@ -649,6 +649,15 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 
 // maxVisibleRows returns how many agent rows fit in the current terminal.
 func (m Model) maxVisibleRows() int {
+	return m.projectListLayout().maxRows
+}
+
+type projectListLayout struct {
+	maxRows     int
+	panelHeight int
+}
+
+func (m Model) projectListLayout() projectListLayout {
 	overhead := headerLineCount + footerLineCount
 	if m.statusText != "" || m.upgradeVersion != "" {
 		overhead++
@@ -656,28 +665,53 @@ func (m Model) maxVisibleRows() int {
 	if m.showHelp {
 		overhead += strings.Count(m.viewHelp(), "\n") + 2
 	}
-	if m.streamOpen {
-		overhead += streamPanelHeight(m.height) + 1 // +1 for spacer line above top separator
-	} else if len(m.rows) > 0 {
+	if !m.streamOpen && len(m.rows) > 0 {
 		overhead++ // directory path line above footer
 	}
-	max := m.height - overhead
-	if max < 1 {
-		max = 1
-	}
-	return max
-}
 
-// streamPanelHeight returns the height of the stream panel in lines.
-func streamPanelHeight(termHeight int) int {
-	h := termHeight * 2 / 5
-	if h < 5 {
-		h = 5
+	available := m.height - overhead
+	if !m.streamOpen {
+		if available < 1 {
+			available = 1
+		}
+		return projectListLayout{maxRows: available}
 	}
-	if h > 25 {
-		h = 25
+
+	usable := available - 1 // spacer line above top separator
+	if usable < 4 {
+		usable = 4
 	}
-	return h
+
+	minPanelHeight := (usable + 1) / 2
+	if minPanelHeight < 3 {
+		minPanelHeight = 3
+	}
+	maxRows := usable - minPanelHeight
+	if maxRows < 1 {
+		maxRows = 1
+	}
+
+	if len(m.rows) > 0 && len(m.rows) < maxRows {
+		maxRows = len(m.rows)
+	}
+
+	panelHeight := usable - maxRows
+	if panelHeight < minPanelHeight {
+		panelHeight = minPanelHeight
+		maxRows = usable - panelHeight
+		if maxRows < 1 {
+			maxRows = 1
+			panelHeight = usable - maxRows
+			if panelHeight < 3 {
+				panelHeight = 3
+			}
+		}
+	}
+
+	return projectListLayout{
+		maxRows:     maxRows,
+		panelHeight: panelHeight,
+	}
 }
 
 // rebuildRows rebuilds and sorts the row list, preserving the cursor on
