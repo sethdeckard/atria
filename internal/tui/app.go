@@ -527,6 +527,20 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 		innerWidth = 1
 	}
 
+	borderStyle := dimStyle
+	if session != nil {
+		switch session.Status {
+		case model.StatusWorking:
+			borderStyle = statusWorkingStyle
+		case model.StatusIdle:
+			borderStyle = statusIdleStyle
+		case model.StatusNeedsInput:
+			borderStyle = statusNeedsInputStyle
+		case model.StatusError:
+			borderStyle = statusErrorStyle
+		}
+	}
+
 	sb.WriteString("\n")
 
 	// Top border with header
@@ -575,10 +589,10 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 			fillLen = 0
 		}
 		topBorder := "\u250c" + leftText + strings.Repeat("\u2500", fillLen) + rightText + "\u2510"
-		sb.WriteString(dimStyle.Render(" " + topBorder))
+		sb.WriteString(borderStyle.Render(" " + topBorder))
 	} else {
 		topBorder := "\u250c" + strings.Repeat("\u2500", boxWidth-2) + "\u2510"
-		sb.WriteString(dimStyle.Render(" " + topBorder))
+		sb.WriteString(borderStyle.Render(" " + topBorder))
 	}
 	sb.WriteString("\n")
 
@@ -594,10 +608,10 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 		if pad < 0 {
 			pad = 0
 		}
-		sb.WriteString(dimStyle.Render(" \u2502") + " " + dimStyle.Render(placeholder) + strings.Repeat(" ", pad) + " " + dimStyle.Render("\u2502"))
+		sb.WriteString(borderStyle.Render(" \u2502") + " " + dimStyle.Render(placeholder) + strings.Repeat(" ", pad) + " " + borderStyle.Render("\u2502"))
 		sb.WriteString("\n")
 		for i := 1; i < contentLines; i++ {
-			sb.WriteString(dimStyle.Render(" \u2502") + strings.Repeat(" ", innerWidth+2) + dimStyle.Render("\u2502"))
+			sb.WriteString(borderStyle.Render(" \u2502") + strings.Repeat(" ", innerWidth+2) + borderStyle.Render("\u2502"))
 			sb.WriteString("\n")
 		}
 	} else {
@@ -616,19 +630,19 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 			if pad < 0 {
 				pad = 0
 			}
-			sb.WriteString(dimStyle.Render(" \u2502") + " " + line + strings.Repeat(" ", pad) + " " + dimStyle.Render("\u2502"))
+			sb.WriteString(borderStyle.Render(" \u2502") + " " + line + strings.Repeat(" ", pad) + " " + borderStyle.Render("\u2502"))
 			sb.WriteString("\n")
 		}
 		// Pad remaining lines
 		for i := len(lines); i < contentLines; i++ {
-			sb.WriteString(dimStyle.Render(" \u2502") + strings.Repeat(" ", innerWidth+2) + dimStyle.Render("\u2502"))
+			sb.WriteString(borderStyle.Render(" \u2502") + strings.Repeat(" ", innerWidth+2) + borderStyle.Render("\u2502"))
 			sb.WriteString("\n")
 		}
 	}
 
 	// Bottom border
 	bottomBorder := "\u2514" + strings.Repeat("\u2500", boxWidth-2) + "\u2518"
-	sb.WriteString(dimStyle.Render(" " + bottomBorder))
+	sb.WriteString(borderStyle.Render(" " + bottomBorder))
 
 	return sb.String()
 }
