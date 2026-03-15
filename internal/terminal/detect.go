@@ -66,7 +66,7 @@ func ExtractActivity(name string) string {
 	// If the result is just a known product name, return "" so the UI
 	// shows "idle" instead of the product name as activity.
 	switch strings.ToLower(s) {
-	case "claude code", "claude", "codex", "openai codex", "opencode", "github copilot", "copilot":
+	case "claude code", "claude", "codex", "openai codex", "opencode", "github copilot", "copilot", "cd":
 		return ""
 	}
 

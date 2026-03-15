@@ -67,6 +67,7 @@ func TestExtractActivity(t *testing.T) {
 		{"product name codex", "codex", ""},
 		{"product name opencode", "OpenCode", ""},
 		{"product name claude", "✳ Claude Code", ""},
+		{"cd command", "cd", ""},
 	}
 
 	for _, tt := range tests {
