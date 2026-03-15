@@ -63,9 +63,12 @@ watch_dirs = ["~/projects"]
 
 # Check for updates on startup (default: true)
 # update_check = true
+
+# Data directory for session state and debug logs (default: ~/.config/atria)
+# data_dir = "~/.config/atria"
 ```
 
-You can also configure everything interactively from the settings screen (`I` key).
+Most settings can also be configured interactively from the settings screen (`I` key).
 
 ## Usage
 

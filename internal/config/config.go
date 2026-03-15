@@ -188,6 +188,11 @@ func (cfg *Config) Save(path string) error {
 	}
 	sb.WriteString("\n")
 
+	// data_dir
+	sb.WriteString("# Data directory for session state and debug logs\n")
+	sb.WriteString("# data_dir = \"~/.config/atria\"\n")
+	sb.WriteString("\n")
+
 	// Advanced settings — only written when non-default
 	home, _ := os.UserHomeDir()
 	defaultDataDir := filepath.Join(home, ".config/atria")
