@@ -56,7 +56,7 @@ func TestBuildRows(t *testing.T) {
 		}
 	})
 
-	t.Run("three duplicates get #2 #3 suffixes", func(t *testing.T) {
+	t.Run("unique 2-segment names not disambiguated", func(t *testing.T) {
 		s := &mockStore{
 			projects: []*model.Project{
 				{Name: "svc", Dir: "/a/svc"},
@@ -73,14 +73,43 @@ func TestBuildRows(t *testing.T) {
 		if len(rows) != 3 {
 			t.Fatalf("expected 3 rows, got %d", len(rows))
 		}
-		if rows[0].displayName != "svc" {
-			t.Errorf("first should be 'svc', got %q", rows[0].displayName)
+		// With 2-segment display names, a/svc, b/svc, c/svc are unique
+		if rows[0].displayName != "a/svc" {
+			t.Errorf("first should be 'a/svc', got %q", rows[0].displayName)
 		}
-		if rows[1].displayName != "svc #2" {
-			t.Errorf("second should be 'svc #2', got %q", rows[1].displayName)
+		if rows[1].displayName != "b/svc" {
+			t.Errorf("second should be 'b/svc', got %q", rows[1].displayName)
 		}
-		if rows[2].displayName != "svc #3" {
-			t.Errorf("third should be 'svc #3', got %q", rows[2].displayName)
+		if rows[2].displayName != "c/svc" {
+			t.Errorf("third should be 'c/svc', got %q", rows[2].displayName)
+		}
+	})
+
+	t.Run("three duplicates get #2 #3 suffixes", func(t *testing.T) {
+		s := &mockStore{
+			projects: []*model.Project{
+				{Name: "svc", Dir: "/x/same/svc"},
+				{Name: "svc", Dir: "/y/same/svc"},
+				{Name: "svc", Dir: "/z/same/svc"},
+			},
+			sessions: map[string][]*model.AgentSession{
+				"/x/same/svc": {{SessionID: "s1", Type: model.AgentClaude}},
+				"/y/same/svc": {{SessionID: "s2", Type: model.AgentClaude}},
+				"/z/same/svc": {{SessionID: "s3", Type: model.AgentClaude}},
+			},
+		}
+		rows := buildRows(s)
+		if len(rows) != 3 {
+			t.Fatalf("expected 3 rows, got %d", len(rows))
+		}
+		if rows[0].displayName != "same/svc" {
+			t.Errorf("first should be 'same/svc', got %q", rows[0].displayName)
+		}
+		if rows[1].displayName != "same/svc #2" {
+			t.Errorf("second should be 'same/svc #2', got %q", rows[1].displayName)
+		}
+		if rows[2].displayName != "same/svc #3" {
+			t.Errorf("third should be 'same/svc #3', got %q", rows[2].displayName)
 		}
 	})
 
@@ -96,7 +125,7 @@ func TestBuildRows(t *testing.T) {
 			},
 		}
 		rows := buildRows(s)
-		if rows[0].displayName != "alpha" || rows[1].displayName != "beta" {
+		if rows[0].displayName != "a/alpha" || rows[1].displayName != "b/beta" {
 			t.Errorf("unique names should not be modified, got %q and %q", rows[0].displayName, rows[1].displayName)
 		}
 	})

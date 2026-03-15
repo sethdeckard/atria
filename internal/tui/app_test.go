@@ -2153,18 +2153,6 @@ func TestSortRows(t *testing.T) {
 		}
 	})
 
-	t.Run("by directory", func(t *testing.T) {
-		rows := []projectRow{
-			{project: &model.Project{Name: "b", Dir: "/z/proj"}, session: &model.AgentSession{}, displayName: "b"},
-			{project: &model.Project{Name: "a", Dir: "/a/proj"}, session: &model.AgentSession{}, displayName: "a"},
-		}
-		sortRows(rows, sortByDir, false)
-
-		if rows[0].displayName != "a" {
-			t.Errorf("expected 'a' first, got %q", rows[0].displayName)
-		}
-	})
-
 	t.Run("by updated", func(t *testing.T) {
 		now := time.Now()
 		rows := []projectRow{
@@ -2180,6 +2168,7 @@ func TestSortRows(t *testing.T) {
 }
 
 func TestDuplicateDisplayNames(t *testing.T) {
+	// Different parent dirs produce unique 2-segment names — no disambiguation
 	store := &model.Store{
 		Projects: []*model.Project{
 			{Name: "myapp", Dir: "/go/myapp"},
@@ -2195,7 +2184,6 @@ func TestDuplicateDisplayNames(t *testing.T) {
 	rows := buildRows(storeAdapter{store})
 	sortRows(rows, sortByAgent, false)
 
-	// Find duplicate myapp rows — same basename, disambiguated with #2
 	var myappNames []string
 	for _, r := range rows {
 		if r.project.Name == "myapp" {
@@ -2205,14 +2193,14 @@ func TestDuplicateDisplayNames(t *testing.T) {
 	if len(myappNames) != 2 {
 		t.Fatalf("expected 2 myapp rows, got %d", len(myappNames))
 	}
-	if myappNames[0] != "myapp" {
-		t.Errorf("first should be 'myapp', got %q", myappNames[0])
+	if myappNames[0] != "go/myapp" {
+		t.Errorf("first should be 'go/myapp', got %q", myappNames[0])
 	}
-	if myappNames[1] != "myapp #2" {
-		t.Errorf("second should be 'myapp #2', got %q", myappNames[1])
+	if myappNames[1] != "rb/myapp" {
+		t.Errorf("second should be 'rb/myapp', got %q", myappNames[1])
 	}
 
-	// Test with truly duplicate display names (same parent dir)
+	// Same parent dir produces duplicate 2-segment names — disambiguated with #2
 	store2 := &model.Store{
 		Projects: []*model.Project{
 			{Name: "myapp", Dir: "/work/myapp"},
@@ -2227,11 +2215,11 @@ func TestDuplicateDisplayNames(t *testing.T) {
 	if len(rows2) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(rows2))
 	}
-	if rows2[0].displayName != "myapp" {
-		t.Errorf("first should be 'myapp', got %q", rows2[0].displayName)
+	if rows2[0].displayName != "work/myapp" {
+		t.Errorf("first should be 'work/myapp', got %q", rows2[0].displayName)
 	}
-	if rows2[1].displayName != "myapp #2" {
-		t.Errorf("second should be 'myapp #2', got %q", rows2[1].displayName)
+	if rows2[1].displayName != "work/myapp #2" {
+		t.Errorf("second should be 'work/myapp #2', got %q", rows2[1].displayName)
 	}
 }
 
@@ -2271,7 +2259,7 @@ func TestSortKeyCyclesColumn(t *testing.T) {
 }
 
 func TestColumnHeaderSortIndicator(t *testing.T) {
-	header := renderColumnHeaders(20, 10, 20, 100, sortByAgent, false, false, 0)
+	header := renderColumnHeaders(20, 10, 100, sortByAgent, false, false, 0)
 	if !strings.Contains(header, "agent▲") {
 		t.Errorf("expected agent▲ in header, got %q", header)
 	}
@@ -2279,12 +2267,12 @@ func TestColumnHeaderSortIndicator(t *testing.T) {
 		t.Error("non-active column should not have sort indicator")
 	}
 
-	header = renderColumnHeaders(20, 10, 20, 100, sortByAgent, true, false, 0)
+	header = renderColumnHeaders(20, 10, 100, sortByAgent, true, false, 0)
 	if !strings.Contains(header, "agent▼") {
 		t.Errorf("expected agent▼ in header for descending, got %q", header)
 	}
 
-	header = renderColumnHeaders(20, 10, 20, 100, sortByStatus, false, false, 0)
+	header = renderColumnHeaders(20, 10, 100, sortByStatus, false, false, 0)
 	if !strings.Contains(header, "status▲") {
 		t.Errorf("expected status▲ in header, got %q", header)
 	}

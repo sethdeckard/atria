@@ -91,8 +91,14 @@ func TestProjectPersistence(t *testing.T) {
 
 func TestDisplayName(t *testing.T) {
 	p := &Project{Name: "myapp", Dir: "/go/myapp"}
-	if got := p.DisplayName(); got != "myapp" {
-		t.Fatalf("expected 'myapp', got %q", got)
+	if got := p.DisplayName(); got != "go/myapp" {
+		t.Fatalf("expected 'go/myapp', got %q", got)
+	}
+
+	// Short path with ≤2 segments returns as-is
+	p2 := &Project{Name: "myapp", Dir: "/myapp"}
+	if got := p2.DisplayName(); got != "/myapp" {
+		t.Fatalf("expected '/myapp', got %q", got)
 	}
 }
 

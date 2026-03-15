@@ -1,7 +1,7 @@
 package model
 
 import (
-	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -30,9 +30,17 @@ type Project struct {
 	LastLaunchedAt time.Time `json:"last_launched_at,omitempty"`
 }
 
-// DisplayName returns the project's directory basename.
+// DisplayName returns the last two path segments of the project directory.
 func (p *Project) DisplayName() string {
-	return filepath.Base(p.Dir)
+	parts := strings.Split(p.Dir, "/")
+	// Remove trailing empty from trailing slash
+	for len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	if len(parts) <= 2 {
+		return p.Dir
+	}
+	return strings.Join(parts[len(parts)-2:], "/")
 }
 
 type AgentSession struct {

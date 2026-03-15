@@ -15,7 +15,6 @@ type sortColumn int
 const (
 	sortByAgent sortColumn = iota
 	sortByHarness
-	sortByDir
 	sortByStatus
 	sortByUpdated
 	sortColumnCount // sentinel for cycling
@@ -71,11 +70,6 @@ func sortRows(rows []projectRow, col sortColumn, desc bool) {
 			tj := string(rows[j].session.Type)
 			if ti != tj {
 				return ti < tj
-			}
-			return rows[i].displayName < rows[j].displayName
-		case sortByDir:
-			if rows[i].project.Dir != rows[j].project.Dir {
-				return rows[i].project.Dir < rows[j].project.Dir
 			}
 			return rows[i].displayName < rows[j].displayName
 		case sortByStatus:
@@ -140,7 +134,7 @@ func sortIndicator(col, active sortColumn, desc bool) string {
 	return "▲"
 }
 
-func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int, col sortColumn, desc bool, showEnv bool, envWidth int) string {
+func renderColumnHeaders(nameWidth, typeWidth, totalWidth int, col sortColumn, desc bool, showEnv bool, envWidth int) string {
 	name := fmt.Sprintf("  %-*s", nameWidth, "agent"+sortIndicator(sortByAgent, col, desc))
 	harness := fmt.Sprintf("%-*s", typeWidth, "type"+sortIndicator(sortByHarness, col, desc))
 
@@ -150,7 +144,7 @@ func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int, col sor
 	}
 
 	// status + updated fill the rest
-	remaining := totalWidth - lipgloss.Width(name) - typeWidth - dirWidth - timeColWidth
+	remaining := totalWidth - lipgloss.Width(name) - typeWidth - timeColWidth
 	if showEnv {
 		remaining -= envWidth
 	}
@@ -159,10 +153,9 @@ func renderColumnHeaders(nameWidth, typeWidth, dirWidth, totalWidth int, col sor
 	}
 	status := fmt.Sprintf("%-*s", remaining, "status"+sortIndicator(sortByStatus, col, desc))
 
-	dir := fmt.Sprintf("%-*s", dirWidth, "directory"+sortIndicator(sortByDir, col, desc))
 	updated := "updated" + sortIndicator(sortByUpdated, col, desc)
 
-	line := name + harness + envCol + status + dir + updated
+	line := name + harness + envCol + status + updated
 	return dimStyle.Render(line)
 }
 
@@ -204,24 +197,11 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 			nameWidth = len(r.displayName) + 2
 		}
 	}
-	if nameWidth > 30 {
-		nameWidth = 30
+	if nameWidth > 40 {
+		nameWidth = 40
 	}
 
-	// Status gets a fixed width; directory absorbs remaining space
-	statusWidth := 22
-	dirWidth := width - (nameWidth + 2) - typeWidth - statusWidth - timeColWidth
-	if showEnv {
-		dirWidth -= envWidth
-	}
-	if dirWidth < 8 {
-		dirWidth = 8
-	}
-	if dirWidth > 50 {
-		dirWidth = 50
-	}
-
-	sb.WriteString(renderColumnHeaders(nameWidth, typeWidth, dirWidth, width, sortCol, sortDesc, showEnv, envWidth))
+	sb.WriteString(renderColumnHeaders(nameWidth, typeWidth, width, sortCol, sortDesc, showEnv, envWidth))
 	sb.WriteString("\n")
 
 	rowWidth := width
@@ -257,16 +237,16 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 		isSelected := actualIdx == cursor
 
 		if isSelected && hasAttention {
-			line := formatRow(r, nameWidth, typeWidth, dirWidth, rowWidth, spinnerFrame, true, showEnv, envWidth)
+			line := formatRow(r, nameWidth, typeWidth, rowWidth, spinnerFrame, true, showEnv, envWidth)
 			sb.WriteString(attentionSelectedStyle.Render(padToWidth(line, rowWidth)))
 		} else if isSelected {
-			line := formatSelectedRow(r, nameWidth, typeWidth, dirWidth, rowWidth, spinnerFrame, showEnv, envWidth)
+			line := formatSelectedRow(r, nameWidth, typeWidth, rowWidth, spinnerFrame, showEnv, envWidth)
 			sb.WriteString(line)
 		} else if hasAttention {
-			line := formatRow(r, nameWidth, typeWidth, dirWidth, rowWidth, spinnerFrame, true, showEnv, envWidth)
+			line := formatRow(r, nameWidth, typeWidth, rowWidth, spinnerFrame, true, showEnv, envWidth)
 			sb.WriteString(attentionRowStyle.Render(padToWidth(line, rowWidth)))
 		} else {
-			line := formatRow(r, nameWidth, typeWidth, dirWidth, rowWidth, spinnerFrame, false, showEnv, envWidth)
+			line := formatRow(r, nameWidth, typeWidth, rowWidth, spinnerFrame, false, showEnv, envWidth)
 			sb.WriteString(line)
 		}
 		sb.WriteString("\n")
@@ -324,12 +304,11 @@ type rowColumns struct {
 	env       string
 	status    string
 	statusSty lipgloss.Style
-	dir       string
 	time      string
 	remaining int
 }
 
-func computeRowColumns(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth, spinnerFrame int, showEnv bool, envWidth int) rowColumns {
+func computeRowColumns(r projectRow, nameWidth, typeWidth, totalWidth, spinnerFrame int, showEnv bool, envWidth int) rowColumns {
 	name := r.displayName
 	if len(name) > nameWidth-2 {
 		name = name[:nameWidth-3] + "\u2026"
@@ -343,12 +322,6 @@ func computeRowColumns(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth,
 		envCol = fmt.Sprintf("%-*s", envWidth, envLabel(r.session.Source))
 	}
 
-	dir := shortenPath(r.project.Dir)
-	if len(dir) > dirWidth-2 {
-		dir = dir[:dirWidth-3] + "\u2026"
-	}
-	dirCol := fmt.Sprintf("%-*s", dirWidth, dir)
-
 	statusStr, style := formatStatus(r.session, spinnerFrame)
 
 	timeStr := ""
@@ -356,7 +329,7 @@ func computeRowColumns(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth,
 		timeStr = relativeTime(r.session.LastActivity)
 	}
 
-	remaining := totalWidth - lipgloss.Width(nameStr) - typeWidth - dirWidth - timeColWidth
+	remaining := totalWidth - lipgloss.Width(nameStr) - typeWidth - timeColWidth
 	if showEnv {
 		remaining -= envWidth
 	}
@@ -374,7 +347,6 @@ func computeRowColumns(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth,
 		env:       envCol,
 		status:    statusStr,
 		statusSty: style,
-		dir:       dirCol,
 		time:      timeStr,
 		remaining: remaining,
 	}
@@ -382,21 +354,21 @@ func computeRowColumns(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth,
 
 // formatRow builds a single-line row. When plain is true, no inner styles are
 // applied so a row-level style can wrap the whole line cleanly.
-func formatRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, plain bool, showEnv bool, envWidth int) string {
-	c := computeRowColumns(r, nameWidth, typeWidth, dirWidth, totalWidth, spinnerFrame, showEnv, envWidth)
+func formatRow(r projectRow, nameWidth, typeWidth, totalWidth int, spinnerFrame int, plain bool, showEnv bool, envWidth int) string {
+	c := computeRowColumns(r, nameWidth, typeWidth, totalWidth, spinnerFrame, showEnv, envWidth)
 	agentCol := c.agent
 	statusCol := lipgloss.NewStyle().Width(c.remaining).Render(c.status)
 	if !plain {
 		agentCol = c.agentSty.Render(c.agent)
 		statusCol = c.statusSty.Width(c.remaining).Render(c.status)
 	}
-	return c.name + agentCol + c.env + statusCol + c.dir + c.time
+	return c.name + agentCol + c.env + statusCol + c.time
 }
 
 // formatSelectedRow builds a selected row where the status retains its color
 // on a purple background, while other columns get white text on purple.
-func formatSelectedRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth int, spinnerFrame int, showEnv bool, envWidth int) string {
-	c := computeRowColumns(r, nameWidth, typeWidth, dirWidth, totalWidth, spinnerFrame, showEnv, envWidth)
+func formatSelectedRow(r projectRow, nameWidth, typeWidth, totalWidth int, spinnerFrame int, showEnv bool, envWidth int) string {
+	c := computeRowColumns(r, nameWidth, typeWidth, totalWidth, spinnerFrame, showEnv, envWidth)
 	selEnv := ""
 	if showEnv {
 		selEnv = selectedTextStyle.Render(c.env)
@@ -406,7 +378,6 @@ func formatSelectedRow(r projectRow, nameWidth, typeWidth, dirWidth, totalWidth 
 	return selectedTextStyle.Render(c.name) +
 		selAgent +
 		selEnv + selStatus +
-		selectedTextStyle.Render(c.dir) +
 		selectedTextStyle.Render(c.time)
 }
 
