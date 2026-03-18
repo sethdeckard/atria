@@ -222,8 +222,9 @@ func (c *Client) Resize(cols, rows int) {
 		if s.isExited() {
 			continue
 		}
-		pty.Setsize(s.ptmx, winSize)
-		s.term.Resize(cols, rows)
+		if err := pty.Setsize(s.ptmx, winSize); err == nil {
+			s.term.Resize(cols, rows)
+		}
 	}
 }
 
