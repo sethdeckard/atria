@@ -128,13 +128,6 @@ func collectSessions(node *pb.SplitTreeNode) []*pb.SessionSummary {
 	return sessions
 }
 
-func tabLeafCount(tab *pb.ListSessionsResponse_Tab) int {
-	if tab == nil {
-		return 0
-	}
-	return len(collectSessions(tab.GetRoot()))
-}
-
 // ListSessions returns all iTerm2 sessions (panes), including those in splits.
 func (c *Client) ListSessions() ([]terminal.Session, error) {
 	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
