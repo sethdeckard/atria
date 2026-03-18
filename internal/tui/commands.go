@@ -188,7 +188,7 @@ func spinnerTickCmd() tea.Cmd {
 func bellCmd() tea.Cmd {
 	return func() tea.Msg {
 		if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
-			tty.Write([]byte("\a"))
+			tty.Write([]byte("\a")) //nolint:errcheck // best-effort bell
 			tty.Close()
 		}
 		return StatusMsg{Text: "⚠ Agent needs input"}

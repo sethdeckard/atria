@@ -45,7 +45,7 @@ func (s *session) readLoop() {
 			bells := countBells(data, &s.inOSC, &s.escPending)
 			s.mu.Unlock()
 
-			s.term.Write(data)
+			s.term.Write(data) //nolint:errcheck // vt10x emulator, no meaningful recovery
 
 			// Read title from vt10x (it parses OSC 0/1/2 natively)
 			title := s.term.Title()

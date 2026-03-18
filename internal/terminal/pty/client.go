@@ -122,7 +122,7 @@ func (c *Client) NewSession() (string, error) {
 
 	// Reap the child process in the background to avoid zombies
 	go func() {
-		cmd.Wait()
+		cmd.Wait() //nolint:errcheck // reaping only
 	}()
 
 	return id, nil
@@ -254,15 +254,15 @@ func cleanupSession(s *session) {
 	s.cleaned = true
 	s.mu.Unlock()
 
-	s.ptmx.Close()
+	s.ptmx.Close() //nolint:errcheck // best-effort cleanup
 	if s.cmd.Process != nil {
-		s.cmd.Process.Signal(syscall.SIGTERM)
+		s.cmd.Process.Signal(syscall.SIGTERM) //nolint:errcheck // process may already be dead
 	}
 	select {
 	case <-s.done:
 	case <-time.After(shutdownTimeout):
 		if s.cmd.Process != nil {
-			s.cmd.Process.Kill()
+			s.cmd.Process.Kill() //nolint:errcheck // best-effort force kill
 		}
 	}
 }

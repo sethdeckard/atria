@@ -144,7 +144,7 @@ func (c *Client) FocusSession(sessionID string) error {
 	}
 	if os.Getenv("TMUX") != "" {
 		// Best-effort: only works when running inside tmux
-		c.run("switch-client", "-t", c.sessionName)
+		c.run("switch-client", "-t", c.sessionName) //nolint:errcheck // silent no-op outside tmux
 	}
 	return nil
 }
