@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.1
+
+- tmux discovery now spans all tmux sessions, with new launches defaulting to the current tmux session and an optional `tmux_session` override
+- Fix ambiguous tmux targets when the current session name is numeric
+- Surface `SendText` errors in the embedded terminal view instead of silently dropping them
+- Fix PTY/vt10x size divergence after terminal resize
+
 ## v0.3.0
 
 - GitHub Copilot support as a first-class agent alongside Claude Code, Codex, and OpenCode
