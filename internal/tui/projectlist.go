@@ -236,16 +236,17 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 		_, hasAttention := attentionSessions[r.session.SessionID]
 		isSelected := actualIdx == cursor
 
-		if isSelected && hasAttention {
+		switch {
+		case isSelected && hasAttention:
 			line := formatRow(r, nameWidth, typeWidth, rowWidth, spinnerFrame, true, showEnv, envWidth)
 			sb.WriteString(attentionSelectedStyle.Render(padToWidth(line, rowWidth)))
-		} else if isSelected {
+		case isSelected:
 			line := formatSelectedRow(r, nameWidth, typeWidth, rowWidth, spinnerFrame, showEnv, envWidth)
 			sb.WriteString(line)
-		} else if hasAttention {
+		case hasAttention:
 			line := formatRow(r, nameWidth, typeWidth, rowWidth, spinnerFrame, true, showEnv, envWidth)
 			sb.WriteString(attentionRowStyle.Render(padToWidth(line, rowWidth)))
-		} else {
+		default:
 			line := formatRow(r, nameWidth, typeWidth, rowWidth, spinnerFrame, false, showEnv, envWidth)
 			sb.WriteString(line)
 		}

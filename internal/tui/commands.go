@@ -357,23 +357,24 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			})
 		}
 
-		if name == "tmux" && os.Getenv("TMUX") != "" {
+		switch {
+		case name == "tmux" && os.Getenv("TMUX") != "":
 			if composite.PrimarySource() == "pty" {
 				demotePTY()
 			}
 			composite.SetPrimary(backend, "tmux")
-		} else if name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "" && composite.PrimarySource() != "tmux" {
+		case name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "" && composite.PrimarySource() != "tmux":
 			if composite.PrimarySource() == "pty" {
 				demotePTY()
 			}
 			composite.SetPrimary(backend, "kitty")
-		} else if name == "wezterm" && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") &&
-			composite.PrimarySource() != "tmux" && composite.PrimarySource() != "kitty" {
+		case name == "wezterm" && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") &&
+			composite.PrimarySource() != "tmux" && composite.PrimarySource() != "kitty":
 			if composite.PrimarySource() == "pty" {
 				demotePTY()
 			}
 			composite.SetPrimary(backend, "wezterm")
-		} else if name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app" && composite.PrimarySource() == "pty" {
+		case name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app" && composite.PrimarySource() == "pty":
 			demotePTY()
 			composite.SetPrimary(backend, "iterm")
 		}

@@ -287,22 +287,20 @@ func renderSetup(step int, items []settingsItem, cursor int, editing bool, editB
 
 		line := label + strings.Repeat(" ", gap) + value
 
-		if isSelected {
+		switch {
+		case isSelected:
 			sb.WriteString(selectedStyle.Render(line))
-		} else if item.itemType == "action" {
+		case item.itemType == "action":
 			sb.WriteString(dimStyle.Render(label))
-		} else if item.itemType == "radio" && strings.Contains(label, "\u2713") {
+		case item.itemType == "radio" && strings.Contains(label, "\u2713"):
 			colored := strings.Replace(label, "\u2713", statusWorkingStyle.Render("\u2713"), 1)
 			sb.WriteString(colored)
-		} else {
-			switch {
-			case strings.Contains(value, "\u2713"):
-				sb.WriteString(normalStyle.Render(label) + strings.Repeat(" ", gap) + statusWorkingStyle.Render(value))
-			case strings.Contains(value, "disabled") || strings.Contains(value, "unavailable"):
-				sb.WriteString(normalStyle.Render(label) + strings.Repeat(" ", gap) + dimStyle.Render(value))
-			default:
-				sb.WriteString(normalStyle.Render(line))
-			}
+		case strings.Contains(value, "\u2713"):
+			sb.WriteString(normalStyle.Render(label) + strings.Repeat(" ", gap) + statusWorkingStyle.Render(value))
+		case strings.Contains(value, "disabled") || strings.Contains(value, "unavailable"):
+			sb.WriteString(normalStyle.Render(label) + strings.Repeat(" ", gap) + dimStyle.Render(value))
+		default:
+			sb.WriteString(normalStyle.Render(line))
 		}
 		sb.WriteString("\n")
 	}
@@ -503,11 +501,8 @@ func (m Model) handleSetupEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		prevTmuxSession := m.cfg.TmuxSession
 
-		switch item.key {
-		case "tmux_session":
-			if val != "" {
-				m.cfg.TmuxSession = val
-			}
+		if item.key == "tmux_session" && val != "" {
+			m.cfg.TmuxSession = val
 		}
 
 		m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)

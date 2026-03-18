@@ -918,7 +918,8 @@ func (m Model) viewDirBrowser() string {
 		}
 
 		selected := l.idx == m.browserCursor
-		if l.idx < recentCount {
+		switch {
+		case l.idx < recentCount:
 			// Recent item
 			p := recentItems[l.idx]
 			if selected {
@@ -928,7 +929,7 @@ func (m Model) viewDirBrowser() string {
 				sb.WriteString("  " + p.Name)
 				sb.WriteString(dimStyle.Render(" " + contractHome(p.Dir)))
 			}
-		} else if l.idx < recentCount+len(dirItems) {
+		case l.idx < recentCount+len(dirItems):
 			// Directory entry
 			d := dirItems[l.idx-recentCount]
 			if selected {
@@ -936,16 +937,17 @@ func (m Model) viewDirBrowser() string {
 			} else {
 				sb.WriteString("  " + d.Name)
 			}
-		} else {
+		default:
 			// Action button(s)
 			var launchLabel string
-			if m.settingsDirPick || m.setupDirPick {
+			switch {
+			case m.settingsDirPick || m.setupDirPick:
 				launchLabel = "\u25b6 add this directory"
-			} else if hasChoice && l.idx == embeddedIdx {
+			case hasChoice && l.idx == embeddedIdx:
 				launchLabel = "\u25b6 launch " + agentName + " here (embedded)"
-			} else if hasChoice {
+			case hasChoice:
 				launchLabel = "\u25b6 launch " + agentName + " here (" + primarySource + ")"
-			} else {
+			default:
 				launchLabel = "\u25b6 launch " + agentName + " here"
 			}
 			if selected {
@@ -1210,15 +1212,16 @@ func (m Model) handleDirBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, keys.Escape):
 		m.browserSelectLaunchPath = ""
-		if m.setupDirPick {
+		switch {
+		case m.setupDirPick:
 			m.setupDirPick = false
 			m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
 			m.view = viewSetup
-		} else if m.settingsDirPick {
+		case m.settingsDirPick:
 			m.settingsDirPick = false
 			m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
 			m.view = viewSettings
-		} else {
+		default:
 			m.view = viewProjectList
 		}
 		return m, nil
@@ -2196,17 +2199,18 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		}
 		// Screen changed but no pattern match while in needs_input →
 		// the agent moved on, transition to working
-		if screenChanged && as.Status == model.StatusNeedsInput {
+		switch {
+		case screenChanged && as.Status == model.StatusNeedsInput:
 			status = model.StatusWorking
-		} else if as.Status == model.StatusWorking && !screenChanged && as.UnmatchedReads >= 3 {
+		case as.Status == model.StatusWorking && !screenChanged && as.UnmatchedReads >= 3:
 			// Multiple consecutive stable reads with no agent patterns —
 			// the agent likely exited and the pane shows a shell.
 			status = model.StatusIdle
-		} else if !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) && as.UnmatchedReads >= 2 {
+		case !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) && as.UnmatchedReads >= 2:
 			// Multiple consecutive blank screen reads while "working" —
 			// backend can't read this session. No evidence the agent is working.
 			status = model.StatusIdle
-		} else {
+		default:
 			return m, nil
 		}
 	} else {

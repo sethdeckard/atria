@@ -76,11 +76,12 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 
 	// Default agent
 	var agentType model.AgentType
-	if cfg.DefaultAgent != "" {
+	switch {
+	case cfg.DefaultAgent != "":
 		agentType = model.AgentType(cfg.DefaultAgent)
-	} else if len(agents) > 0 {
+	case len(agents) > 0:
 		agentType = agents[0]
-	} else {
+	default:
 		agentType = model.AgentClaude
 	}
 	items = append(items, settingsItem{
@@ -215,19 +216,17 @@ func renderSettings(items []settingsItem, cursor int, editing bool, editBuf stri
 
 		line := label + strings.Repeat(" ", gap) + value
 
-		if isSelected {
+		switch {
+		case isSelected:
 			sb.WriteString(selectedStyle.Render(line))
-		} else if item.itemType == "action" {
+		case item.itemType == "action":
 			sb.WriteString(dimStyle.Render(label))
-		} else {
-			switch {
-			case strings.Contains(value, "\u2713"):
-				sb.WriteString(normalStyle.Render(label) + strings.Repeat(" ", gap) + statusWorkingStyle.Render(value))
-			case strings.Contains(value, "disabled") || strings.Contains(value, "unavailable"):
-				sb.WriteString(normalStyle.Render(label) + strings.Repeat(" ", gap) + dimStyle.Render(value))
-			default:
-				sb.WriteString(normalStyle.Render(line))
-			}
+		case strings.Contains(value, "\u2713"):
+			sb.WriteString(normalStyle.Render(label) + strings.Repeat(" ", gap) + statusWorkingStyle.Render(value))
+		case strings.Contains(value, "disabled") || strings.Contains(value, "unavailable"):
+			sb.WriteString(normalStyle.Render(label) + strings.Repeat(" ", gap) + dimStyle.Render(value))
+		default:
+			sb.WriteString(normalStyle.Render(line))
 		}
 		sb.WriteString("\n")
 	}
