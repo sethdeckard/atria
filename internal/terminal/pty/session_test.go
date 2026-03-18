@@ -25,7 +25,7 @@ func TestReadScreenLastNLines(t *testing.T) {
 		lines = append(lines, strings.Repeat("x", i+1))
 	}
 	for _, l := range lines {
-		s.term.Write([]byte(l + "\r\n"))
+		_, _ = s.term.Write([]byte(l + "\r\n"))
 	}
 
 	tests := []struct {
@@ -51,7 +51,7 @@ func TestReadScreenLastNLines(t *testing.T) {
 
 func TestReadScreenBellPending(t *testing.T) {
 	s := newTestSession()
-	s.term.Write([]byte("hello\r\n"))
+	_, _ = s.term.Write([]byte("hello\r\n"))
 
 	// Set bell pending
 	s.mu.Lock()
@@ -72,7 +72,7 @@ func TestReadScreenBellPending(t *testing.T) {
 
 func TestReadScreenNoBell(t *testing.T) {
 	s := newTestSession()
-	s.term.Write([]byte("hello\r\n"))
+	_, _ = s.term.Write([]byte("hello\r\n"))
 
 	content := s.readScreen(5)
 	if strings.Contains(content, bellChar) {
@@ -172,7 +172,7 @@ func TestOSCTitleDoesNotTriggerBell(t *testing.T) {
 		s.bellPending = true
 	}
 	s.mu.Unlock()
-	s.term.Write(data)
+	_, _ = s.term.Write(data)
 
 	if s.bellPending {
 		t.Error("OSC title BEL should not trigger bellPending")
@@ -200,8 +200,8 @@ func TestReadScreenWithOSCTitle(t *testing.T) {
 	s := newTestSession()
 
 	// Write an OSC title sequence then content on a new line
-	s.term.Write([]byte("\033]0;my-agent\007"))
-	s.term.Write([]byte("some content\r\n"))
+	_, _ = s.term.Write([]byte("\033]0;my-agent\007"))
+	_, _ = s.term.Write([]byte("some content\r\n"))
 
 	title := s.term.Title()
 	if title != "my-agent" {

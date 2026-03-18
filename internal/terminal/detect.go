@@ -45,14 +45,10 @@ func ExtractActivity(name string) string {
 	}
 
 	// Strip "OC | " prefix for OpenCode sessions.
-	if strings.HasPrefix(s, "OC | ") {
-		s = strings.TrimPrefix(s, "OC | ")
-	}
+	s = strings.TrimPrefix(s, "OC | ")
 
 	// Strip "🤖 " prefix for Copilot sessions.
-	if strings.HasPrefix(s, "\U0001F916 ") {
-		s = strings.TrimPrefix(s, "\U0001F916 ")
-	}
+	s = strings.TrimPrefix(s, "\U0001F916 ")
 
 	// Remove a trailing parenthesized suffix, e.g. " (sourcekit-lsp)" or " (opencode)".
 	if idx := strings.LastIndex(s, "("); idx > 0 {

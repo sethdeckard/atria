@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -214,7 +213,7 @@ func keyToBytes(msg tea.KeyMsg) []byte {
 		return []byte("\x1b[24~")
 	}
 	// Fallback: if it's a string representation we didn't handle
-	if s := fmt.Sprintf("%s", msg); len(s) > 0 {
+	if s := msg.String(); len(s) > 0 {
 		return []byte(s)
 	}
 	return nil

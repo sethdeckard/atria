@@ -2663,11 +2663,11 @@ func TestStreamPanelUpdatesWithCursor(t *testing.T) {
 	m.streamOpen = true
 
 	// First row selected
-	v := m.View()
+	_ = m.View()
 	// Move cursor down
 	updated, _ := m.Update(keyMsg("j"))
 	m = modelFrom(updated)
-	v = m.View()
+	v := m.View()
 
 	// The second session's screen should now be visible
 	// (both sessions are in the list; exact order depends on sort)

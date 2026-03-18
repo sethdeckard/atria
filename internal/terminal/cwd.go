@@ -52,10 +52,7 @@ func cwdFromLsof(tty string, watchDirs []string) string {
 		return ""
 	}
 	// Strip /dev/ prefix for ps -t
-	ttyShort := tty
-	if strings.HasPrefix(ttyShort, "/dev/") {
-		ttyShort = ttyShort[5:]
-	}
+	ttyShort := strings.TrimPrefix(tty, "/dev/")
 
 	psOut, err := exec.Command("ps", "-t", ttyShort, "-o", "pid=").Output()
 	if err != nil {

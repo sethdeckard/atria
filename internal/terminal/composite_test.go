@@ -613,7 +613,7 @@ func TestComposite_FailedSourcesClearedOnSuccess(t *testing.T) {
 	})
 
 	// First call — integration fails.
-	comp.ListSessions()
+	_, _ = comp.ListSessions()
 	if len(comp.FailedSources()) != 1 {
 		t.Fatal("expected 1 failed source")
 	}
@@ -623,7 +623,7 @@ func TestComposite_FailedSourcesClearedOnSuccess(t *testing.T) {
 	integ.sessions = []Session{{ID: "s1", Name: "claude"}}
 
 	// Second call — integration succeeds.
-	comp.ListSessions()
+	_, _ = comp.ListSessions()
 	if len(comp.FailedSources()) != 0 {
 		t.Errorf("expected 0 failed sources after recovery, got %v", comp.FailedSources())
 	}

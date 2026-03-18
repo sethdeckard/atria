@@ -305,7 +305,7 @@ func TestOSCTitle(t *testing.T) {
 	// Write a known title directly to the vt10x terminal to test the
 	// OSC parsing mechanism without shell interference.
 	s, _ := c.getSession(id)
-	s.term.Write([]byte("\033]0;test-title\007"))
+	_, _ = s.term.Write([]byte("\033]0;test-title\007"))
 	time.Sleep(50 * time.Millisecond)
 
 	// The readLoop should pick up the title on next iteration, but since

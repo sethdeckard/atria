@@ -849,7 +849,6 @@ func (m Model) viewDirBrowser() string {
 	if hasChoice {
 		embeddedIdx = idx
 		lines = append(lines, browserLine{idx: embeddedIdx})
-		idx++
 	}
 	// Compute scroll window over selectable items, then map to lines
 	maxVisible := m.browserMaxVisible()
