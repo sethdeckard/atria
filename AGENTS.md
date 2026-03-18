@@ -55,13 +55,19 @@ internal/
   tui/gitinfo.go                 # Git worktree detection
 ```
 
+## Commands
+
+- **Build:** `go build ./...`
+- **Test:** `go test ./...`
+- **Lint:** `golangci-lint run ./...`
+- **Format:** `goimports -w .`
+
 ## Testing
 
 - Use `_test.go` files in the same package
 - Table-driven tests for logic (detection, classification, parsing)
 - Use `t.TempDir()` for filesystem tests
 - Mock the `terminal.Backend` interface for tests that need terminal operations
-- Run: `go test ./...`
 
 ## Architecture Rules
 
