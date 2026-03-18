@@ -249,6 +249,9 @@ func TestSaveDefaults(t *testing.T) {
 	if !strings.Contains(s, "# default_agent = \"claude\"") {
 		t.Errorf("expected commented default_agent, got:\n%s", s)
 	}
+	if !strings.Contains(s, "# tmux_session = \"atria\"  # optional override") {
+		t.Errorf("expected commented tmux_session example, got:\n%s", s)
+	}
 }
 
 func TestSaveCreatesPrivateConfigDir(t *testing.T) {

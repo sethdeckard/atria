@@ -105,19 +105,23 @@ Uses iTerm2's native protobuf-over-WebSocket API via Unix socket. No external de
 
 ### tmux (`integrations = ["tmux"]`)
 
-Agent sessions live as windows inside a dedicated tmux session (`atria`), created detached. Each agent gets its own window; the tmux pane ID (`%0`, `%1`, etc.) serves as the session ID.
+Agent sessions are discovered across all tmux sessions via `list-panes -a`.
+Each agent gets its own window; the tmux pane ID (`%0`, `%1`, etc.) serves as
+the session ID.
 
 **Config options:**
 - `tmux_path` — path to tmux binary (default: found via `$PATH`)
-- `tmux_session` — tmux session name (default: `"atria"`)
+- `tmux_session` — optional launch-session override (default: empty = current
+  tmux session when inside tmux, detached `atria` fallback otherwise)
 
 **Requirements:**
 - `allow-rename on` (tmux default) for Claude Code's terminal title escape sequences to work as `pane_title`
 
 **Focus behavior:**
-- `select-window -t <id>` + best-effort `switch-client -t atria`
+- `select-window -t <id>` + best-effort `switch-client -t <owning session>`
 - Works automatically when Atria runs inside tmux
-- When not in tmux, silently no-ops — user must `tmux attach -t atria` themselves
+- When not in tmux, silently no-ops — users can `tmux attach -t atria` when
+  using the detached fallback session
 
 **MonitorOutput:** Unsupported (no-op with error). Screen reads every 3s are the primary status mechanism.
 
@@ -238,7 +242,7 @@ Integrations must be explicitly enabled via config or the settings screen (`I` k
 **Settings screen (`I` key):**
 - Toggle integrations on/off with immediate effect
 - Add/remove watch directories via directory browser
-- Edit default agent, PTY dimensions, tmux session name
+- Edit default agent, PTY dimensions, tmux launch session
 - Changes persist to `~/.config/atria/config.toml`
 - Config is saved before runtime mutations — save failure leaves runtime unchanged
 - CompositeBackend mutations are thread-safe (`sync.RWMutex`)

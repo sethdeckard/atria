@@ -15,7 +15,7 @@ const (
 	DefaultDataDir     = "~/.config/atria"
 	DefaultMonitorDir  = "/tmp/atria-monitors"
 	DefaultCacheTTL    = 5
-	DefaultTmuxSession = "atria"
+	DefaultTmuxSession = ""
 	DefaultPtyCols     = 120
 	DefaultPtyRows     = 40
 )
@@ -148,11 +148,13 @@ func (cfg *Config) Save(path string) error {
 	sb.WriteString("\n")
 
 	// tmux settings
-	sb.WriteString("# tmux backend settings\n")
-	if cfg.TmuxSession != "" && cfg.TmuxSession != DefaultTmuxSession {
+	sb.WriteString("# tmux launch settings\n")
+	sb.WriteString("# Empty uses the current tmux session when inside tmux,\n")
+	sb.WriteString("# otherwise launches into a detached fallback session.\n")
+	if cfg.TmuxSession != "" {
 		sb.WriteString(fmt.Sprintf("tmux_session = %q\n", cfg.TmuxSession))
 	} else {
-		sb.WriteString("# tmux_session = \"atria\"\n")
+		sb.WriteString("# tmux_session = \"atria\"  # optional override\n")
 	}
 	if cfg.TmuxPath != "" {
 		sb.WriteString(fmt.Sprintf("tmux_path = %q\n", contractHome(cfg.TmuxPath)))

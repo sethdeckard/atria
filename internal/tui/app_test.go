@@ -2877,10 +2877,9 @@ func settingsModel(t *testing.T) Model {
 	store := makeStore(t)
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.cfg = &config.Config{
-		WatchDirs:   []string{"/a", "/b"},
-		TmuxSession: "atria",
-		PtyCols:     120,
-		PtyRows:     40,
+		WatchDirs: []string{"/a", "/b"},
+		PtyCols:   120,
+		PtyRows:   40,
 	}
 	m.availableAgents = []model.AgentType{model.AgentClaude, model.AgentCodex}
 	m.defaultAgent = model.AgentClaude
@@ -3001,8 +3000,8 @@ func TestSettingsEnterOnStringOpensEdit(t *testing.T) {
 	if !um.settingsEditing {
 		t.Error("expected settingsEditing to be true")
 	}
-	if um.settingsEditBuf != "atria" {
-		t.Errorf("expected edit buf 'atria', got %q", um.settingsEditBuf)
+	if um.settingsEditBuf != "" {
+		t.Errorf("expected empty edit buf for auto-detect, got %q", um.settingsEditBuf)
 	}
 }
 
@@ -3036,6 +3035,29 @@ func TestSettingsEditTypeAndSave(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Error("expected saveConfig command")
+	}
+}
+
+func TestSettingsCanClearTmuxLaunchSession(t *testing.T) {
+	m := settingsModel(t)
+	m.cfg.TmuxSession = "override"
+	m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+	for i, item := range m.settingsItems {
+		if item.key == "tmux_session" {
+			m.settingsCursor = i
+			break
+		}
+	}
+	m.settingsEditing = true
+	m.settingsEditBuf = ""
+
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	um := modelFrom(updated)
+	if um.cfg.TmuxSession != "" {
+		t.Fatalf("expected tmux session override to clear, got %q", um.cfg.TmuxSession)
+	}
+	if cmd == nil {
+		t.Fatal("expected saveConfig command")
 	}
 }
 

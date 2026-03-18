@@ -107,14 +107,9 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 		value: fmt.Sprintf("%d", ptyRows), key: "pty_rows",
 	})
 
-	// tmux settings
-	tmuxSession := config.DefaultTmuxSession
-	if cfg.TmuxSession != "" {
-		tmuxSession = cfg.TmuxSession
-	}
 	items = append(items, settingsItem{
-		section: "config", label: "  tmux session name", itemType: "string",
-		value: tmuxSession, key: "tmux_session",
+		section: "config", label: "  tmux launch session", itemType: "string",
+		value: cfg.TmuxSession, key: "tmux_session",
 	})
 
 	// update check
@@ -200,6 +195,9 @@ func renderSettings(items []settingsItem, cursor int, editing bool, editBuf stri
 
 		// Build right value
 		value := item.value
+		if item.key == "tmux_session" && value == "" {
+			value = "(current session)"
+		}
 
 		// If editing this item, show the edit buffer
 		if isSelected && editing {

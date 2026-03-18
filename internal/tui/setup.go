@@ -89,13 +89,9 @@ func buildSetupDefaultItems(cfg *config.Config, agents []model.AgentType) []sett
 	// Tmux session name — only if tmux is enabled
 	for _, integ := range cfg.Integrations {
 		if integ == "tmux" {
-			tmuxSession := config.DefaultTmuxSession
-			if cfg.TmuxSession != "" {
-				tmuxSession = cfg.TmuxSession
-			}
 			items = append(items, settingsItem{
-				section: "config", label: "  tmux session name", itemType: "string",
-				value: tmuxSession, key: "tmux_session",
+				section: "config", label: "  tmux launch session", itemType: "string",
+				value: cfg.TmuxSession, key: "tmux_session",
 			})
 			break
 		}
@@ -267,6 +263,9 @@ func renderSetup(step int, items []settingsItem, cursor int, editing bool, editB
 
 		label := item.label
 		value := item.value
+		if item.key == "tmux_session" && value == "" {
+			value = "(current session)"
+		}
 
 		// Radio items use value as internal data, not display
 		if item.itemType == "radio" {
@@ -501,7 +500,7 @@ func (m Model) handleSetupEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		prevTmuxSession := m.cfg.TmuxSession
 
-		if item.key == "tmux_session" && val != "" {
+		if item.key == "tmux_session" {
 			m.cfg.TmuxSession = val
 		}
 
@@ -610,7 +609,6 @@ func (m Model) openSetupDirPicker() (Model, tea.Cmd) {
 	m.setupDirPick = true
 	return m, listDir(startDir)
 }
-
 
 func (m Model) toggleSetupIntegration(item settingsItem) (Model, tea.Cmd) {
 	var bs BackendStatus

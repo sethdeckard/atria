@@ -11,20 +11,17 @@ import (
 
 // Client implements terminal.Backend using the tmux CLI.
 type Client struct {
-	tmuxPath    string
-	sessionName string
+	tmuxPath      string
+	launchSession string
 }
 
-// NewClient creates a new tmux Client. Empty tmuxPath defaults to "tmux",
-// empty sessionName defaults to "atria".
-func NewClient(tmuxPath, sessionName string) *Client {
+// NewClient creates a new tmux Client. Empty tmuxPath defaults to "tmux".
+// Empty launchSession means "use the current tmux session when inside tmux".
+func NewClient(tmuxPath, launchSession string) *Client {
 	if tmuxPath == "" {
 		tmuxPath = "tmux"
 	}
-	if sessionName == "" {
-		sessionName = "atria"
-	}
-	return &Client{tmuxPath: tmuxPath, sessionName: sessionName}
+	return &Client{tmuxPath: tmuxPath, launchSession: launchSession}
 }
 
 // run executes tmux with the given arguments and returns stdout.
@@ -50,14 +47,13 @@ func (c *Client) Available() error {
 	return nil
 }
 
-// ListSessions returns all panes in the atria tmux session as terminal sessions.
-// Returns an empty list if the session does not exist yet.
+// ListSessions returns all panes in the tmux server as terminal sessions.
+// Returns an empty list when no tmux server is running.
 func (c *Client) ListSessions() ([]terminal.Session, error) {
-	out, err := c.run("list-panes", "-s", "-t", c.sessionName,
+	out, err := c.run("list-panes", "-a",
 		"-F", "#{pane_id}\t#{pane_title}\t#{window_name}\t#{pane_tty}")
 	if err != nil {
-		// Session doesn't exist yet — no agents launched
-		if !c.hasSession() {
+		if isNoServerError(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -65,9 +61,54 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 	return parsePaneList(string(out)), nil
 }
 
-// hasSession checks if the atria tmux session exists.
-func (c *Client) hasSession() bool {
-	return exec.Command(c.tmuxPath, "has-session", "-t", c.sessionName).Run() == nil
+func isNoServerError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "no server running") ||
+		strings.Contains(msg, "failed to connect to server")
+}
+
+func isSessionNotFoundError(err error) bool {
+	return strings.Contains(err.Error(), "can't find session")
+}
+
+func (c *Client) currentSession() (string, error) {
+	out, err := c.run("display-message", "-p", "#{session_name}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (c *Client) targetSession() (string, error) {
+	if c.launchSession != "" {
+		return c.launchSession, nil
+	}
+	if os.Getenv("TMUX") != "" {
+		session, err := c.currentSession()
+		if err == nil && session != "" {
+			return session, nil
+		}
+	}
+	return "atria", nil
+}
+
+func sessionTarget(session string) string {
+	return "=" + session
+}
+
+func windowTarget(session string) string {
+	return "=" + session + ":"
+}
+
+func (c *Client) sessionExists(session string) (bool, error) {
+	_, err := c.run("has-session", "-t", sessionTarget(session))
+	if err == nil {
+		return true, nil
+	}
+	if isNoServerError(err) || isSessionNotFoundError(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 // parsePaneList parses tab-separated list-panes output into terminal sessions.
@@ -97,17 +138,25 @@ func parsePaneList(output string) []terminal.Session {
 	return sessions
 }
 
-// NewSession creates a new window in the atria tmux session and returns its pane ID.
-// If the session doesn't exist yet, it creates it with this window (no orphan shell).
+// NewSession creates a new window in the target tmux session and returns its
+// pane ID. If the session doesn't exist yet, it creates it with this window.
 func (c *Client) NewSession() (string, error) {
-	if !c.hasSession() {
-		out, err := c.run("new-session", "-d", "-s", c.sessionName, "-P", "-F", "#{pane_id}")
+	session, err := c.targetSession()
+	if err != nil {
+		return "", err
+	}
+	exists, err := c.sessionExists(session)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		out, err := c.run("new-session", "-d", "-s", session, "-P", "-F", "#{pane_id}")
 		if err != nil {
 			return "", err
 		}
 		return strings.TrimSpace(string(out)), nil
 	}
-	out, err := c.run("new-window", "-t", c.sessionName, "-P", "-F", "#{pane_id}")
+	out, err := c.run("new-window", "-t", windowTarget(session), "-P", "-F", "#{pane_id}")
 	if err != nil {
 		return "", err
 	}
@@ -143,8 +192,14 @@ func (c *Client) FocusSession(sessionID string) error {
 		return err
 	}
 	if os.Getenv("TMUX") != "" {
-		// Best-effort: only works when running inside tmux
-		c.run("switch-client", "-t", c.sessionName) //nolint:errcheck // silent no-op outside tmux
+		// Best-effort: only works when running inside tmux.
+		out, lookupErr := c.run("display-message", "-t", sessionID, "-p", "#{session_name}")
+		if lookupErr == nil {
+			owningSession := strings.TrimSpace(string(out))
+			if owningSession != "" {
+				c.run("switch-client", "-t", sessionTarget(owningSession)) //nolint:errcheck // best-effort client switch
+			}
+		}
 	}
 	return nil
 }

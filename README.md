@@ -147,16 +147,20 @@ integrations = ["kitty"]
 
 ### tmux
 
-Agent sessions run as windows inside a detached tmux session (default: `atria`).
+Agent sessions are discovered across all tmux sessions. New launches go into
+your current tmux session by default; outside tmux they fall back to a
+detached `atria` session.
 
 **Config:**
 ```toml
 integrations = ["tmux"]
 # tmux_path = "/usr/bin/tmux"
-# tmux_session = "atria"
+# tmux_session = "atria"  # optional override
 ```
 
-The tmux default `allow-rename on` is required for Claude Code's terminal title to propagate. To interact with agents directly: `tmux attach -t atria`.
+The tmux default `allow-rename on` is required for Claude Code's terminal
+title to propagate. If Atria launches into the detached fallback session,
+you can interact with those agents directly via `tmux attach -t atria`.
 
 ### WezTerm
 

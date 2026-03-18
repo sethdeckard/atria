@@ -1613,9 +1613,7 @@ func (m Model) handleSettingsEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			n := parsePositiveInt(val, config.DefaultPtyRows)
 			m.cfg.PtyRows = n
 		case "tmux_session":
-			if val != "" {
-				m.cfg.TmuxSession = val
-			}
+			m.cfg.TmuxSession = val
 		}
 
 		// Apply PTY dimension changes to the live backend.
