@@ -1493,7 +1493,11 @@ func (m Model) handleTerminalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Forward all other keystrokes to the PTY
 	b := keyToBytes(msg)
 	if len(b) > 0 {
-		m.backend.SendText(m.termSessionID, string(b))
+		if err := m.backend.SendText(m.termSessionID, string(b)); err != nil {
+			return m, func() tea.Msg {
+				return StatusMsg{Text: fmt.Sprintf("send failed: %v", err)}
+			}
+		}
 	}
 	return m, nil
 }
