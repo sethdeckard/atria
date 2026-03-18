@@ -53,6 +53,22 @@ func TestParsePaneList(t *testing.T) {
 			wantTTY:  "/dev/ttys002",
 		},
 		{
+			name:     "generic pane title falls back to agent window name",
+			input:    "%2\tvanth.local\tcodex-aarch64-a\t/dev/ttys003\n",
+			wantLen:  1,
+			wantID:   "%2",
+			wantName: "codex-aarch64-a",
+			wantTTY:  "/dev/ttys003",
+		},
+		{
+			name:     "agent pane title still wins over generic window name",
+			input:    "%3\t✳ Claude Code\tzsh\t/dev/ttys004\n",
+			wantLen:  1,
+			wantID:   "%3",
+			wantName: "✳ Claude Code",
+			wantTTY:  "/dev/ttys004",
+		},
+		{
 			name:    "multiple panes",
 			input:   "%0\ttitle0\twin0\t/dev/ttys000\n%1\ttitle1\twin1\t/dev/ttys001\n",
 			wantLen: 2,

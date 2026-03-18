@@ -111,6 +111,22 @@ func (c *Client) sessionExists(session string) (bool, error) {
 	return false, err
 }
 
+func chooseSessionName(paneTitle, windowName string) string {
+	title := strings.TrimSpace(paneTitle)
+	window := strings.TrimSpace(windowName)
+
+	switch {
+	case title != "" && terminal.DetectAgent(title) != "":
+		return title
+	case window != "" && terminal.DetectAgent(window) != "":
+		return window
+	case title != "":
+		return title
+	default:
+		return window
+	}
+}
+
 // parsePaneList parses tab-separated list-panes output into terminal sessions.
 func parsePaneList(output string) []terminal.Session {
 	var sessions []terminal.Session
@@ -123,13 +139,14 @@ func parsePaneList(output string) []terminal.Session {
 			continue
 		}
 		s := terminal.Session{ID: fields[0]}
+		var paneTitle, windowName string
 		if len(fields) >= 2 {
-			s.Name = fields[1]
+			paneTitle = fields[1]
 		}
-		// Prefer pane_title over window_name; fall back if title is empty
-		if s.Name == "" && len(fields) >= 3 {
-			s.Name = fields[2]
+		if len(fields) >= 3 {
+			windowName = fields[2]
 		}
+		s.Name = chooseSessionName(paneTitle, windowName)
 		if len(fields) >= 4 {
 			s.TTY = fields[3]
 		}

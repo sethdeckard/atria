@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.2
+
+- Fix tmux discovery missing Codex sessions when generic pane titles override agent-identifying window names
+- Run `golangci-lint` in CI using the repo's Go toolchain
+
 ## v0.3.1
 
 - tmux discovery now spans all tmux sessions, with new launches defaulting to the current tmux session and an optional `tmux_session` override
