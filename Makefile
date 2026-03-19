@@ -1,4 +1,4 @@
-.PHONY: build test vet install release clean
+.PHONY: build test vet lint install release clean
 
 VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -13,6 +13,9 @@ test:
 
 vet:
 	go vet ./...
+
+lint:
+	golangci-lint run ./...
 
 install:
 	go install -ldflags "$(LDFLAGS)" .
