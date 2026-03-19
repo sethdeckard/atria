@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.0
+
+- Add armed quick responses from the stream panel: `Ctrl+R` arms the selected agent when it needs input, then `y`, `Esc`, or `1-9` sends the response without leaving the dashboard
+- Fix stale project-list and stream-panel artifacts by normalizing rendered frames to the terminal width as well as height
+
 ## v0.3.2
 
 - Fix tmux discovery missing Codex sessions when generic pane titles override agent-identifying window names
