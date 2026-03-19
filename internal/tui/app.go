@@ -475,6 +475,16 @@ func (m Model) View() string {
 func normalizeView(content string, width, height int) string {
 	lines := strings.Split(content, "\n")
 
+	if width > 0 {
+		for i, line := range lines {
+			line = truncateToWidth(line, width)
+			if pad := width - lipgloss.Width(line); pad > 0 {
+				line += strings.Repeat(" ", pad)
+			}
+			lines[i] = line
+		}
+	}
+
 	// Clamp to exactly height lines. Overflow causes the alt screen to
 	// scroll, leaving ghost lines that persist across frames.
 	if len(lines) > height {

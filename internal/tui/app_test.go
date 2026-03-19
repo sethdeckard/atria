@@ -3387,6 +3387,19 @@ func TestNormalizeView(t *testing.T) {
 			t.Errorf("got %d lines, want 3", len(lines))
 		}
 	})
+
+	t.Run("width normalized", func(t *testing.T) {
+		out := normalizeView("abc\nx", 5, 2)
+		lines := strings.Split(out, "\n")
+		if len(lines) != 2 {
+			t.Fatalf("got %d lines, want 2", len(lines))
+		}
+		for i, line := range lines {
+			if got := lipgloss.Width(line); got != 5 {
+				t.Fatalf("line %d width = %d, want 5: %q", i, got, line)
+			}
+		}
+	})
 }
 
 // --- Quick-response arm-mode tests ---
