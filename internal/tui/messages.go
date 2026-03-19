@@ -110,3 +110,8 @@ type ConfigSavedMsg struct {
 	Err      error
 	Rollback func(m *Model) // reverts optimistic mutations on save failure
 }
+
+// QuickResponseArmExpiredMsg clears the transient armed quick-response state.
+type QuickResponseArmExpiredMsg struct {
+	SessionID string
+}

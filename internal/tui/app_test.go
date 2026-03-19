@@ -2736,7 +2736,7 @@ func TestStreamPanelHeaderTruncatesLongName(t *testing.T) {
 		LastScreen: "some content",
 	}
 	width := 40
-	panel := renderStreamPanel(session, longName, "/proj/"+longName, width, 8)
+	panel := renderStreamPanel(session, longName, "/proj/"+longName, width, 8, false)
 	if !strings.Contains(panel, "\u2026") {
 		t.Error("expected truncated project name with ellipsis")
 	}
@@ -2755,7 +2755,7 @@ func TestStreamPanelKeepsSafetyMarginWithWideGlyphs(t *testing.T) {
 		LastScreen: strings.Repeat("💡", 20) + " status line",
 	}
 
-	panel := renderStreamPanel(session, "alpha", "/proj/alpha", 40, 8)
+	panel := renderStreamPanel(session, "alpha", "/proj/alpha", 40, 8, false)
 	assertLinesWithinWidth(t, panel, 39)
 }
 
@@ -3387,4 +3387,281 @@ func TestNormalizeView(t *testing.T) {
 			t.Errorf("got %d lines, want 3", len(lines))
 		}
 	})
+}
+
+// --- Quick-response arm-mode tests ---
+
+func setupQuickResponseModel(t *testing.T, status model.AgentStatus, streamOpen bool) (Model, *mockBackend) {
+	t.Helper()
+	store := makeStore(t)
+	store.AddProject("/proj/test")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/test",
+		SessionID:  "sid",
+		Type:       model.AgentClaude,
+		Status:     status,
+	})
+	backend := &mockBackend{sessions: []terminal.Session{{ID: "sid", Name: "claude"}}}
+	m := newTestModelWithStore(backend, store)
+	m.backendOK = true
+	m.streamOpen = streamOpen
+	// Rebuild rows so cursor 0 maps to the session.
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = modelFrom(updated)
+	return m, backend
+}
+
+func TestQuickResponseArm(t *testing.T) {
+	m, backend := setupQuickResponseModel(t, model.StatusNeedsInput, true)
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	um := modelFrom(updated)
+	if !um.quickResponseArmed {
+		t.Fatal("expected quick response to be armed")
+	}
+	if um.quickResponseSessionID != "sid" {
+		t.Fatalf("expected armed session sid, got %q", um.quickResponseSessionID)
+	}
+	if !strings.Contains(um.statusText, "Quick response armed:") {
+		t.Errorf("expected armed status text, got %q", um.statusText)
+	}
+	if cmd == nil {
+		t.Fatal("expected timeout command")
+	}
+	if len(backend.sendTextLog) != 0 {
+		t.Fatalf("expected no sends while arming, got %v", backend.sendTextLog)
+	}
+}
+
+func TestQuickResponseAcceptAfterArming(t *testing.T) {
+	m, backend := setupQuickResponseModel(t, model.StatusNeedsInput, true)
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	m = modelFrom(updated)
+
+	updated, cmd := m.Update(keyMsg("y"))
+	um := modelFrom(updated)
+	if um.quickResponseArmed {
+		t.Fatal("expected quick response to clear after sending")
+	}
+	if !strings.Contains(um.statusText, `Sent "y"`) {
+		t.Errorf("expected sent status, got %q", um.statusText)
+	}
+	if cmd == nil {
+		t.Fatal("expected a command")
+	}
+	cmd()
+	if len(backend.sendTextLog) < 2 {
+		t.Fatalf("expected 2 sends, got %d: %v", len(backend.sendTextLog), backend.sendTextLog)
+	}
+	if backend.sendTextLog[0] != "sid:y" {
+		t.Errorf("expected first send 'sid:y', got %q", backend.sendTextLog[0])
+	}
+	if backend.sendTextLog[1] != "sid:\r" {
+		t.Errorf("expected second send 'sid:\\r', got %q", backend.sendTextLog[1])
+	}
+}
+
+func TestQuickResponseRejectAfterArming(t *testing.T) {
+	m, backend := setupQuickResponseModel(t, model.StatusNeedsInput, true)
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	m = modelFrom(updated)
+
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyEsc))
+	um := modelFrom(updated)
+	if um.quickResponseArmed {
+		t.Fatal("expected quick response to clear after reject")
+	}
+	if !strings.Contains(um.statusText, "Rejected") {
+		t.Errorf("expected rejected status, got %q", um.statusText)
+	}
+	if cmd == nil {
+		t.Fatal("expected a command")
+	}
+	cmd()
+	if len(backend.sendTextLog) != 1 {
+		t.Fatalf("expected 1 send, got %d: %v", len(backend.sendTextLog), backend.sendTextLog)
+	}
+	if backend.sendTextLog[0] != "sid:\x1b" {
+		t.Errorf("expected first send 'sid:\\x1b', got %q", backend.sendTextLog[0])
+	}
+}
+
+func TestQuickResponseDigitAfterArming(t *testing.T) {
+	m, backend := setupQuickResponseModel(t, model.StatusNeedsInput, true)
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	m = modelFrom(updated)
+
+	_, cmd := m.Update(keyMsg("5"))
+	if cmd == nil {
+		t.Fatal("expected a command")
+	}
+	cmd()
+	if len(backend.sendTextLog) < 2 {
+		t.Fatalf("expected 2 sends, got %d: %v", len(backend.sendTextLog), backend.sendTextLog)
+	}
+	if backend.sendTextLog[0] != "sid:5" {
+		t.Errorf("expected first send 'sid:5', got %q", backend.sendTextLog[0])
+	}
+}
+
+func TestQuickResponseArmBlockedStreamClosed(t *testing.T) {
+	m, backend := setupQuickResponseModel(t, model.StatusNeedsInput, false)
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	um := modelFrom(updated)
+	if cmd != nil {
+		t.Error("expected nil command when stream is closed")
+	}
+	if um.quickResponseArmed {
+		t.Error("expected quick response to remain unarmed")
+	}
+	if len(backend.sendTextLog) != 0 {
+		t.Errorf("expected no sends, got %v", backend.sendTextLog)
+	}
+}
+
+func TestQuickResponseArmBlockedNotNeedsInput(t *testing.T) {
+	m, backend := setupQuickResponseModel(t, model.StatusIdle, true)
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	um := modelFrom(updated)
+	if cmd != nil {
+		t.Error("expected nil command when status is idle")
+	}
+	if um.quickResponseArmed {
+		t.Error("expected quick response to remain unarmed")
+	}
+	if len(backend.sendTextLog) != 0 {
+		t.Errorf("expected no sends, got %v", backend.sendTextLog)
+	}
+}
+
+func TestQuickResponseArmBlockedNoSession(t *testing.T) {
+	store := makeStore(t)
+	backend := &mockBackend{}
+	m := newTestModelWithStore(backend, store)
+	m.backendOK = true
+	m.streamOpen = true
+	updated, cmd := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	um := modelFrom(updated)
+	if cmd != nil {
+		t.Error("expected nil command when no sessions")
+	}
+	if um.quickResponseArmed {
+		t.Error("expected quick response to remain unarmed")
+	}
+}
+
+func TestQuickResponseArmClearsOnUnrelatedKeyAndFallsThrough(t *testing.T) {
+	store := makeStore(t)
+	store.AddProject("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "sid-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusNeedsInput,
+	})
+	store.AddProject("/proj/beta")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/beta",
+		SessionID:  "sid-2",
+		Type:       model.AgentClaude,
+		Status:     model.StatusIdle,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backendOK = true
+	m.streamOpen = true
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = modelFrom(updated)
+
+	updated, _ = m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	m = modelFrom(updated)
+
+	updated, _ = m.Update(keyMsg("j"))
+	um := modelFrom(updated)
+	if um.quickResponseArmed {
+		t.Fatal("expected unrelated key to clear armed state")
+	}
+	if um.cursor != 1 {
+		t.Errorf("expected unrelated key to continue normal navigation, got cursor %d", um.cursor)
+	}
+}
+
+func TestQuickResponseArmExpires(t *testing.T) {
+	m, _ := setupQuickResponseModel(t, model.StatusNeedsInput, true)
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	m = modelFrom(updated)
+
+	updated, _ = m.Update(QuickResponseArmExpiredMsg{SessionID: "sid"})
+	um := modelFrom(updated)
+	if um.quickResponseArmed {
+		t.Fatal("expected timeout to clear armed state")
+	}
+	if um.statusText != "" {
+		t.Errorf("expected timeout to clear armed status text, got %q", um.statusText)
+	}
+}
+
+func TestQuickResponseArmClearsWhenStatusLeavesNeedsInput(t *testing.T) {
+	m, _ := setupQuickResponseModel(t, model.StatusNeedsInput, true)
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyCtrlR))
+	m = modelFrom(updated)
+
+	updated, _ = m.Update(StatusUpdatedMsg{
+		SessionID:  "sid",
+		ProjectDir: "/proj/test",
+		Status:     model.StatusIdle,
+	})
+	um := modelFrom(updated)
+	if um.quickResponseArmed {
+		t.Fatal("expected status change to clear armed state")
+	}
+}
+
+// --- Stream panel hint tests ---
+
+func TestStreamPanelHintNeedsInput(t *testing.T) {
+	session := &model.AgentSession{
+		SessionID: "sid",
+		Status:    model.StatusNeedsInput,
+		Type:      model.AgentClaude,
+	}
+	out := renderStreamPanel(session, "test", "/proj/test", 120, 10, false)
+	if !strings.Contains(out, "ctrl+r") {
+		t.Error("expected hint text 'ctrl+r' in stream panel")
+	}
+}
+
+func TestStreamPanelHintArmedNeedsInput(t *testing.T) {
+	session := &model.AgentSession{
+		SessionID: "sid",
+		Status:    model.StatusNeedsInput,
+		Type:      model.AgentClaude,
+	}
+	out := renderStreamPanel(session, "test", "/proj/test", 120, 10, true)
+	if !strings.Contains(out, "esc:reject") {
+		t.Error("expected armed hint text in stream panel")
+	}
+}
+
+func TestStreamPanelHintNarrowWidth(t *testing.T) {
+	session := &model.AgentSession{
+		SessionID: "sid",
+		Status:    model.StatusNeedsInput,
+		Type:      model.AgentClaude,
+	}
+	// Should not panic at narrow width
+	out := renderStreamPanel(session, "test", "/proj/test", 12, 10, false)
+	if strings.Contains(out, "ctrl+r:respond") {
+		t.Error("should not show full hint at narrow width")
+	}
+}
+
+func TestStreamPanelNoHintWhenIdle(t *testing.T) {
+	session := &model.AgentSession{
+		SessionID: "sid",
+		Status:    model.StatusIdle,
+		Type:      model.AgentClaude,
+	}
+	out := renderStreamPanel(session, "test", "/proj/test", 120, 10, false)
+	if strings.Contains(out, "ctrl+r") || strings.Contains(out, "esc:reject") {
+		t.Error("should not show hints when idle")
+	}
 }

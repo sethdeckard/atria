@@ -106,6 +106,19 @@ func sendPrompt(backend terminal.Backend, sessionID, text string, projectDir str
 	}
 }
 
+func sendKey(backend terminal.Backend, sessionID, text string, projectDir string) tea.Cmd {
+	return func() tea.Msg {
+		err := backend.SendText(sessionID, text)
+		return PromptSentMsg{ProjectDir: projectDir, Err: err}
+	}
+}
+
+func armQuickResponseTimeout(sessionID string) tea.Cmd {
+	return tea.Tick(5*time.Second, func(time.Time) tea.Msg {
+		return QuickResponseArmExpiredMsg{SessionID: sessionID}
+	})
+}
+
 func focusSession(backend terminal.Backend, sessionID string) tea.Cmd {
 	return func() tea.Msg {
 		err := backend.FocusSession(sessionID)

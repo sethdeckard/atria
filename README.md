@@ -84,6 +84,8 @@ Most settings can also be configured interactively from the settings screen (`I`
 | `B` | Batch send to multiple agents |
 | `Enter` | Open chat view to send a prompt |
 | `I` | Open settings |
+| `Ctrl+R` | Arm quick response (when stream open + agent needs input) |
+| `y` / `Esc` / `1`-`9` | Respond after arming quick response |
 | `?` | Toggle help |
 | `Ctrl+\` | Return from embedded terminal |
 | `q` / `Ctrl+C` | Quit |

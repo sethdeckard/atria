@@ -74,6 +74,10 @@ type Model struct {
 	// Stream panel
 	streamOpen bool
 
+	// Armed quick response from the project list while needs_input is active.
+	quickResponseArmed     bool
+	quickResponseSessionID string
+
 	// Spinner & attention
 	spinnerFrame      int
 	spinnerActive     bool
@@ -218,6 +222,29 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+func (m *Model) clearQuickResponseArm(clearStatus bool) {
+	m.quickResponseArmed = false
+	m.quickResponseSessionID = ""
+	if clearStatus && strings.HasPrefix(m.statusText, "Quick response armed:") {
+		m.statusText = ""
+	}
+}
+
+func (m Model) selectedQuickResponseRow() (*projectRow, bool) {
+	if !m.streamOpen || m.cursor < 0 || m.cursor >= len(m.rows) {
+		return nil, false
+	}
+	row := &m.rows[m.cursor]
+	if row.session == nil || row.session.Status != model.StatusNeedsInput {
+		return nil, false
+	}
+	return row, true
+}
+
+func (m Model) quickResponseArmedFor(sessionID string) bool {
+	return m.quickResponseArmed && m.quickResponseSessionID == sessionID
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -304,6 +331,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StatusMsg:
 		m.statusText = msg.Text
+		return m, nil
+
+	case QuickResponseArmExpiredMsg:
+		if m.quickResponseArmed && m.quickResponseSessionID == msg.SessionID {
+			m.clearQuickResponseArm(true)
+		}
 		return m, nil
 
 	case UpgradeAvailableMsg:
@@ -485,7 +518,7 @@ func (m Model) viewProjectList() string {
 			projectName = m.rows[m.cursor].displayName
 			projectDir = contractHome(m.rows[m.cursor].project.Dir)
 		}
-		sb.WriteString(renderStreamPanel(session, projectName, projectDir, m.width, layout.panelHeight))
+		sb.WriteString(renderStreamPanel(session, projectName, projectDir, m.width, layout.panelHeight, session != nil && m.quickResponseArmedFor(session.SessionID)))
 	}
 
 	var selected *projectRow
@@ -520,7 +553,7 @@ func (m Model) viewProjectList() string {
 }
 
 // renderStreamPanel renders the live screen output panel for the selected agent.
-func renderStreamPanel(session *model.AgentSession, projectName, projectDir string, width, height int) string {
+func renderStreamPanel(session *model.AgentSession, projectName, projectDir string, width, height int, quickResponseArmed bool) string {
 	var sb strings.Builder
 
 	// Keep one terminal column of slack so a visually wider glyph in the
@@ -648,7 +681,26 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 	}
 
 	// Bottom border
-	bottomBorder := "\u2514" + strings.Repeat("\u2500", boxWidth-2) + "\u2518"
+	bottomBorder := "└" + strings.Repeat("─", boxWidth-2) + "┘"
+	if session != nil && session.Status == model.StatusNeedsInput {
+		hintText := " ctrl+r:respond "
+		if quickResponseArmed {
+			hintText = " y:accept  esc:reject  1-9:choose "
+		}
+		if lipgloss.Width(hintText) > boxWidth-2 {
+			if quickResponseArmed {
+				hintText = " y esc 1-9 "
+			} else {
+				hintText = " ^r "
+			}
+		}
+		if lipgloss.Width(hintText) <= boxWidth-2 {
+			fillLen := boxWidth - 2 - lipgloss.Width(hintText)
+			leftFill := fillLen / 2
+			rightFill := fillLen - leftFill
+			bottomBorder = "└" + strings.Repeat("─", leftFill) + hintText + strings.Repeat("─", rightFill) + "┘"
+		}
+	}
 	sb.WriteString(borderStyle.Render(" " + bottomBorder))
 
 	return sb.String()
@@ -994,6 +1046,8 @@ func (m Model) viewHelp() string {
   B              Batch send to multiple agents
   Enter          Open chat view
   Ctrl+\         Return from terminal view
+  Ctrl+R         Arm quick response (needs input)
+  y/Esc/1-9      Quick response after arming
   ?              Toggle this help
   q, Ctrl+C      Quit`
 	return helpStyle.Render(help)
@@ -1025,6 +1079,41 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusText = ""
 		if key.Matches(msg, keys.Escape) {
 			return m, nil
+		}
+	}
+
+	row, quickEligible := m.selectedQuickResponseRow()
+	if !quickEligible {
+		m.clearQuickResponseArm(true)
+	} else {
+		sessionID := row.session.SessionID
+		if m.quickResponseArmed && m.quickResponseSessionID != sessionID {
+			m.clearQuickResponseArm(true)
+		}
+		if key.Matches(msg, keys.QuickRespond) {
+			m.quickResponseArmed = true
+			m.quickResponseSessionID = sessionID
+			m.statusText = "Quick response armed: y accept, esc reject, 1-9 choose"
+			return m, armQuickResponseTimeout(sessionID)
+		}
+		if m.quickResponseArmedFor(sessionID) {
+			switch {
+			case msg.Type == tea.KeyEsc:
+				m.clearQuickResponseArm(false)
+				m.statusText = fmt.Sprintf("Rejected %s", row.displayName)
+				return m, sendKey(m.backend, sessionID, "\x1b", row.session.ProjectDir)
+			case msg.String() == "y":
+				m.clearQuickResponseArm(false)
+				m.statusText = fmt.Sprintf("Sent \"y\" to %s", row.displayName)
+				return m, sendPrompt(m.backend, sessionID, "y", row.session.ProjectDir, row.session.Type)
+			default:
+				if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
+					m.clearQuickResponseArm(false)
+					m.statusText = fmt.Sprintf("Sent \"%s\" to %s", s, row.displayName)
+					return m, sendPrompt(m.backend, sessionID, s, row.session.ProjectDir, row.session.Type)
+				}
+				m.clearQuickResponseArm(true)
+			}
 		}
 	}
 
@@ -1960,6 +2049,9 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	}
 	for _, id := range deadIDs {
 		delete(m.attentionSessions, id)
+		if m.quickResponseArmedFor(id) {
+			m.clearQuickResponseArm(true)
+		}
 		m.store.RemoveSession(id)
 	}
 
@@ -2127,6 +2219,9 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 		as.Attention = ""
 		m.statusText = ""
 		delete(m.attentionSessions, as.SessionID)
+		if m.quickResponseArmedFor(as.SessionID) {
+			m.clearQuickResponseArm(false)
+		}
 	}
 
 	if cmd := m.ensureSpinner(); cmd != nil {
@@ -2259,6 +2354,9 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		as.Attention = ""
 		m.statusText = ""
 		delete(m.attentionSessions, msg.SessionID)
+		if m.quickResponseArmedFor(msg.SessionID) {
+			m.clearQuickResponseArm(false)
+		}
 	}
 
 	if cmd := m.ensureSpinner(); cmd != nil {

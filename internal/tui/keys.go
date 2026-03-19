@@ -25,6 +25,7 @@ type keyMap struct {
 	Add           key.Binding
 	Tab           key.Binding
 	ShiftTab      key.Binding
+	QuickRespond  key.Binding
 }
 
 var keys = keyMap{
@@ -113,5 +114,9 @@ var keys = keyMap{
 	ShiftTab: key.NewBinding(
 		key.WithKeys("shift+tab"),
 		key.WithHelp("shift+tab", "back"),
+	),
+	QuickRespond: key.NewBinding(
+		key.WithKeys("ctrl+r"),
+		key.WithHelp("ctrl+r", "arm quick response"),
 	),
 }
