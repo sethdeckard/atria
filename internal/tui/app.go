@@ -666,7 +666,7 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 		}
 	} else {
 		// Split screen content, trim trailing blank lines, take from bottom
-		lines := strings.Split(session.LastScreen, "\n")
+		lines := strings.Split(sanitizeBoxText(session.LastScreen), "\n")
 		for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 			lines = lines[:len(lines)-1]
 		}

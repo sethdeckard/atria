@@ -2759,6 +2759,23 @@ func TestStreamPanelKeepsSafetyMarginWithWideGlyphs(t *testing.T) {
 	assertLinesWithinWidth(t, panel, 39)
 }
 
+func TestStreamPanelSanitizesLayoutHostileContent(t *testing.T) {
+	session := &model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusNeedsInput,
+		LastScreen: "\x1b[33mEnter\tto\tselect\x1b[0m\r" +
+			"↑/↓ to navigate\rEsc to cancel\x00",
+	}
+
+	panel := renderStreamPanel(session, "alpha", "/proj/alpha", 70, 8, false)
+	if !strings.Contains(panel, "v:close") {
+		t.Fatal("expected stream panel header to contain v:close")
+	}
+	assertLinesWithinWidth(t, panel, 70)
+}
+
 func TestProjectListSelectedRowKeepsSafetyMarginWhenStreamOpen(t *testing.T) {
 	rows := []projectRow{
 		{
@@ -2832,6 +2849,38 @@ func TestStreamOpenLastSelectionKeepsAgentsHeaderVisible(t *testing.T) {
 		t.Fatal("expected agents header with last row selected")
 	}
 	assertLinesWithinWidth(t, last, 166)
+}
+
+func TestStreamOpenLayoutHostileScreenKeepsHeaderVisible(t *testing.T) {
+	store := makeStore(t)
+	store.AddProject("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "s1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusNeedsInput,
+		Attention:  "Enter to select",
+		LastScreen: "299 +nds if strings.Contains(list, \"a n/a\") {\n" +
+			"6.\tUpdate key handling\n" +
+			"\x1b[33mEnter to select\x1b[0m\r" +
+			"↑/↓ to navigate\rEsc to cancel",
+	})
+
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.width = 120
+	m.height = 24
+	m.backendOK = true
+	m.streamOpen = true
+	m.rebuildRows()
+
+	view := m.View()
+	if !strings.Contains(view, "agents") {
+		t.Fatal("expected agents header to remain visible")
+	}
+	if !strings.Contains(view, "v:close") {
+		t.Fatal("expected stream panel header to remain visible")
+	}
+	assertLinesWithinWidth(t, view, 120)
 }
 
 func TestShortListKeepsSingleSpacerAbovePanel(t *testing.T) {

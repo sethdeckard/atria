@@ -190,7 +190,7 @@ func (c *chatView) renderStreamBox(session *model.AgentSession, width, spinnerFr
 			sb.WriteString("\n")
 		}
 	} else {
-		lines := strings.Split(session.LastScreen, "\n")
+		lines := strings.Split(sanitizeBoxText(session.LastScreen), "\n")
 		for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 			lines = lines[:len(lines)-1]
 		}
@@ -265,6 +265,7 @@ func (c *chatView) renderStreamBox(session *model.AgentSession, width, spinnerFr
 
 // renderBoxLine renders a single line inside box borders, truncating if needed.
 func (c *chatView) renderBoxLine(line string, innerWidth int) string {
+	line = sanitizeBoxText(line)
 	line = truncateToWidth(line, innerWidth)
 	lineWidth := lipgloss.Width(line)
 	pad := innerWidth - lineWidth

@@ -33,6 +33,18 @@ func TestTruncateToWidth(t *testing.T) {
 	}
 }
 
+func TestSanitizeBoxText(t *testing.T) {
+	input := "alpha\tbeta\r\ngamma\rdelta\x00" +
+		"\x1b[33m warn\x1b[0m" +
+		"\x1b]0;title\x07" +
+		string(rune(0x0007))
+	got := sanitizeBoxText(input)
+	want := "alpha    beta\ngamma\ndelta warn"
+	if got != want {
+		t.Fatalf("sanitizeBoxText() = %q, want %q", got, want)
+	}
+}
+
 func TestNextSelectableItem(t *testing.T) {
 	tests := []struct {
 		name  string
