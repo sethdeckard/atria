@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.1
+
+- Fix dashboard stream-panel layout corruption when terminal preview content contains tabs, carriage returns, or ANSI escape sequences, which could hide the header or leave stale render artifacts
+
 ## v0.4.0
 
 - Add armed quick responses from the stream panel: `Ctrl+R` arms the selected agent when it needs input, then `y`, `Esc`, or `1-9` sends the response without leaving the dashboard
