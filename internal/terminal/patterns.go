@@ -41,6 +41,8 @@ var codexPatterns = &AgentPatterns{
 		regexp.MustCompile(`Waiting for .+ input`),
 		regexp.MustCompile(`Would you like to run`),
 		regexp.MustCompile(`Press enter to confirm`),
+		regexp.MustCompile(`Question \d+/\d+`),
+		regexp.MustCompile(`None of the above`),
 	},
 	Working: []*regexp.Regexp{
 		regexp.MustCompile(`[•●] Working`),

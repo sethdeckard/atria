@@ -36,6 +36,8 @@ func TestClassifyOutput(t *testing.T) {
 		{"codex waiting for input", "Waiting for user input", model.AgentCodex, model.StatusNeedsInput},
 		{"codex run command prompt", "Would you like to run the following command?", model.AgentCodex, model.StatusNeedsInput},
 		{"codex confirm prompt", "Press enter to confirm or esc to cancel", model.AgentCodex, model.StatusNeedsInput},
+		{"codex question banner", "Question 1/1 (1 unanswered)", model.AgentCodex, model.StatusNeedsInput},
+		{"codex none of the above option", "4. None of the above", model.AgentCodex, model.StatusNeedsInput},
 		{"codex prompt", "› Write tests for @filename", model.AgentCodex, model.StatusIdle},
 		{"codex status bar idle", "gpt-5.3-codex default · 73% left · ~/projects/foo", model.AgentCodex, model.StatusIdle},
 
@@ -215,6 +217,20 @@ func TestClassifyScreen(t *testing.T) {
 			"• Working",
 		},
 		{
+			"codex plan question screen detected",
+			"• Placeholder line one.\n\n• Placeholder line two.\n\nQuestion 1/1 (1 unanswered)\nChoose one option.\n\n› 1. Option A (Recommended)  Placeholder detail.\n  2. Option B                Placeholder detail.\n  3. Option C                Placeholder detail.\n  4. None of the above       Placeholder detail.\n",
+			model.AgentCodex,
+			model.StatusNeedsInput,
+			"Question 1/1",
+		},
+		{
+			"codex numbered prose without ui marker stays unmatched",
+			"1. Placeholder item\n2. Placeholder item\n3. Placeholder item\n",
+			model.AgentCodex,
+			"",
+			"",
+		},
+		{
 			"cross-agent: claude spinner not detected for codex",
 			"✻ Reading…\n",
 			model.AgentCodex,
@@ -325,4 +341,3 @@ func TestHasAgentScreen(t *testing.T) {
 		})
 	}
 }
-
