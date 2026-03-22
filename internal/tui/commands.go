@@ -139,18 +139,6 @@ func startMonitor(backend terminal.Backend, sessionID, logPath, patterns string,
 	}
 }
 
-func readScreen(backend terminal.Backend, sessionID, projectDir string) tea.Cmd {
-	return func() tea.Msg {
-		content, err := backend.ReadScreen(sessionID, 40)
-		return ScreenReadMsg{
-			SessionID:  sessionID,
-			ProjectDir: projectDir,
-			Content:    content,
-			Err:        err,
-		}
-	}
-}
-
 // launchReadScreen polls the screen until non-blank content appears or
 // maxAttempts is exhausted. This handles varying agent startup times across
 // backends (PTY is instant, iTerm/Kitty may take longer).
@@ -186,9 +174,33 @@ func launchReadScreen(backend terminal.Backend, sessionID, projectDir string) te
 	}
 }
 
-func tickCmd() tea.Cmd {
-	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
-		return TickMsg{}
+func readScreenLines(backend terminal.Backend, sessionID, projectDir string, lines int) tea.Cmd {
+	return func() tea.Msg {
+		content, err := backend.ReadScreen(sessionID, lines)
+		return ScreenReadMsg{
+			SessionID:  sessionID,
+			ProjectDir: projectDir,
+			Content:    content,
+			Err:        err,
+		}
+	}
+}
+
+func discoveryTickCmd() tea.Cmd {
+	return tea.Tick(discoveryRefreshInterval, func(t time.Time) tea.Msg {
+		return DiscoveryTickMsg{}
+	})
+}
+
+func statusTickCmd() tea.Cmd {
+	return tea.Tick(backgroundActiveInterval, func(t time.Time) tea.Msg {
+		return StatusTickMsg{}
+	})
+}
+
+func visibleRefreshCmd(sessionID string, interval time.Duration) tea.Cmd {
+	return tea.Tick(interval, func(t time.Time) tea.Msg {
+		return VisibleRefreshMsg{SessionID: sessionID}
 	})
 }
 

@@ -25,7 +25,9 @@ type mockBackend struct {
 	sendTextLog   []string
 	runCmdLog     []string
 	focusLog      []string
+	readScreenLog []string
 	screenContent string
+	screenByID    map[string]string
 	getVarVal     string
 	monitorPID    int
 }
@@ -48,6 +50,12 @@ func (m *mockBackend) FocusSession(sid string) error {
 	return nil
 }
 func (m *mockBackend) ReadScreen(sid string, lines int) (string, error) {
+	m.readScreenLog = append(m.readScreenLog, fmt.Sprintf("%s:%d", sid, lines))
+	if m.screenByID != nil {
+		if content, ok := m.screenByID[sid]; ok {
+			return content, nil
+		}
+	}
 	return m.screenContent, nil
 }
 func (m *mockBackend) GetVar(sid, name string) (string, error) {
@@ -76,6 +84,37 @@ func ctrlKeyMsg(k tea.KeyType) tea.KeyMsg {
 
 func modelFrom(tm tea.Model) Model {
 	return tm.(Model)
+}
+
+func collectMsgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	switch msg := msg.(type) {
+	case tea.BatchMsg:
+		var out []tea.Msg
+		for _, nested := range msg {
+			out = append(out, collectMsgs(nested)...)
+		}
+		return out
+	default:
+		return []tea.Msg{msg}
+	}
+}
+
+func drainCmd(t *testing.T, m Model, cmd tea.Cmd, maxMsgs int) Model {
+	t.Helper()
+	queue := collectMsgs(cmd)
+	for len(queue) > 0 && maxMsgs > 0 {
+		msg := queue[0]
+		queue = queue[1:]
+		updated, next := m.Update(msg)
+		m = modelFrom(updated)
+		queue = append(queue, collectMsgs(next)...)
+		maxMsgs--
+	}
+	return m
 }
 
 func makeStore(t *testing.T) *model.Store {
@@ -1953,7 +1992,7 @@ func TestScreenReadErrorIgnored(t *testing.T) {
 	}
 }
 
-func TestTickProducesCommands(t *testing.T) {
+func TestDiscoveryTickProducesCommands(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
@@ -1965,20 +2004,137 @@ func TestTickProducesCommands(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
 
-	_, cmd := m.Update(TickMsg{})
+	_, cmd := m.Update(DiscoveryTickMsg{})
 	if cmd == nil {
 		t.Fatal("expected commands from tick")
 	}
 }
 
-func TestTickNoCommandsWithoutBackend(t *testing.T) {
+func TestStatusTickNoCommandsWithoutBackend(t *testing.T) {
 	m := newTestModelWithStore(&mockBackend{}, makeStore(t))
 	// backendOK = false
 
-	_, cmd := m.Update(TickMsg{})
+	_, cmd := m.Update(StatusTickMsg{})
 	// Should still have tick rescheduled but no backend commands
 	if cmd == nil {
 		t.Fatal("expected at least tick reschedule")
+	}
+}
+
+func TestStatusTickSkipsVisibleSession(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/proj/alpha", "/proj/beta")
+	store.SetSession(&model.AgentSession{
+		ProjectDir:     "/proj/alpha",
+		SessionID:      "sid-1",
+		Type:           model.AgentClaude,
+		Status:         model.StatusWorking,
+		LastScreenRead: time.Now().Add(-2 * time.Second),
+	})
+	store.SetSession(&model.AgentSession{
+		ProjectDir:     "/proj/beta",
+		SessionID:      "sid-2",
+		Type:           model.AgentClaude,
+		Status:         model.StatusWorking,
+		LastScreenRead: time.Now().Add(-2 * time.Second),
+	})
+	backend := &mockBackend{}
+	m := newTestModelWithStore(backend, store)
+	m.backendOK = true
+	m.streamOpen = true
+	updated, cmd := m.Update(StatusTickMsg{})
+	if cmd == nil {
+		t.Fatal("expected status tick command")
+	}
+	_ = drainCmd(t, modelFrom(updated), cmd, 2)
+	if len(backend.readScreenLog) == 0 {
+		t.Fatalf("expected at least 1 background read, got %v", backend.readScreenLog)
+	}
+	for _, got := range backend.readScreenLog {
+		if got != "sid-2:40" {
+			t.Fatalf("expected visible session sid-1 to be skipped, got %v", backend.readScreenLog)
+		}
+	}
+}
+
+func TestStreamOpenStartsVisibleRefresh(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "sid-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+	})
+	backend := &mockBackend{screenByID: map[string]string{"sid-1": "live output"}}
+	m := newTestModelWithStore(backend, store)
+	m.backendOK = true
+
+	updated, cmd := m.Update(keyMsg("v"))
+	if cmd == nil {
+		t.Fatal("expected visible refresh to start")
+	}
+	_ = drainCmd(t, modelFrom(updated), cmd, 2)
+
+	if len(backend.readScreenLog) == 0 || backend.readScreenLog[0] != "sid-1:40" {
+		t.Fatalf("expected visible stream read for sid-1, got %v", backend.readScreenLog)
+	}
+}
+
+func TestChatOpenStartsVisibleRefresh(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/proj/alpha")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "sid-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+	})
+	backend := &mockBackend{screenByID: map[string]string{"sid-1": "chat output"}}
+	m := newTestModelWithStore(backend, store)
+	m.backendOK = true
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected visible refresh to start")
+	}
+	_ = drainCmd(t, modelFrom(updated), cmd, 2)
+
+	if len(backend.readScreenLog) == 0 || backend.readScreenLog[0] != "sid-1:40" {
+		t.Fatalf("expected visible chat read for sid-1, got %v", backend.readScreenLog)
+	}
+}
+
+func TestStreamCursorMoveRetargetsVisibleRefresh(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/proj/alpha", "/proj/beta")
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/alpha",
+		SessionID:  "sid-1",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+	})
+	store.SetSession(&model.AgentSession{
+		ProjectDir: "/proj/beta",
+		SessionID:  "sid-2",
+		Type:       model.AgentClaude,
+		Status:     model.StatusWorking,
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.backendOK = true
+	m.streamOpen = true
+
+	updated, cmd := m.Update(keyMsg("j"))
+	um := modelFrom(updated)
+	if um.cursor != 1 {
+		t.Fatalf("expected cursor 1, got %d", um.cursor)
+	}
+	if cmd == nil {
+		t.Fatal("expected visible refresh to restart on cursor move")
+	}
+	um = drainCmd(t, um, cmd, 1)
+	if um.visibleRefreshID != "sid-2" {
+		t.Fatalf("expected visible refresh to retarget sid-2, got %q", um.visibleRefreshID)
 	}
 }
 

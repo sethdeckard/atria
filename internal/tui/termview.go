@@ -2,16 +2,12 @@ package tui
 
 import (
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 )
-
-// termRefreshMsg triggers a terminal view refresh at 100ms intervals.
-type termRefreshMsg struct{}
 
 // termView is the embedded terminal view component for the PTY backend.
 type termView struct {
@@ -104,12 +100,6 @@ func (tv termView) render() string {
 	}
 
 	return sb.String()
-}
-
-func termRefreshCmd() tea.Cmd {
-	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
-		return termRefreshMsg{}
-	})
 }
 
 // keyToBytes translates a Bubble Tea KeyMsg to raw PTY bytes.

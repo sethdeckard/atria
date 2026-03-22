@@ -55,6 +55,7 @@ type AgentSession struct {
 	LastActivity   time.Time   `json:"-"`
 	ScreenChecked  bool        `json:"-"`
 	LastScreen     string      `json:"-"`
+	LastScreenRead time.Time   `json:"-"`
 	UnmatchedReads int         `json:"-"` // consecutive screen reads with no agent pattern
 	OrphanTicks    int         `json:"-"` // consecutive refreshes where name doesn't match agent while idle
 	Source         string      `json:"-"` // "pty", "iterm", "tmux"

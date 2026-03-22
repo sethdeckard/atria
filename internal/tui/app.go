@@ -26,6 +26,16 @@ const monitorPatterns = `Allow|Permission|Error:|\\?$|Waiting for|proceed|Esc to
 // spinnerFrames for the working activity indicator.
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+const (
+	discoveryRefreshInterval   = 3 * time.Second
+	backgroundActiveInterval   = 1 * time.Second
+	backgroundIdleInterval     = 3 * time.Second
+	visibleChatRefreshInterval = 200 * time.Millisecond
+	visibleStreamInterval      = 200 * time.Millisecond
+	visibleTerminalInterval    = 100 * time.Millisecond
+	defaultScreenReadLines     = 40
+)
+
 type viewState int
 
 const (
@@ -73,6 +83,9 @@ type Model struct {
 
 	// Stream panel
 	streamOpen bool
+
+	// Visible session refresh loop
+	visibleRefreshID string
 
 	// Armed quick response from the project list while needs_input is active.
 	quickResponseArmed     bool
@@ -215,7 +228,7 @@ func (m *Model) SetPTYClient(pty terminal.Backend) {
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	cmds = append(cmds, checkBackend(m.backend))
-	cmds = append(cmds, tickCmd())
+	cmds = append(cmds, discoveryTickCmd(), statusTickCmd())
 	if m.cfg == nil || m.cfg.UpdateCheckEnabled() {
 		cmds = append(cmds, checkUpgrade(Version))
 	}
@@ -258,6 +271,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.termView.width = msg.Width
 		m.termView.height = msg.Height
+		if cmd := m.startVisibleRefreshIfNeeded(); cmd != nil {
+			return m, cmd
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -312,8 +328,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		return m, spinnerTickCmd()
 
-	case TickMsg:
-		return m.handleTick()
+	case DiscoveryTickMsg:
+		return m.handleDiscoveryTick()
+
+	case StatusTickMsg:
+		return m.handleStatusTick()
+
+	case VisibleRefreshMsg:
+		return m.handleVisibleRefresh(msg)
 
 	case DirBrowserMsg:
 		m.browserDirs = msg.Dirs
@@ -413,22 +435,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case termRefreshMsg:
-		if m.view != viewTerminal {
-			return m, nil
-		}
-		content, err := m.backend.ReadScreen(m.termSessionID, m.height)
-		if err == nil {
-			m.termView.content = content
-		}
-		m.termView.spinnerFrame = m.spinnerFrame
-		for _, s := range m.store.Sessions {
-			if s.SessionID == m.termSessionID {
-				m.termView.status = s.Status
-				break
-			}
-		}
-		return m, termRefreshCmd()
 	}
 
 	// Pass through to sub-components
@@ -1154,14 +1160,14 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor++
 			m.adjustScroll()
 		}
-		return m, nil
+		return m, m.startVisibleRefreshIfNeeded()
 
 	case key.Matches(msg, keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
 			m.adjustScroll()
 		}
-		return m, nil
+		return m, m.startVisibleRefreshIfNeeded()
 
 	case key.Matches(msg, keys.Launch):
 		if !m.backendOK {
@@ -1201,7 +1207,7 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		sortRows(m.rows, m.sortCol, m.sortDesc)
 		m.cursor = 0
 		m.scrollOffset = 0
-		return m, nil
+		return m, m.startVisibleRefreshIfNeeded()
 
 	case key.Matches(msg, keys.SortReverse):
 		if len(m.rows) == 0 && m.canSetup() {
@@ -1219,7 +1225,7 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		sortRows(m.rows, m.sortCol, m.sortDesc)
 		m.cursor = 0
 		m.scrollOffset = 0
-		return m, nil
+		return m, m.startVisibleRefreshIfNeeded()
 
 	case key.Matches(msg, keys.Focus):
 		return m.focusSelected()
@@ -1236,7 +1242,7 @@ func (m Model) handleProjectListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Stream):
 		m.streamOpen = !m.streamOpen
 		m.adjustScroll()
-		return m, nil
+		return m, m.startVisibleRefreshIfNeeded()
 
 	case key.Matches(msg, keys.Enter):
 		return m.openChat()
@@ -1263,7 +1269,7 @@ func (m Model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = viewProjectList
 		m.statusText = ""
 		m.adjustScroll()
-		return m, nil
+		return m, m.startVisibleRefreshIfNeeded()
 
 	case key.Matches(msg, keys.CtrlD):
 		text := m.chat.input.Value()
@@ -1888,7 +1894,7 @@ func (m Model) openChat() (Model, tea.Cmd) {
 		m.chat.setSize(m.width, m.height)
 	}
 	m.view = viewChat
-	return m, nil
+	return m, m.startVisibleRefreshIfNeeded()
 }
 
 func (m Model) focusSelected() (Model, tea.Cmd) {
@@ -1923,7 +1929,7 @@ func (m Model) focusSelected() (Model, tea.Cmd) {
 		m.termView.height = m.height
 		m.termView.agentType = r.session.Type
 		m.view = viewTerminal
-		return m, termRefreshCmd()
+		return m, m.startVisibleRefreshIfNeeded()
 	}
 
 	return m, focusSession(m.backend, r.session.SessionID)
@@ -2066,6 +2072,9 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	}
 
 	m.rebuildRows()
+	if cmd := m.startVisibleRefreshIfNeeded(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 
 	if cmd := m.ensureSpinner(); cmd != nil {
 		cmds = append(cmds, cmd)
@@ -2276,6 +2285,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	as.ScreenChecked = true
+	as.LastScreenRead = time.Now()
 	// Strip null bytes from screen content (some backends return \x00 for spaces)
 	content := strings.ReplaceAll(msg.Content, "\x00", " ")
 	screenChanged := content != as.LastScreen
@@ -2347,6 +2357,11 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	}
 
 	m.rebuildRows()
+	if m.view == viewTerminal && m.termSessionID == msg.SessionID {
+		m.termView.content = content
+		m.termView.status = status
+		m.termView.spinnerFrame = m.spinnerFrame
+	}
 
 	// Bell on needs_input transition
 	if status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
@@ -2375,16 +2390,36 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleTick() (Model, tea.Cmd) {
+func (m Model) handleDiscoveryTick() (Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	cmds = append(cmds, tickCmd())
+	cmds = append(cmds, discoveryTickCmd())
 
 	if m.backendOK {
 		cmds = append(cmds, refreshSessions(m.backend))
+	}
 
-		// Read screen for status detection on all tracked sessions
+	if cmd := m.ensureSpinner(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) handleStatusTick() (Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	cmds = append(cmds, statusTickCmd())
+
+	if m.backendOK {
+		visibleID, _, _, hasVisible := m.visibleRefreshTarget()
+		now := time.Now()
 		for _, s := range m.store.Sessions {
-			cmds = append(cmds, readScreen(m.backend, s.SessionID, s.ProjectDir))
+			if hasVisible && s.SessionID == visibleID {
+				continue
+			}
+			interval := backgroundPollInterval(s)
+			if !s.LastScreenRead.IsZero() && now.Sub(s.LastScreenRead) < interval {
+				continue
+			}
+			cmds = append(cmds, readScreenLines(m.backend, s.SessionID, s.ProjectDir, defaultScreenReadLines))
 		}
 	}
 
@@ -2392,6 +2427,82 @@ func (m Model) handleTick() (Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) handleVisibleRefresh(msg VisibleRefreshMsg) (Model, tea.Cmd) {
+	sessionID, lines, interval, ok := m.visibleRefreshTarget()
+	if !ok || msg.SessionID != sessionID {
+		if !ok || msg.SessionID == m.visibleRefreshID {
+			m.visibleRefreshID = ""
+		}
+		return m, nil
+	}
+	as := m.store.SessionByID(sessionID)
+	if as == nil {
+		if msg.SessionID == m.visibleRefreshID {
+			m.visibleRefreshID = ""
+		}
+		return m, nil
+	}
+
+	m.visibleRefreshID = sessionID
+	cmds := []tea.Cmd{visibleRefreshCmd(sessionID, interval)}
+	if m.backendOK {
+		cmds = append(cmds, readScreenLines(m.backend, sessionID, as.ProjectDir, lines))
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func backgroundPollInterval(s *model.AgentSession) time.Duration {
+	switch s.Status {
+	case model.StatusWorking, model.StatusNeedsInput, model.StatusError:
+		return backgroundActiveInterval
+	default:
+		return backgroundIdleInterval
+	}
+}
+
+func (m Model) visibleRefreshTarget() (string, int, time.Duration, bool) {
+	switch m.view {
+	case viewTerminal:
+		if m.termSessionID == "" {
+			return "", 0, 0, false
+		}
+		lines := m.height
+		if lines < 1 {
+			lines = defaultScreenReadLines
+		}
+		return m.termSessionID, lines, visibleTerminalInterval, true
+	case viewChat:
+		if m.chatSessionID == "" {
+			return "", 0, 0, false
+		}
+		return m.chatSessionID, defaultScreenReadLines, visibleChatRefreshInterval, true
+	case viewProjectList:
+		if !m.streamOpen || m.cursor < 0 || m.cursor >= len(m.rows) {
+			return "", 0, 0, false
+		}
+		row := m.rows[m.cursor]
+		if row.session == nil {
+			return "", 0, 0, false
+		}
+		return row.session.SessionID, defaultScreenReadLines, visibleStreamInterval, true
+	default:
+		return "", 0, 0, false
+	}
+}
+
+func (m *Model) startVisibleRefreshIfNeeded() tea.Cmd {
+	sessionID, _, interval, ok := m.visibleRefreshTarget()
+	if !ok {
+		m.visibleRefreshID = ""
+		return nil
+	}
+	if m.visibleRefreshID == sessionID {
+		return nil
+	}
+	m.visibleRefreshID = sessionID
+	return visibleRefreshCmd(sessionID, interval)
 }
 
 func (m Model) updateChat(msg tea.Msg) (Model, tea.Cmd) {

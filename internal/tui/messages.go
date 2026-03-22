@@ -49,8 +49,16 @@ type FocusedMsg struct {
 	Err error
 }
 
-// TickMsg triggers periodic session refresh and status polling.
-type TickMsg struct{}
+// DiscoveryTickMsg triggers periodic session discovery refresh.
+type DiscoveryTickMsg struct{}
+
+// StatusTickMsg triggers background status polling.
+type StatusTickMsg struct{}
+
+// VisibleRefreshMsg triggers a fast refresh for the currently visible session.
+type VisibleRefreshMsg struct {
+	SessionID string
+}
 
 // SpinnerTickMsg advances the spinner animation.
 type SpinnerTickMsg struct{}
