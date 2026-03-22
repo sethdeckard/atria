@@ -24,12 +24,12 @@ var claudePatterns = &AgentPatterns{
 		regexp.MustCompile(`Esc to cancel`),
 	},
 	Working: []*regexp.Regexp{
-		regexp.MustCompile(`(?:[✻✶·]|\*) \S+(?:…|\.{3})`),
-		regexp.MustCompile(`esc\s+to\s+interrupt`),
+		regexp.MustCompile(`(?:[✻✶✽✢·]|\*)\s+\S+(?:…|\.{3})`),
+		regexp.MustCompile(`⏵⏵.*esc\s+to\s+interrupt`),
 		regexp.MustCompile(`Waiting for task \(esc to give additional instructions\)`),
 	},
 	WorkingExclude: []*regexp.Regexp{
-		regexp.MustCompile(`⏵`),
+		regexp.MustCompile(`⏵⏵.*\(running\).*esc\s+to\s+interrupt`),
 	},
 	Idle: []*regexp.Regexp{
 		regexp.MustCompile(`❯`),
@@ -102,6 +102,6 @@ var agentPatternRegistry = map[model.AgentType]*AgentPatterns{
 var (
 	sharedBellPattern      = regexp.MustCompile("\x07")
 	sharedErrorPattern     = regexp.MustCompile(`Error:`)
-	sharedCompletedPattern = regexp.MustCompile(`✓|completed|No findings`)
+	sharedCompletedPattern = regexp.MustCompile(`✓|(?:^|[[:space:]])completed(?: successfully)?(?:$|[[:space:].!])|No findings`)
 	sharedShellPrompt      = regexp.MustCompile(`\$ $`)
 )

@@ -74,7 +74,7 @@ func hasClaudePrefix(name string) bool {
 }
 
 func claudePrefix(name string) string {
-	for _, prefix := range []string{"\u2733", "✻", "✶"} {
+	for _, prefix := range []string{"\u2733", "✻", "✶", "✽", "✢"} {
 		if strings.HasPrefix(name, prefix) {
 			return prefix
 		}

@@ -23,8 +23,8 @@ func TestClassifyOutput(t *testing.T) {
 		{"claude working spinner", "✻ Reading…", model.AgentClaude, model.StatusWorking},
 		{"claude thinking", "✶ Doodling… (thought for 6s)", model.AgentClaude, model.StatusWorking},
 		{"claude dot spinner", "· Doodling… (48s)", model.AgentClaude, model.StatusWorking},
-		{"claude esc to interrupt", "esc to interrupt", model.AgentClaude, model.StatusWorking},
 		{"claude background task not working", "⏵⏵ accept edits on · tail -f log (running) · esc to interrupt", model.AgentClaude, ""},
+		{"claude shell background task working", "shell · ⏵⏵ accept edits on · esc to interrupt · ↓ to manage", model.AgentClaude, model.StatusWorking},
 		{"claude idle prompt", "❯ ", model.AgentClaude, model.StatusIdle},
 		{"claude idle prompt with path", "~/projects ❯", model.AgentClaude, model.StatusIdle},
 		{"claude shortcuts", "? for shortcuts", model.AgentClaude, model.StatusIdle},
@@ -54,6 +54,7 @@ func TestClassifyOutput(t *testing.T) {
 		{"shared error with context", "compilation Error: syntax", model.AgentOpenCode, model.StatusError},
 		{"shared completed check", "✓ All tests passed", model.AgentClaude, model.StatusIdle},
 		{"shared completed text", "Task completed successfully", model.AgentCodex, model.StatusIdle},
+		{"shared completed metric not idle", "checkpoint_loaded completed=1 path=/tmp/checkpoint.json", model.AgentClaude, ""},
 		{"shared no findings", "No findings reported", model.AgentOpenCode, model.StatusIdle},
 		{"shared shell prompt", "user@host $ ", model.AgentClaude, model.StatusIdle},
 
@@ -283,8 +284,38 @@ func TestHasAgentScreen(t *testing.T) {
 			true,
 		},
 		{
+			"claude eight spoke working spinner",
+			"some output\n✽ Frosting…",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"claude four teardrop working spinner",
+			"some output\n✢ Frosting…",
+			model.AgentClaude,
+			true,
+		},
+		{
 			"claude waiting for task",
 			"Task Output worker123\nWaiting for task (esc to give additional instructions)",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"claude shell background task",
+			"some output\nshell · ⏵⏵ accept edits on · esc to interrupt · ↓ to manage",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"claude shell background task with nulls",
+			"some output\n\x001\x00shell ·\x00⏵⏵\x00accept\x00edits\x00on ·\x00esc\x00to\x00interrupt\x00·\x00↓\x00to\x00manage",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"claude spinner token with null separator",
+			"some output\n✻\x00Reading…",
 			model.AgentClaude,
 			true,
 		},
@@ -389,9 +420,41 @@ func TestInferAgentFromScreen(t *testing.T) {
 			want:    model.AgentClaude,
 		},
 		{
+			name:    "claude eight spoke working pattern",
+			content: "some output\n✽ Frosting…",
+			want:    model.AgentClaude,
+		},
+		{
+			name:    "claude four teardrop working pattern",
+			content: "some output\n✢ Frosting…",
+			want:    model.AgentClaude,
+		},
+		{
 			name:    "claude waiting for task pattern",
 			content: "Task Output worker123\nWaiting for task (esc to give additional instructions)",
 			want:    model.AgentClaude,
+		},
+		{
+			name:    "claude shell background task pattern",
+			content: "some output\nshell · ⏵⏵ accept edits on · esc to interrupt · ↓ to manage",
+			want:    model.AgentClaude,
+		},
+		{
+			name:    "claude shell background task pattern with nulls",
+			content: "some output\n\x001\x00shell ·\x00⏵⏵\x00accept\x00edits\x00on ·\x00esc\x00to\x00interrupt\x00·\x00↓\x00to\x00manage",
+			want:    model.AgentClaude,
+		},
+		{
+			name:    "claude spinner token with null separator",
+			content: "some output\n✻\x00Reading…",
+			want:    model.AgentClaude,
+		},
+		{
+			name: "claude active signal beats ambiguous idle prompt",
+			content: "some output\n" +
+				"\x001\x00shell ·\x00⏵⏵\x00accept\x00edits\x00on ·\x00esc\x00to\x00interrupt\x00·\x00↓\x00to\x00manage\n" +
+				"❯ ",
+			want: model.AgentClaude,
 		},
 		{
 			name: "codex product text",

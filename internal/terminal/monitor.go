@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/sethdeckard/atria/internal/model"
@@ -11,6 +12,27 @@ var detectableAgents = []model.AgentType{
 	model.AgentCodex,
 	model.AgentOpenCode,
 	model.AgentCopilot,
+}
+
+func normalizeScreenText(s string) string {
+	return strings.ReplaceAll(s, "\x00", " ")
+}
+
+var brandedAgentPatterns = map[model.AgentType][]*regexp.Regexp{
+	model.AgentClaude: {
+		regexp.MustCompile(`(?m)^\s*Claude Code(?:\s+v[\d.]+)?\b`),
+	},
+	model.AgentCodex: {
+		regexp.MustCompile(`(?m)\bgpt-\S+-codex\b`),
+		regexp.MustCompile(`(?m)^\s*OpenAI Codex\b`),
+	},
+	model.AgentOpenCode: {
+		regexp.MustCompile(`(?m)^\s*OC \| .+\(opencode\)\s*$`),
+		regexp.MustCompile(`(?m)^\s*(?:•\s*)?OpenCode(?:\s+\d[\w.]*)?\b`),
+	},
+	model.AgentCopilot: {
+		regexp.MustCompile(`(?m)^\s*GitHub Copilot\b`),
+	},
 }
 
 // ClassifyOutput determines agent status from a single line of output text.
@@ -122,7 +144,7 @@ func bottomRegion(lines []string) int {
 // absolute bottom) to handle blank padding below dialog prompts.
 // Idle/completed can match anywhere.
 func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatus, string) {
-	lines := strings.Split(content, "\n")
+	lines := strings.Split(normalizeScreenText(content), "\n")
 	bestStatus := model.AgentStatus("")
 	bestLine := ""
 
@@ -155,11 +177,15 @@ func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatu
 // patterns anywhere), this restricts ALL patterns to the bottom region so
 // scrollback from a previously-exited agent doesn't count as a positive signal.
 func HasAgentScreen(content string, agentType model.AgentType) bool {
+	return hasAgentScreen(content, agentType, true)
+}
+
+func hasAgentScreen(content string, agentType model.AgentType, includeIdle bool) bool {
 	patterns := agentPatternRegistry[agentType]
 	if patterns == nil {
 		return false
 	}
-	lines := strings.Split(content, "\n")
+	lines := strings.Split(normalizeScreenText(content), "\n")
 
 	bottomStart := bottomRegion(lines)
 
@@ -192,29 +218,42 @@ func HasAgentScreen(content string, agentType model.AgentType) bool {
 				}
 			}
 		}
-		for _, re := range patterns.Idle {
-			if re.MatchString(line) {
-				return true
+		if includeIdle {
+			for _, re := range patterns.Idle {
+				if re.MatchString(line) {
+					return true
+				}
 			}
 		}
 	}
 	return false
 }
 
+func hasActiveAgentScreen(content string, agentType model.AgentType) bool {
+	return hasAgentScreen(content, agentType, false)
+}
+
 // InferAgentFromScreen tries to identify the agent from screen content.
 // It prefers explicit product text, then falls back to agent-specific bottom
 // region patterns. If multiple agents remain plausible, it returns "".
 func InferAgentFromScreen(content string) model.AgentType {
-	lower := strings.ToLower(content)
-	switch {
-	case strings.Contains(lower, "claude code"):
-		return model.AgentClaude
-	case strings.Contains(lower, "github copilot"):
-		return model.AgentCopilot
-	case strings.Contains(lower, "openai codex") || strings.Contains(lower, "gpt-") && strings.Contains(lower, "codex"):
-		return model.AgentCodex
-	case strings.Contains(lower, "opencode"):
-		return model.AgentOpenCode
+	content = normalizeScreenText(content)
+	for agentType, patterns := range brandedAgentPatterns {
+		for _, re := range patterns {
+			if re.MatchString(content) {
+				return agentType
+			}
+		}
+	}
+
+	var activeMatches []model.AgentType
+	for _, agentType := range detectableAgents {
+		if hasActiveAgentScreen(content, agentType) {
+			activeMatches = append(activeMatches, agentType)
+		}
+	}
+	if len(activeMatches) == 1 {
+		return activeMatches[0]
 	}
 
 	var matches []model.AgentType
