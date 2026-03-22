@@ -2000,12 +2000,8 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		if trackedIDs[sess.ID] {
 			continue
 		}
-		agentType := terminal.DetectAgent(sess.Name)
-		if agentType == "" {
-			continue
-		}
-		// Dispatch async CWD discovery (lsof, get-var, name match)
-		cmds = append(cmds, discoverAgent(m.backend, sess, agentType, m.watchDirs, projectDirs))
+		// Dispatch async discovery (title, CWD, then screen fallback for unknown titles).
+		cmds = append(cmds, discoverAgent(m.backend, sess, m.watchDirs, projectDirs))
 	}
 
 	// Track orphan ticks: when a session is idle, the terminal name no
@@ -2083,10 +2079,16 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 }
 
 func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
+	if msg.DebugSkip != "" && m.debugLog != nil {
+		m.debugLog.Printf("[discover] SKIP sid=%s (%s)", msg.SessionID, msg.DebugSkip)
+	}
 	if msg.Dir == "" {
 		if m.debugLog != nil {
 			m.debugLog.Printf("[discover] SKIP sid=%s (empty dir)", msg.SessionID)
 		}
+		return m, nil
+	}
+	if msg.AgentType == "" {
 		return m, nil
 	}
 	// Skip if this session was already tracked (race with multiple ticks)

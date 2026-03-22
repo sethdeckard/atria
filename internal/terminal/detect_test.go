@@ -13,6 +13,8 @@ func TestDetectAgent(t *testing.T) {
 		expected model.AgentType
 	}{
 		{"sparkle prefix", "✳ Editing src/game.go", model.AgentClaude},
+		{"asterisk flower prefix", "✻ Reading…", model.AgentClaude},
+		{"asterisk star prefix", "✶ Doodling…", model.AgentClaude},
 		{"sparkle only", "✳", model.AgentClaude},
 		{"claude lowercase", "my-claude-session", model.AgentClaude},
 		{"claude uppercase", "CLAUDE-CODE", model.AgentClaude},
@@ -52,6 +54,8 @@ func TestExtractActivity(t *testing.T) {
 		expected string
 	}{
 		{"full format", "✳ Editing src/game.go (sourcekit-lsp)", "Editing src/game.go"},
+		{"flower prefix", "✻ Reading…", "Reading…"},
+		{"star prefix", "✶ Doodling…", "Doodling…"},
 		{"no parentheses", "✳ Editing src/game.go", "Editing src/game.go"},
 		{"sparkle only", "✳", ""},
 		{"no sparkle with parens", "Running tests (jest)", "Running tests"},

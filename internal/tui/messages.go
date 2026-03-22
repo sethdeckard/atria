@@ -94,12 +94,14 @@ type ScreenReadMsg struct {
 	Err        error
 }
 
-// AgentDiscoveredMsg is sent when an untracked agent's CWD has been resolved.
+// AgentDiscoveredMsg is sent when an untracked agent has been identified and
+// its CWD resolved.
 type AgentDiscoveredMsg struct {
 	SessionID string
 	AgentType model.AgentType
 	Source    string // backend source ("pty", "iterm", "tmux", etc.)
 	Dir       string // resolved working directory, empty if not found
+	DebugSkip string // optional discovery skip reason for debug logging
 }
 
 // IntegrationToggledMsg is sent after toggling an integration on or off.

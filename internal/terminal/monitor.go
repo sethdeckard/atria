@@ -6,6 +6,13 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 )
 
+var detectableAgents = []model.AgentType{
+	model.AgentClaude,
+	model.AgentCodex,
+	model.AgentOpenCode,
+	model.AgentCopilot,
+}
+
 // ClassifyOutput determines agent status from a single line of output text.
 // Agent-specific patterns are checked first, then shared fallbacks.
 func ClassifyOutput(text string, agentType model.AgentType) model.AgentStatus {
@@ -194,3 +201,30 @@ func HasAgentScreen(content string, agentType model.AgentType) bool {
 	return false
 }
 
+// InferAgentFromScreen tries to identify the agent from screen content.
+// It prefers explicit product text, then falls back to agent-specific bottom
+// region patterns. If multiple agents remain plausible, it returns "".
+func InferAgentFromScreen(content string) model.AgentType {
+	lower := strings.ToLower(content)
+	switch {
+	case strings.Contains(lower, "claude code"):
+		return model.AgentClaude
+	case strings.Contains(lower, "github copilot"):
+		return model.AgentCopilot
+	case strings.Contains(lower, "openai codex") || strings.Contains(lower, "gpt-") && strings.Contains(lower, "codex"):
+		return model.AgentCodex
+	case strings.Contains(lower, "opencode"):
+		return model.AgentOpenCode
+	}
+
+	var matches []model.AgentType
+	for _, agentType := range detectableAgents {
+		if HasAgentScreen(content, agentType) {
+			matches = append(matches, agentType)
+		}
+	}
+	if len(matches) == 1 {
+		return matches[0]
+	}
+	return ""
+}

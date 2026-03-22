@@ -271,6 +271,24 @@ func TestHasAgentScreen(t *testing.T) {
 			true,
 		},
 		{
+			"claude ascii working spinner",
+			"some output\n* Germinating…",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"claude ascii three-dot working spinner",
+			"some output\n* Germinating...",
+			model.AgentClaude,
+			true,
+		},
+		{
+			"claude waiting for task",
+			"Task Output worker123\nWaiting for task (esc to give additional instructions)",
+			model.AgentClaude,
+			true,
+		},
+		{
 			"claude needs_input",
 			"some output\nAllow file edit?",
 			model.AgentClaude,
@@ -337,6 +355,71 @@ func TestHasAgentScreen(t *testing.T) {
 			got := HasAgentScreen(tt.content, tt.agentType)
 			if got != tt.expected {
 				t.Errorf("HasAgentScreen(%q, %q) = %v, want %v", tt.content, tt.agentType, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestInferAgentFromScreen(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    model.AgentType
+	}{
+		{
+			name: "claude explicit product text",
+			content: "Claude Code\n\n" +
+				"* Germinating…\n" +
+				"❯ Try \"fix tests\"",
+			want: model.AgentClaude,
+		},
+		{
+			name:    "claude working pattern",
+			content: "some output\n✻ Reading…",
+			want:    model.AgentClaude,
+		},
+		{
+			name:    "claude ascii working pattern",
+			content: "some output\n* Germinating…",
+			want:    model.AgentClaude,
+		},
+		{
+			name:    "claude ascii three-dot working pattern",
+			content: "some output\n* Germinating...",
+			want:    model.AgentClaude,
+		},
+		{
+			name:    "claude waiting for task pattern",
+			content: "Task Output worker123\nWaiting for task (esc to give additional instructions)",
+			want:    model.AgentClaude,
+		},
+		{
+			name: "codex product text",
+			content: "gpt-5.4-codex default · 90% left\n\n" +
+				"• Working (30s • esc to interrupt)",
+			want: model.AgentCodex,
+		},
+		{
+			name:    "opencode product text",
+			content: "OC | Editing file (opencode)\nctrl+p commands",
+			want:    model.AgentOpenCode,
+		},
+		{
+			name:    "plain shell stays unknown",
+			content: "seth@host project % ls",
+			want:    "",
+		},
+		{
+			name:    "ambiguous shared idle prompt stays unknown",
+			content: "❯ \n? for shortcuts",
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := InferAgentFromScreen(tt.content); got != tt.want {
+				t.Errorf("InferAgentFromScreen() = %q, want %q", got, tt.want)
 			}
 		})
 	}

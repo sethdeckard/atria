@@ -456,14 +456,32 @@ func removeString(ss []string, s string) []string {
 	return filtered
 }
 
-func discoverAgent(backend terminal.Backend, sess terminal.Session, agentType model.AgentType, watchDirs []string, projectDirs []string) tea.Cmd {
+func discoverAgent(backend terminal.Backend, sess terminal.Session, watchDirs []string, projectDirs []string) tea.Cmd {
 	return func() tea.Msg {
 		dir := terminal.DiscoverCWD(backend, sess, watchDirs, projectDirs)
+		agentType := terminal.DetectAgent(sess.Name)
+		debugSkip := ""
+		if agentType == "" {
+			if dir == "" {
+				debugSkip = "unknown title and empty dir"
+			} else {
+				content, err := backend.ReadScreen(sess.ID, defaultScreenReadLines)
+				if err != nil {
+					debugSkip = "screen read failed: " + err.Error()
+				} else {
+					agentType = terminal.InferAgentFromScreen(content)
+					if agentType == "" {
+						debugSkip = "unknown title and screen"
+					}
+				}
+			}
+		}
 		return AgentDiscoveredMsg{
 			SessionID: sess.ID,
 			AgentType: agentType,
 			Source:    sess.Source,
 			Dir:       dir,
+			DebugSkip: debugSkip,
 		}
 	}
 }

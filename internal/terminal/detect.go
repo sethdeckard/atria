@@ -13,7 +13,7 @@ import (
 func DetectAgent(name string) model.AgentType {
 	lower := strings.ToLower(name)
 
-	if strings.HasPrefix(name, "\u2733") || strings.Contains(lower, "claude") {
+	if hasClaudePrefix(name) || strings.Contains(lower, "claude") {
 		return model.AgentClaude
 	}
 
@@ -38,9 +38,9 @@ func DetectAgent(name string) model.AgentType {
 func ExtractActivity(name string) string {
 	s := name
 
-	// Strip the ✳ prefix (with optional trailing space).
-	if strings.HasPrefix(s, "\u2733") {
-		s = strings.TrimPrefix(s, "\u2733")
+	// Strip the Claude prefix glyph (with optional trailing space).
+	if prefix := claudePrefix(s); prefix != "" {
+		s = strings.TrimPrefix(s, prefix)
 		s = strings.TrimLeft(s, " ")
 	}
 
@@ -67,4 +67,17 @@ func ExtractActivity(name string) string {
 	}
 
 	return s
+}
+
+func hasClaudePrefix(name string) bool {
+	return claudePrefix(name) != ""
+}
+
+func claudePrefix(name string) string {
+	for _, prefix := range []string{"\u2733", "✻", "✶"} {
+		if strings.HasPrefix(name, prefix) {
+			return prefix
+		}
+	}
+	return ""
 }

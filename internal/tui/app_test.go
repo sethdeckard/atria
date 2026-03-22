@@ -1540,6 +1540,57 @@ func TestAgentDiscoveredDuplicate(t *testing.T) {
 	}
 }
 
+func TestSessionsRefreshedDiscoversUnknownTitleByScreen(t *testing.T) {
+	store := makeStore(t)
+	backend := &mockBackend{
+		getVarVal: "/watch/project",
+		screenByID: map[string]string{
+			"sess-claude-title":   "Claude Code\n❯ \n? for shortcuts",
+			"sess-codex":          "gpt-5.4-codex default · 92% left\n› Improve docs",
+			"sess-neutral-claude": "Claude Code\n* Germinating…\n❯ Try \"fix tests\"",
+		},
+	}
+	m := newTestModelWithStore(backend, store)
+
+	updated, cmd := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "sess-claude-title", Name: "claude"},
+			{ID: "sess-codex", Name: "codex"},
+			{ID: "sess-neutral-claude", Name: "Research data pipeline (caffeinate)"},
+		},
+	})
+	um := drainCmd(t, modelFrom(updated), cmd, 20)
+
+	if got := len(um.store.Sessions); got != 3 {
+		t.Fatalf("expected 3 discovered sessions, got %d", got)
+	}
+	if got := len(um.rows); got != 3 {
+		t.Fatalf("expected 3 rows, got %d", got)
+	}
+
+	var claudeCount, codexCount int
+	for _, sess := range um.store.Sessions {
+		switch sess.Type {
+		case model.AgentClaude:
+			claudeCount++
+		case model.AgentCodex:
+			codexCount++
+		}
+	}
+	if claudeCount != 2 {
+		t.Errorf("expected 2 Claude sessions, got %d", claudeCount)
+	}
+	if codexCount != 1 {
+		t.Errorf("expected 1 Codex session, got %d", codexCount)
+	}
+	if got := len(backend.readScreenLog); got != 1 {
+		t.Fatalf("expected one screen read for unknown-title session, got %d", got)
+	}
+	if backend.readScreenLog[0] != "sess-neutral-claude:40" {
+		t.Errorf("expected screen read for neutral title, got %q", backend.readScreenLog[0])
+	}
+}
+
 func TestStatusUpdatedMsg(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")

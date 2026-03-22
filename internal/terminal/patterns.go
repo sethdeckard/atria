@@ -24,8 +24,9 @@ var claudePatterns = &AgentPatterns{
 		regexp.MustCompile(`Esc to cancel`),
 	},
 	Working: []*regexp.Regexp{
-		regexp.MustCompile(`[✻✶·] \S+…`),
+		regexp.MustCompile(`(?:[✻✶·]|\*) \S+(?:…|\.{3})`),
 		regexp.MustCompile(`esc\s+to\s+interrupt`),
+		regexp.MustCompile(`Waiting for task \(esc to give additional instructions\)`),
 	},
 	WorkingExclude: []*regexp.Regexp{
 		regexp.MustCompile(`⏵`),
