@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.2
+
+- Add visibility-aware agent refresh so visible sessions update more responsively without increasing polling cost across all tracked sessions
+- Fix Codex needs-input detection for plan-style prompts and fallback question UI
+- Fix iTerm Claude discovery when session titles are neutral or missing by falling back to CWD and screen-based inference
+- Tighten agent screen inference and monitor heuristics to reduce false OpenCode detection and recognize more Claude background-task working states
+
 ## v0.4.1
 
 - Fix dashboard stream-panel layout corruption when terminal preview content contains tabs, carriage returns, or ANSI escape sequences, which could hide the header or leave stale render artifacts
