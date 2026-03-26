@@ -5,6 +5,7 @@ type Session struct {
 	ID     string
 	Name   string
 	TTY    string
+	Job    string
 	Source string // "pty", "iterm", "tmux" — set by composite backend
 }
 

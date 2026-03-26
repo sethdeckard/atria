@@ -2016,15 +2016,20 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	// - HasAgentScreen restricts pattern matching to the bottom region,
 	//   so scrollback from exited agents doesn't prevent orphan cleanup.
 	liveNames := make(map[string]string)
+	liveJobs := make(map[string]string)
 	for _, sess := range msg.Sessions {
 		liveNames[sess.ID] = sess.Name
+		liveJobs[sess.ID] = sess.Job
 	}
 	for _, s := range m.store.Sessions {
 		name, alive := liveNames[s.SessionID]
 		if !alive {
 			continue
 		}
-		if s.Status == model.StatusIdle && s.ScreenChecked && terminal.DetectAgent(name) == "" && !terminal.HasAgentScreen(s.LastScreen, s.Type) {
+		job := liveJobs[s.SessionID]
+		shellFallback := s.Source == "iterm" && isShellJob(job)
+		if s.Status == model.StatusIdle && s.ScreenChecked &&
+			((terminal.DetectAgent(name) == "" && !terminal.HasAgentScreen(s.LastScreen, s.Type)) || shellFallback) {
 			s.OrphanTicks++
 		} else {
 			s.OrphanTicks = 0
@@ -2566,6 +2571,15 @@ func (m *Model) EnableDebugLog(path string, unsafe bool) error {
 // isAllBlank returns true if content contains only whitespace/newlines.
 func isAllBlank(content string) bool {
 	return strings.TrimSpace(content) == ""
+}
+
+func isShellJob(job string) bool {
+	switch strings.ToLower(strings.TrimSpace(job)) {
+	case "sh", "bash", "zsh", "fish", "ksh", "dash", "tcsh", "csh":
+		return true
+	default:
+		return false
+	}
 }
 
 func EnsureMonitorDir(dir string) error {

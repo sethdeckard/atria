@@ -148,11 +148,12 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 	for _, w := range lsr.GetWindows() {
 		for _, tab := range w.GetTabs() {
 			for _, ss := range collectSessions(tab.GetRoot()) {
-				tty := c.ttyForSession(ss.GetUniqueIdentifier())
+				tty, job := c.sessionTTYAndJob(ss.GetUniqueIdentifier())
 				sessions = append(sessions, terminal.Session{
 					ID:   ss.GetUniqueIdentifier(),
 					Name: unquoteJSON(ss.GetTitle()),
 					TTY:  tty,
+					Job:  job,
 				})
 			}
 		}
@@ -160,24 +161,28 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 	return sessions, nil
 }
 
-// ttyForSession gets the TTY for a session via the "tty" variable.
-func (c *Client) ttyForSession(sessionID string) string {
+// sessionTTYAndJob gets the TTY and foreground job for a session.
+func (c *Client) sessionTTYAndJob(sessionID string) (tty, job string) {
 	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
 		Submessage: &pb.ClientOriginatedMessage_VariableRequest{
 			VariableRequest: &pb.VariableRequest{
 				Scope: &pb.VariableRequest_SessionId{SessionId: sessionID},
-				Get:   []string{"tty"},
+				Get:   []string{"tty", "jobName"},
 			},
 		},
 	})
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	vr := resp.GetVariableResponse()
-	if vr == nil || len(vr.GetValues()) == 0 {
-		return ""
+	if vr == nil || vr.GetStatus() != pb.VariableResponse_OK || len(vr.GetValues()) == 0 {
+		return "", ""
 	}
-	return unquoteJSON(vr.GetValues()[0])
+	tty = unquoteJSON(vr.GetValues()[0])
+	if len(vr.GetValues()) > 1 {
+		job = unquoteJSON(vr.GetValues()[1])
+	}
+	return tty, job
 }
 
 // extractFocusedWindowID scans FocusResponse notifications for the focused window.

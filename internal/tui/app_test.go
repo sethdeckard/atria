@@ -1348,6 +1348,43 @@ func TestSessionsRefreshedKeepsIdleAgentWithScreenUI(t *testing.T) {
 	}
 }
 
+func TestSessionsRefreshedRemovesIdleITermShellFallback(t *testing.T) {
+	store := makeStore(t)
+	store.Projects = makeProjects("/a/myproject")
+	store.SetSession(&model.AgentSession{
+		ProjectDir:    "/a/myproject",
+		SessionID:     "iterm:sess-shell",
+		Type:          model.AgentClaude,
+		Source:        "iterm",
+		Status:        model.StatusIdle,
+		ScreenChecked: true,
+		LastScreen:    "old Claude output\n\n❯ ",
+	})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	refreshMsg := SessionsRefreshedMsg{
+		Sessions: []terminal.Session{
+			{ID: "iterm:sess-shell", Name: "..ts/go/loadout (-zsh)", Source: "iterm", Job: "zsh"},
+		},
+	}
+
+	updated, _ := m.Update(refreshMsg)
+	um := modelFrom(updated)
+	sess := um.store.SessionByID("iterm:sess-shell")
+	if sess == nil {
+		t.Fatal("expected session to survive first refresh")
+	}
+	if sess.OrphanTicks != 1 {
+		t.Fatalf("expected OrphanTicks=1 after shell fallback, got %d", sess.OrphanTicks)
+	}
+
+	updated2, _ := um.Update(refreshMsg)
+	um2 := modelFrom(updated2)
+	if um2.store.SessionByID("iterm:sess-shell") != nil {
+		t.Error("expected idle iTerm shell fallback session to be removed after second refresh")
+	}
+}
+
 func TestSessionsRefreshedKeepsActiveAgentWithChangedName(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
