@@ -265,7 +265,7 @@ func parseOptions(args []string) (options, error) {
 }
 
 func helpText() string {
-	return fmt.Sprintf(`atria - Agent multiplexer for your terminal
+	return tui.Logo + "\n\n" + fmt.Sprintf(`atria - Agent multiplexer for your terminal
 
 Usage: atria [options]
 
@@ -283,7 +283,6 @@ On first run, press S to open the setup wizard.
 
 func versionText() string {
 	var out string
-	out += tui.Logo + "\n\n"
 	out += fmt.Sprintf("atria v%s", version)
 	if commit != "" {
 		out += fmt.Sprintf(" (%s)", commit[:min(7, len(commit))])
