@@ -3036,7 +3036,7 @@ func TestProjectListSelectedRowKeepsSafetyMarginWhenStreamOpen(t *testing.T) {
 		},
 	}
 
-	view := renderProjectList(rows, 0, 80, 0, map[string]time.Time{}, model.AgentClaude, nil, 5, 0, sortByAgent, false, false, true)
+	view := renderProjectList(rows, 0, 80, 0, map[string]time.Time{}, model.AgentClaude, nil, 5, 0, sortByAgent, false, false, true, layoutPolicy{mode: layoutWide, width: 80, showType: true, showTime: true})
 	var selectedLine string
 	for _, line := range strings.Split(view, "\n") {
 		if strings.Contains(line, "alpha-agent-with-long-name") {

@@ -113,16 +113,36 @@ func decodeRuneAt(s string, i int) (rune, int) {
 // renderTitleBar renders a title bar with left-aligned title and right-aligned
 // "atria" branding, followed by a separator line.
 func renderTitleBar(title string, width int) string {
+	return renderTitleBarWithSort(title, "", width, true)
+}
+
+// renderTitleBarWithSort renders a title bar with an optional sort label
+// appended to the title (for narrow mode where column headers are hidden).
+// When showBranding is false, the right-aligned "atria" text is suppressed.
+func renderTitleBarWithSort(title, sortLabel string, width int, showBranding bool) string {
 	var sb strings.Builder
-	left := titleStyle.Render("  " + title)
-	right := brandingStyle.Render("atria  ")
-	leftW := lipgloss.Width(left)
-	rightW := lipgloss.Width(right)
-	gap := width - leftW - rightW
-	if gap < 0 {
-		sb.WriteString(left)
+	leftText := "  " + title
+	if sortLabel != "" {
+		// Only append if it fits
+		candidate := leftText + " · " + sortLabel
+		if lipgloss.Width(candidate) <= width-4 {
+			leftText = candidate
+		}
+	}
+	left := titleStyle.Render(leftText)
+
+	if showBranding {
+		right := brandingStyle.Render("atria  ")
+		leftW := lipgloss.Width(left)
+		rightW := lipgloss.Width(right)
+		gap := width - leftW - rightW
+		if gap < 0 {
+			sb.WriteString(left)
+		} else {
+			sb.WriteString(left + strings.Repeat(" ", gap) + right)
+		}
 	} else {
-		sb.WriteString(left + strings.Repeat(" ", gap) + right)
+		sb.WriteString(left)
 	}
 	sb.WriteString("\n")
 	sepWidth := width - 2

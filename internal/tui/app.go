@@ -48,6 +48,56 @@ const (
 	viewSetup
 )
 
+// layoutMode describes the dashboard rendering strategy based on terminal width.
+type layoutMode int
+
+const (
+	layoutWide     layoutMode = iota // columnar table
+	layoutNarrow                     // 36–55: two-line card rows
+	layoutCompact                    // 28–35: cards, drop time
+	layoutSurvival                   // <28: bare minimum
+)
+
+// layoutPolicy holds width-dependent rendering decisions for the dashboard.
+// Computed once per dashboard render in viewProjectList and passed down.
+type layoutPolicy struct {
+	mode     layoutMode
+	width    int
+	showType bool // show agent type in row (narrow/compact: if fits; survival: false)
+	showTime bool // show relative time (narrow: yes; compact/survival: false)
+}
+
+func (lp layoutPolicy) linesPerRow() int {
+	if lp.mode == layoutWide {
+		return 1
+	}
+	return 2
+}
+
+func (lp layoutPolicy) headerLines() int {
+	if lp.mode == layoutWide {
+		return headerLineCount
+	}
+	return 2 // title bar only, no column headers
+}
+
+func (lp layoutPolicy) showBranding() bool { return lp.width >= 28 }
+func (lp layoutPolicy) showLogo() bool     { return lp.width >= 36 }
+
+func computeLayoutPolicy(width int, narrowActive bool) layoutPolicy {
+	if !narrowActive {
+		return layoutPolicy{mode: layoutWide, width: width, showType: true, showTime: true}
+	}
+	switch {
+	case width < 28:
+		return layoutPolicy{mode: layoutSurvival, width: width, showType: false, showTime: false}
+	case width < 36:
+		return layoutPolicy{mode: layoutCompact, width: width, showType: true, showTime: false}
+	default:
+		return layoutPolicy{mode: layoutNarrow, width: width, showType: true, showTime: true}
+	}
+}
+
 type Model struct {
 	// Config
 	watchDirs  []string
@@ -83,6 +133,9 @@ type Model struct {
 
 	// Stream panel
 	streamOpen bool
+
+	// Responsive layout
+	narrowActive bool // hysteresis: enter at width<56, exit at width>=60
 
 	// Visible session refresh loop
 	visibleRefreshID string
@@ -263,6 +316,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		if m.narrowActive && msg.Width >= 60 {
+			m.narrowActive = false
+		} else if !m.narrowActive && msg.Width < 56 {
+			m.narrowActive = true
+		}
 		m.chat.setSize(msg.Width, msg.Height)
 		m.adjustScroll()
 		m.adjustBrowserScroll()
@@ -522,8 +580,10 @@ func (m Model) viewProjectList() string {
 		}
 	}
 
+	lp := computeLayoutPolicy(m.width, m.narrowActive)
+
 	canSetup := m.canSetup()
-	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, m.availableAgents, maxRows, scrollOffset, m.sortCol, m.sortDesc, canSetup, m.streamOpen)
+	list := renderProjectList(m.rows, m.cursor, m.width, m.spinnerFrame, m.attentionSessions, m.defaultAgent, m.availableAgents, maxRows, scrollOffset, m.sortCol, m.sortDesc, canSetup, m.streamOpen, lp)
 	sb.WriteString(list)
 
 	if m.streamOpen {
@@ -555,7 +615,7 @@ func (m Model) viewProjectList() string {
 		sb.WriteString(dimStyle.Render(dirLine))
 		sb.WriteString("\n")
 	}
-	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, m.streamOpen, m.width))
+	sb.WriteString(renderFooter(len(m.rows), selected, m.defaultAgent, m.streamOpen, m.width, lp))
 
 	if m.statusText != "" {
 		sb.WriteString("\n")
@@ -733,7 +793,10 @@ type projectListLayout struct {
 }
 
 func (m Model) projectListLayout() projectListLayout {
-	overhead := headerLineCount + footerLineCount
+	lp := computeLayoutPolicy(m.width, m.narrowActive)
+	linesPerRow := lp.linesPerRow()
+
+	overhead := lp.headerLines() + footerLineCount
 	if m.statusText != "" || m.upgradeVersion != "" {
 		overhead++
 	}
@@ -746,10 +809,10 @@ func (m Model) projectListLayout() projectListLayout {
 
 	available := m.height - overhead
 	if !m.streamOpen {
-		if available < 1 {
-			available = 1
+		if available < linesPerRow {
+			available = linesPerRow
 		}
-		return projectListLayout{maxRows: available}
+		return projectListLayout{maxRows: available / linesPerRow}
 	}
 
 	usable := available - 1 // spacer line above top separator
@@ -757,28 +820,46 @@ func (m Model) projectListLayout() projectListLayout {
 		usable = 4
 	}
 
+	// In narrow mode, prefer more stream height for prompt detection + ctrl+r.
+	idealMinPanel := 3
+	if lp.mode != layoutWide {
+		idealMinPanel = 7
+	}
+	// Clamp to what actually fits: at least one row must remain.
+	// On very short terminals this may be less than 3.
+	minPanel := idealMinPanel
+	if maxBudget := usable - linesPerRow; minPanel > maxBudget {
+		minPanel = maxBudget
+	}
+	if minPanel < 1 {
+		minPanel = 1
+	}
+
 	minPanelHeight := (usable + 1) / 2
-	if minPanelHeight < 3 {
-		minPanelHeight = 3
+	if minPanelHeight < minPanel {
+		minPanelHeight = minPanel
 	}
-	maxRows := usable - minPanelHeight
-	if maxRows < 1 {
-		maxRows = 1
+
+	// maxRows is agent count; each agent takes linesPerRow lines.
+	maxRowLines := usable - minPanelHeight
+	if maxRowLines < linesPerRow {
+		maxRowLines = linesPerRow
 	}
+	maxRows := maxRowLines / linesPerRow
 
 	if len(m.rows) > 0 && len(m.rows) < maxRows {
 		maxRows = len(m.rows)
 	}
 
-	panelHeight := usable - maxRows
+	panelHeight := usable - maxRows*linesPerRow
 	if panelHeight < minPanelHeight {
 		panelHeight = minPanelHeight
-		maxRows = usable - panelHeight
+		maxRows = (usable - panelHeight) / linesPerRow
 		if maxRows < 1 {
 			maxRows = 1
-			panelHeight = usable - maxRows
-			if panelHeight < 3 {
-				panelHeight = 3
+			panelHeight = usable - maxRows*linesPerRow
+			if panelHeight < 1 {
+				panelHeight = 1
 			}
 		}
 	}

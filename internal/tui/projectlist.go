@@ -169,15 +169,37 @@ func envLabel(source string) string {
 	return source
 }
 
-func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, availableAgents []model.AgentType, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool, canSetup bool, streamOpen bool) string {
+func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, availableAgents []model.AgentType, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool, canSetup bool, streamOpen bool, lp layoutPolicy) string {
 	var sb strings.Builder
 
-	sb.WriteString(renderHeader(width))
+	narrow := lp.mode != layoutWide
+
+	// Title bar — include sort label when column headers are hidden
+	if narrow {
+		sortLabel := sortColumnLabel(sortCol, sortDesc)
+		sb.WriteString(renderTitleBarWithSort("agents", sortLabel, width, lp.showBranding()))
+	} else {
+		sb.WriteString(renderHeader(width))
+	}
 
 	if len(rows) == 0 {
-		sb.WriteString(renderEmptyState(defaultAgent, len(availableAgents) > 1, availableAgents, canSetup))
+		sb.WriteString(renderEmptyState(defaultAgent, len(availableAgents) > 1, availableAgents, canSetup, lp))
 		return sb.String()
 	}
+
+	if narrow {
+		// Narrow: two-line card rows, no column headers
+		sb.WriteString(renderNarrowRows(&sb, rows, cursor, maxRows, scrollOffset, spinnerFrame, attentionSessions, lp, width))
+	} else {
+		// Wide: columnar table
+		sb.WriteString(renderWideRows(rows, cursor, width, maxRows, scrollOffset, spinnerFrame, attentionSessions, sortCol, sortDesc, streamOpen))
+	}
+
+	return sb.String()
+}
+
+func renderWideRows(rows []projectRow, cursor, width, maxRows, scrollOffset, spinnerFrame int, attentionSessions map[string]time.Time, sortCol sortColumn, sortDesc bool, streamOpen bool) string {
+	var sb strings.Builder
 
 	// Determine if env column should be shown
 	showEnv := false
@@ -187,7 +209,7 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 			break
 		}
 	}
-	envWidth := 10 // fits "embedded" + padding
+	envWidth := 10
 
 	// Compute column widths
 	nameWidth := 20
@@ -206,12 +228,9 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 
 	rowWidth := width
 	if streamOpen && rowWidth > 1 {
-		// Keep one column of slack so terminals do not visually wrap a row
-		// when styled segments contain glyphs wider than lipgloss reports.
 		rowWidth--
 	}
 
-	// Clamp scroll to keep cursor visible regardless of how maxRows changed
 	if len(rows) <= maxRows || maxRows <= 0 {
 		scrollOffset = 0
 	} else {
@@ -253,14 +272,94 @@ func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame in
 		sb.WriteString("\n")
 		rendered++
 	}
-	// Pad to maxRows so the list always occupies a fixed number of lines.
-	// This prevents the stream panel from shifting and causing ghost artifacts.
 	for rendered < maxRows && maxRows > 0 {
 		sb.WriteString(strings.Repeat(" ", width) + "\n")
 		rendered++
 	}
 
 	return sb.String()
+}
+
+func renderNarrowRows(_ *strings.Builder, rows []projectRow, cursor, maxRows, scrollOffset, spinnerFrame int, attentionSessions map[string]time.Time, lp layoutPolicy, width int) string {
+	var sb strings.Builder
+
+	if len(rows) <= maxRows || maxRows <= 0 {
+		scrollOffset = 0
+	} else {
+		if cursor < scrollOffset {
+			scrollOffset = cursor
+		} else if cursor >= scrollOffset+maxRows {
+			scrollOffset = cursor - maxRows + 1
+		}
+	}
+	visibleRows := rows
+	if maxRows > 0 && len(rows) > maxRows {
+		end := scrollOffset + maxRows
+		if end > len(rows) {
+			end = len(rows)
+		}
+		visibleRows = rows[scrollOffset:end]
+	}
+
+	rendered := 0
+	for i, r := range visibleRows {
+		actualIdx := i + scrollOffset
+		_, hasAttention := attentionSessions[r.session.SessionID]
+		isSelected := actualIdx == cursor
+
+		switch {
+		case isSelected && hasAttention:
+			card := formatNarrowRow(r, lp, spinnerFrame, true)
+			for _, line := range strings.Split(card, "\n") {
+				sb.WriteString(attentionSelectedStyle.Render(padToWidth(line, width)))
+				sb.WriteString("\n")
+			}
+		case isSelected:
+			card := formatNarrowSelectedRow(r, lp, spinnerFrame)
+			sb.WriteString(card)
+			sb.WriteString("\n")
+		case hasAttention:
+			card := formatNarrowRow(r, lp, spinnerFrame, true)
+			for _, line := range strings.Split(card, "\n") {
+				sb.WriteString(attentionRowStyle.Render(padToWidth(line, width)))
+				sb.WriteString("\n")
+			}
+		default:
+			card := formatNarrowRow(r, lp, spinnerFrame, false)
+			sb.WriteString(card)
+			sb.WriteString("\n")
+		}
+		rendered++
+	}
+	// Pad to maxRows*2 lines so list height is stable
+	totalLines := rendered * 2
+	targetLines := maxRows * 2
+	for totalLines < targetLines && maxRows > 0 {
+		sb.WriteString(strings.Repeat(" ", width) + "\n")
+		totalLines++
+	}
+
+	return sb.String()
+}
+
+// sortColumnLabel returns a short label for the current sort, used in narrow mode title bar.
+func sortColumnLabel(col sortColumn, desc bool) string {
+	arrow := "▲"
+	if desc {
+		arrow = "▼"
+	}
+	switch col {
+	case sortByAgent:
+		return "name " + arrow
+	case sortByHarness:
+		return "type " + arrow
+	case sortByStatus:
+		return "status " + arrow
+	case sortByUpdated:
+		return "updated " + arrow
+	default:
+		return ""
+	}
 }
 
 // padToWidth pads a string with spaces to reach the target visual width.
@@ -382,6 +481,191 @@ func formatSelectedRow(r projectRow, nameWidth, typeWidth, totalWidth int, spinn
 		selectedTextStyle.Render(c.time)
 }
 
+// formatNarrowRow builds a two-line card for narrow layouts.
+//
+// Layout varies by mode to prioritize the right information at each width:
+//
+//	layoutNarrow  (36–55): Line 1: name [· Type]      Line 2: status [time]
+//	layoutCompact (28–35): Line 1: name               Line 2: status [· Type]
+//	layoutSurvival  (<28): Line 1: name               Line 2: status glyph only
+//
+// When plain is true, no inner styles are applied (for attention row wrapping).
+func formatNarrowRow(r projectRow, lp layoutPolicy, spinnerFrame int, plain bool) string {
+	maxW := lp.width - 2 // 2-char indent
+	if maxW < 1 {
+		maxW = 1
+	}
+
+	name := r.displayName
+	statusStr, statusSty := formatStatus(r.session, spinnerFrame)
+	typeLabel := agentTypeLabel(r.session.Type)
+
+	var line1, line2 string
+
+	switch lp.mode {
+	case layoutSurvival:
+		// Line 1: name only. Line 2: status glyph only.
+		line1 = narrowPadLine("  "+truncateToWidth(name, maxW), lp.width)
+		statusStr = truncateToWidth(statusStr, maxW)
+		if plain {
+			line2 = narrowPadLine("  "+statusStr, lp.width)
+		} else {
+			styled := "  " + statusSty.Render(statusStr)
+			line2 = narrowPadLine(styled, lp.width)
+		}
+
+	case layoutCompact:
+		// Line 1: name owns the full line. Line 2: status [· Type].
+		if plain {
+			line1 = narrowPadLine("  "+truncateToWidth(name, maxW), lp.width)
+		} else {
+			line1 = narrowPadLine("  "+truncateToWidth(name, maxW), lp.width)
+		}
+
+		// Append abbreviated type to status line if it fits
+		typeSuffix := ""
+		if lp.showType {
+			candidate := " · " + typeLabel
+			if lipgloss.Width(statusStr)+lipgloss.Width(candidate) <= maxW {
+				typeSuffix = candidate
+			}
+		}
+		statusStr = truncateToWidth(statusStr, maxW-lipgloss.Width(typeSuffix))
+
+		if plain {
+			line2 = narrowPadLine("  "+statusStr+typeSuffix, lp.width)
+		} else {
+			styled := "  " + statusSty.Render(statusStr)
+			if typeSuffix != "" {
+				styled += dimStyle.Render(" · ") + agentTypeStyle(r.session.Type).Render(typeLabel)
+			}
+			line2 = narrowPadLine(styled, lp.width)
+		}
+
+	default: // layoutNarrow
+		// Line 1: name [· Type]. Line 2: status [time].
+		typeStr := ""
+		if lp.showType {
+			candidate := " · " + typeLabel
+			if lipgloss.Width(name)+lipgloss.Width(candidate) <= maxW {
+				typeStr = candidate
+			}
+		}
+
+		if plain {
+			content := truncateToWidth(name+typeStr, maxW)
+			// If type caused name to truncate, drop type
+			if typeStr != "" && lipgloss.Width(content) < lipgloss.Width(name) {
+				content = truncateToWidth(name, maxW)
+			}
+			line1 = narrowPadLine("  "+content, lp.width)
+		} else {
+			if typeStr != "" {
+				styled := "  " + name + dimStyle.Render(" · ") + agentTypeStyle(r.session.Type).Render(typeLabel)
+				line1 = narrowPadLine(styled, lp.width)
+			} else {
+				line1 = narrowPadLine("  "+truncateToWidth(name, maxW), lp.width)
+			}
+		}
+
+		timeStr := ""
+		if lp.showTime && !r.session.LastActivity.IsZero() {
+			timeStr = relativeTime(r.session.LastActivity)
+		}
+		statusStr = truncateToWidth(statusStr, maxW-lipgloss.Width(timeStr))
+
+		if plain {
+			gap := maxW - lipgloss.Width(statusStr) - lipgloss.Width(timeStr)
+			if gap < 0 {
+				gap = 0
+			}
+			line2 = "  " + statusStr + strings.Repeat(" ", gap) + timeStr
+		} else {
+			styledStatus := statusSty.Render(statusStr)
+			gap := lp.width - 2 - lipgloss.Width(styledStatus) - lipgloss.Width(timeStr)
+			if gap < 0 {
+				gap = 0
+			}
+			line2 = "  " + styledStatus + strings.Repeat(" ", gap) + timeStr
+		}
+	}
+
+	return line1 + "\n" + line2
+}
+
+// narrowPadLine pads a rendered line to width using lipgloss.Width measurement.
+func narrowPadLine(s string, width int) string {
+	if pad := width - lipgloss.Width(s); pad > 0 {
+		return s + strings.Repeat(" ", pad)
+	}
+	return s
+}
+
+// formatNarrowSelectedRow builds a two-line selected card.
+// Selection styling overrides agent-type colors for a uniform highlight.
+// Each line is styled independently to avoid lipgloss width issues with newlines.
+func formatNarrowSelectedRow(r projectRow, lp layoutPolicy, spinnerFrame int) string {
+	maxW := lp.width - 2
+	if maxW < 1 {
+		maxW = 1
+	}
+
+	name := r.displayName
+	statusStr, _ := formatStatus(r.session, spinnerFrame)
+	typeLabel := agentTypeLabel(r.session.Type)
+
+	var line1, line2 string
+
+	switch lp.mode {
+	case layoutSurvival:
+		// Line 1: name. Line 2: status.
+		line1 = selectedTextStyle.Render(padToWidth("  "+truncateToWidth(name, maxW), lp.width))
+		line2 = selectedTextStyle.Render(padToWidth("  "+truncateToWidth(statusStr, maxW), lp.width))
+
+	case layoutCompact:
+		// Line 1: name. Line 2: status [· Type].
+		line1 = selectedTextStyle.Render(padToWidth("  "+truncateToWidth(name, maxW), lp.width))
+
+		typeSuffix := ""
+		if lp.showType {
+			candidate := " · " + typeLabel
+			if lipgloss.Width(statusStr)+lipgloss.Width(candidate) <= maxW {
+				typeSuffix = candidate
+			}
+		}
+		statusStr = truncateToWidth(statusStr, maxW-lipgloss.Width(typeSuffix))
+		line2 = selectedTextStyle.Render(padToWidth("  "+statusStr+typeSuffix, lp.width))
+
+	default: // layoutNarrow
+		// Line 1: name [· Type]. Line 2: status [time].
+		typeStr := ""
+		if lp.showType {
+			candidate := " · " + typeLabel
+			if lipgloss.Width(name)+lipgloss.Width(candidate) <= maxW {
+				typeStr = candidate
+			}
+		}
+		if typeStr != "" {
+			line1 = selectedTextStyle.Render(padToWidth("  "+name+typeStr, lp.width))
+		} else {
+			line1 = selectedTextStyle.Render(padToWidth("  "+truncateToWidth(name, maxW), lp.width))
+		}
+
+		timeStr := ""
+		if lp.showTime && !r.session.LastActivity.IsZero() {
+			timeStr = relativeTime(r.session.LastActivity)
+		}
+		statusStr = truncateToWidth(statusStr, maxW-lipgloss.Width(timeStr))
+		gap := maxW - lipgloss.Width(statusStr) - lipgloss.Width(timeStr)
+		if gap < 0 {
+			gap = 0
+		}
+		line2 = selectedTextStyle.Render(padToWidth("  "+statusStr+strings.Repeat(" ", gap)+timeStr, lp.width))
+	}
+
+	return line1 + "\n" + line2
+}
+
 func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Style) {
 	switch s.Status {
 	case model.StatusNeedsInput:
@@ -434,12 +718,15 @@ func relativeTime(t time.Time) string {
 	}
 }
 
-func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAgents []model.AgentType, canSetup bool) string {
+func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAgents []model.AgentType, canSetup bool, lp layoutPolicy) string {
 	var sb strings.Builder
 
-	logo := logoStyle.Render(Logo)
-
-	sb.WriteString(logo)
+	if lp.showLogo() {
+		logo := logoStyle.Render(Logo)
+		sb.WriteString(logo)
+	} else {
+		sb.WriteString(titleStyle.Render("  atria"))
+	}
 	sb.WriteString("\n\n")
 	sb.WriteString(emptyHintStyle.Render("  Agent multiplexer for your terminal."))
 	sb.WriteString("\n\n")
@@ -465,28 +752,65 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAge
 	return sb.String()
 }
 
-func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, streamOpen bool, width int) string {
-	left := fmt.Sprintf(" %d agents", rowCount)
+func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, streamOpen bool, width int, lp layoutPolicy) string {
+	var footer string
 
-	var parts []string
-	if selected != nil {
-		parts = append(parts, "enter:chat  f:focus")
+	switch lp.mode {
+	case layoutSurvival:
+		// Bare minimum keys
+		parts := []string{"v", "?", "q"}
+		footer = " " + strings.Join(parts, " ")
+	case layoutCompact:
+		// Short key hints, no labels
+		var parts []string
+		if selected != nil {
+			parts = append(parts, "↵", "f")
+		}
+		parts = append(parts, "v", "n", "?", "q")
+		footer = " " + strings.Join(parts, " ")
+	case layoutNarrow:
+		// Abbreviated labels
+		var parts []string
+		if selected != nil {
+			parts = append(parts, "↵:chat  f:focus")
+		}
+		var global []string
+		if streamOpen {
+			global = append(global, "v:close")
+		} else {
+			global = append(global, "v")
+		}
+		if defaultAgent != "" {
+			global = append(global, "n")
+		}
+		global = append(global, "s", "?", "q")
+		parts = append(parts, strings.Join(global, " "))
+		footer = " " + strings.Join(parts, " · ")
+	default:
+		// Wide: full labels
+		left := fmt.Sprintf(" %d agents", rowCount)
+
+		var parts []string
+		if selected != nil {
+			parts = append(parts, "enter:chat  f:focus")
+		}
+
+		var global []string
+		if streamOpen {
+			global = append(global, "v:close")
+		} else {
+			global = append(global, "v:stream")
+		}
+		if defaultAgent != "" {
+			global = append(global, "n:new")
+		}
+		global = append(global, "s:sort", "I:settings", "?:help", "q:quit")
+		parts = append(parts, strings.Join(global, "  "))
+
+		all := append([]string{left}, parts...)
+		footer = strings.Join(all, "  \u00b7  ")
 	}
 
-	var global []string
-	if streamOpen {
-		global = append(global, "v:close")
-	} else {
-		global = append(global, "v:stream")
-	}
-	if defaultAgent != "" {
-		global = append(global, "n:new")
-	}
-	global = append(global, "s:sort", "I:settings", "?:help", "q:quit")
-	parts = append(parts, strings.Join(global, "  "))
-
-	all := append([]string{left}, parts...)
-	footer := strings.Join(all, "  \u00b7  ")
 	if width > 0 && lipgloss.Width(footer) > width && width > 2 {
 		runes := []rune(footer)
 		for lipgloss.Width(string(runes)) > width-1 {
