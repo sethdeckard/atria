@@ -395,19 +395,21 @@ func TestLayoutPolicyHysteresis(t *testing.T) {
 	}
 
 	// Grow to 58 → still narrow (hysteresis: need >= 60 to exit)
-	if 58 >= 60 {
+	width := 58
+	if width >= 60 {
 		narrowActive = false
 	}
-	lp = computeLayoutPolicy(58, narrowActive)
+	lp = computeLayoutPolicy(width, narrowActive)
 	if lp.mode != layoutNarrow {
 		t.Errorf("expected narrow at 58 (hysteresis), got %v", lp.mode)
 	}
 
 	// Grow to 60 → exits narrow
-	if 60 >= 60 {
+	width = 60
+	if width >= 60 {
 		narrowActive = false
 	}
-	lp = computeLayoutPolicy(60, narrowActive)
+	lp = computeLayoutPolicy(width, narrowActive)
 	if lp.mode != layoutWide {
 		t.Errorf("expected wide at 60 after exit, got %v", lp.mode)
 	}

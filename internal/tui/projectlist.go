@@ -516,11 +516,7 @@ func formatNarrowRow(r projectRow, lp layoutPolicy, spinnerFrame int, plain bool
 
 	case layoutCompact:
 		// Line 1: name owns the full line. Line 2: status [· Type].
-		if plain {
-			line1 = narrowPadLine("  "+truncateToWidth(name, maxW), lp.width)
-		} else {
-			line1 = narrowPadLine("  "+truncateToWidth(name, maxW), lp.width)
-		}
+		line1 = narrowPadLine("  "+truncateToWidth(name, maxW), lp.width)
 
 		// Append abbreviated type to status line if it fits
 		typeSuffix := ""
