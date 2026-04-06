@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.3
+
+- Add responsive narrow dashboard layout that adapts columns for small terminal widths
+- Add iTerm shell-job orphan detection to clean up stale sessions when the agent process exits but the iTerm pane survives
+- Move ASCII logo from `--version` to `--help` output
+
 ## v0.4.2
 
 - Add visibility-aware agent refresh so visible sessions update more responsively without increasing polling cost across all tracked sessions
