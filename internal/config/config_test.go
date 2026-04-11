@@ -152,6 +152,7 @@ func TestSave(t *testing.T) {
 		WatchDirs:    []string{"/home/user/projects", "/tmp/work"},
 		Integrations: []string{"iterm2"},
 		DefaultAgent: "claude",
+		Theme:        "ansi",
 		PtyCols:      200,
 		PtyRows:      40, // default, should be commented
 		TmuxSession:  "myatria",
@@ -180,6 +181,11 @@ func TestSave(t *testing.T) {
 	// default_agent uncommented
 	if !strings.Contains(s, `default_agent = "claude"`) {
 		t.Errorf("expected default_agent = \"claude\", got:\n%s", s)
+	}
+
+	// theme = "ansi" uncommented
+	if !strings.Contains(s, `theme = "ansi"`) {
+		t.Errorf("expected theme = \"ansi\", got:\n%s", s)
 	}
 
 	// pty_cols non-default should be uncommented
@@ -213,6 +219,9 @@ func TestSave(t *testing.T) {
 	}
 	if loaded.TmuxSession != "myatria" {
 		t.Errorf("expected myatria, got %q", loaded.TmuxSession)
+	}
+	if loaded.Theme != "ansi" {
+		t.Errorf("expected theme 'ansi', got %q", loaded.Theme)
 	}
 
 	info, err := os.Stat(path)
@@ -248,6 +257,9 @@ func TestSaveDefaults(t *testing.T) {
 	}
 	if !strings.Contains(s, "# default_agent = \"claude\"") {
 		t.Errorf("expected commented default_agent, got:\n%s", s)
+	}
+	if !strings.Contains(s, "# theme = \"builtin\"") {
+		t.Errorf("expected commented theme, got:\n%s", s)
 	}
 	if !strings.Contains(s, "# tmux_session = \"atria\"  # optional override") {
 		t.Errorf("expected commented tmux_session example, got:\n%s", s)
@@ -384,6 +396,24 @@ func TestUpdateCheckSaveRoundTrip(t *testing.T) {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+func TestNormalizeTheme(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", ThemeBuiltin},
+		{"builtin", ThemeBuiltin},
+		{"ansi", ThemeANSI},
+		{"garbage", ThemeBuiltin},
+		{"ANSI", ThemeBuiltin}, // case-sensitive
+	}
+	for _, tc := range tests {
+		if got := NormalizeTheme(tc.input); got != tc.expected {
+			t.Errorf("NormalizeTheme(%q) = %q, want %q", tc.input, got, tc.expected)
+		}
+	}
+}
 
 func TestLoadDefaultAgent(t *testing.T) {
 	dir := t.TempDir()

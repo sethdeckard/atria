@@ -1924,6 +1924,25 @@ func (m Model) cycleSettingsChoice(item settingsItem) (Model, tea.Cmd) {
 		}
 		return m, save
 	}
+	if item.key == "theme" {
+		prevTheme := m.cfg.Theme
+		if config.NormalizeTheme(m.cfg.Theme) == config.ThemeANSI {
+			m.cfg.Theme = ""
+			ApplyBuiltinTheme()
+		} else {
+			m.cfg.Theme = config.ThemeANSI
+			ApplyANSITheme()
+		}
+		m.settingsItems = buildSettingsItems(m.statusInfo, m.cfg, m.availableAgents)
+		return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {
+			rm.cfg.Theme = prevTheme
+			if config.NormalizeTheme(prevTheme) == config.ThemeANSI {
+				ApplyANSITheme()
+			} else {
+				ApplyBuiltinTheme()
+			}
+		})
+	}
 	if item.key != "default_agent" {
 		return m, nil
 	}

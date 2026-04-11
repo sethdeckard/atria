@@ -3971,3 +3971,71 @@ func TestStreamPanelNoHintWhenIdle(t *testing.T) {
 		t.Error("should not show hints when idle")
 	}
 }
+
+func TestSettingsThemeChoice(t *testing.T) {
+	m := settingsModel(t)
+	// Find the theme choice item
+	themeIdx := -1
+	for i, item := range m.settingsItems {
+		if item.itemType == "choice" && item.key == "theme" {
+			themeIdx = i
+			break
+		}
+	}
+	if themeIdx < 0 {
+		t.Fatal("theme choice item not found in settings")
+	}
+	if m.settingsItems[themeIdx].value != config.ThemeBuiltin {
+		t.Fatalf("expected initial theme %q, got %q", config.ThemeBuiltin, m.settingsItems[themeIdx].value)
+	}
+
+	// Cycle to ansi
+	m.settingsCursor = themeIdx
+	updated, _ := m.Update(ctrlKeyMsg(tea.KeyEnter))
+	um := modelFrom(updated)
+	if um.cfg.Theme != config.ThemeANSI {
+		t.Errorf("expected cfg.Theme %q after first cycle, got %q", config.ThemeANSI, um.cfg.Theme)
+	}
+
+	// Cycle back to builtin
+	for i, item := range um.settingsItems {
+		if item.key == "theme" {
+			um.settingsCursor = i
+			break
+		}
+	}
+	updated, _ = um.Update(ctrlKeyMsg(tea.KeyEnter))
+	um = modelFrom(updated)
+	if um.cfg.Theme != "" {
+		t.Errorf("expected cfg.Theme empty (builtin) after second cycle, got %q", um.cfg.Theme)
+	}
+}
+
+func TestSettingsThemeItemShows(t *testing.T) {
+	// When Theme is empty, item should show "builtin"
+	cfg := &config.Config{}
+	items := buildSettingsItems(StatusInfo{}, cfg, nil)
+	found := false
+	for _, item := range items {
+		if item.key == "theme" {
+			found = true
+			if item.value != config.ThemeBuiltin {
+				t.Errorf("expected %q for empty theme, got %q", config.ThemeBuiltin, item.value)
+			}
+		}
+	}
+	if !found {
+		t.Error("theme item not found")
+	}
+
+	// When Theme is "ansi", item should show "ansi"
+	cfg.Theme = "ansi"
+	items = buildSettingsItems(StatusInfo{}, cfg, nil)
+	for _, item := range items {
+		if item.key == "theme" {
+			if item.value != config.ThemeANSI {
+				t.Errorf("expected %q for ansi theme, got %q", config.ThemeANSI, item.value)
+			}
+		}
+	}
+}

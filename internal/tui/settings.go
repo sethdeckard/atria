@@ -89,6 +89,12 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 		value: agentTypeLabel(agentType), key: "default_agent",
 	})
 
+	// Theme
+	items = append(items, settingsItem{
+		section: "config", label: "  theme", itemType: "choice",
+		value: config.NormalizeTheme(cfg.Theme), key: "theme",
+	})
+
 	// PTY dimensions
 	ptyCols := config.DefaultPtyCols
 	if cfg.PtyCols > 0 {

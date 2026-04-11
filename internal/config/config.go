@@ -18,6 +18,9 @@ const (
 	DefaultTmuxSession = ""
 	DefaultPtyCols     = 120
 	DefaultPtyRows     = 40
+
+	ThemeBuiltin = "builtin"
+	ThemeANSI    = "ansi"
 )
 
 // Config holds the application configuration parsed from a TOML file.
@@ -36,8 +39,17 @@ type Config struct {
 	PtyRows      int      `toml:"pty_rows"`
 	FocusMode    string   `toml:"focus_mode"`
 
+	Theme        string   `toml:"theme"`
 	UpdateCheck  *bool    `toml:"update_check"`
 	Integrations []string `toml:"integrations"` // ["iterm2", "tmux"]
+}
+
+// NormalizeTheme returns ThemeANSI for "ansi", ThemeBuiltin for anything else.
+func NormalizeTheme(s string) string {
+	if s == ThemeANSI {
+		return ThemeANSI
+	}
+	return ThemeBuiltin
 }
 
 // UpdateCheckEnabled returns whether the upgrade check is enabled.
@@ -130,6 +142,15 @@ func (cfg *Config) Save(path string) error {
 		sb.WriteString(fmt.Sprintf("default_agent = %q\n", cfg.DefaultAgent))
 	} else {
 		sb.WriteString("# default_agent = \"claude\"\n")
+	}
+	sb.WriteString("\n")
+
+	// theme
+	sb.WriteString("# Color theme: \"builtin\" (default palette) or \"ansi\" (use terminal colors)\n")
+	if NormalizeTheme(cfg.Theme) == ThemeANSI {
+		sb.WriteString(fmt.Sprintf("theme = %q\n", ThemeANSI))
+	} else {
+		sb.WriteString("# theme = \"builtin\"\n")
 	}
 	sb.WriteString("\n")
 

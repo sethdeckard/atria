@@ -48,6 +48,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if config.NormalizeTheme(cfg.Theme) == config.ThemeANSI {
+		tui.ApplyANSITheme()
+	}
+
 	configPath := config.DefaultPath()
 	store := model.NewStore(cfg.DataDir)
 	if err := store.LoadProjects(); err != nil {

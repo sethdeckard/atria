@@ -69,6 +69,9 @@ watch_dirs = ["~/projects"]
 # Default agent to launch: "claude", "codex", "opencode", or "copilot"
 # default_agent = "claude"
 
+# Color theme: "builtin" (default palette) or "ansi" (use terminal colors)
+# theme = "builtin"
+
 # Terminal dimensions for built-in PTY sessions
 # pty_cols = 120
 # pty_rows = 40
