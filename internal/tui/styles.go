@@ -93,7 +93,16 @@ var (
 
 var selectedBg lipgloss.TerminalColor = lipgloss.AdaptiveColor{Light: "#d0d0ff", Dark: "#3a3a5c"}
 
+// useReverseSelection flips selection rendering to reverse video. Only set by
+// ApplyANSITheme — the ANSI-16 palette has no neutral mid-tone bg that plays
+// well with every foreground color, so we let the terminal invert its own
+// colors for selection. Built-in theme keeps the pale-indigo background.
+var useReverseSelection bool
+
 func withSelectedBg(s lipgloss.Style) lipgloss.Style {
+	if useReverseSelection {
+		return s.Reverse(true)
+	}
 	return s.Background(selectedBg)
 }
 
@@ -105,8 +114,7 @@ func ApplyANSITheme() {
 
 	selectedStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("4"))
+		Reverse(true)
 
 	normalStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("7"))
@@ -126,8 +134,8 @@ func ApplyANSITheme() {
 
 	attentionSelectedStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("3"))
+		Reverse(true).
+		Foreground(lipgloss.Color("3"))
 
 	statusNeedsInputStyle = lipgloss.NewStyle().
 		Bold(true).
@@ -167,8 +175,7 @@ func ApplyANSITheme() {
 
 	selectedTextStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("4"))
+		Reverse(true)
 
 	brandingStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("8"))
@@ -186,6 +193,7 @@ func ApplyANSITheme() {
 		Foreground(lipgloss.Color("5"))
 
 	selectedBg = lipgloss.Color("4")
+	useReverseSelection = true
 }
 
 // ApplyBuiltinTheme restores the default hardcoded color palette.
@@ -278,4 +286,5 @@ func ApplyBuiltinTheme() {
 		Foreground(lipgloss.AdaptiveColor{Light: "#b04080", Dark: "#e070b0"})
 
 	selectedBg = lipgloss.AdaptiveColor{Light: "#d0d0ff", Dark: "#3a3a5c"}
+	useReverseSelection = false
 }
