@@ -16,6 +16,17 @@ func newTestSession() *session {
 	}
 }
 
+func writeTestTerm(t *testing.T, s *session, data string) {
+	t.Helper()
+	s.processTermData([]byte(data))
+}
+
+func bellPending(s *session) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.bellPending
+}
+
 func TestReadScreenLastNLines(t *testing.T) {
 	s := newTestSession()
 
@@ -25,7 +36,7 @@ func TestReadScreenLastNLines(t *testing.T) {
 		lines = append(lines, strings.Repeat("x", i+1))
 	}
 	for _, l := range lines {
-		_, _ = s.term.Write([]byte(l + "\r\n"))
+		writeTestTerm(t, s, l+"\r\n")
 	}
 
 	tests := []struct {
@@ -51,7 +62,7 @@ func TestReadScreenLastNLines(t *testing.T) {
 
 func TestReadScreenBellPending(t *testing.T) {
 	s := newTestSession()
-	_, _ = s.term.Write([]byte("hello\r\n"))
+	writeTestTerm(t, s, "hello\r\n")
 
 	// Set bell pending
 	s.mu.Lock()
@@ -72,7 +83,7 @@ func TestReadScreenBellPending(t *testing.T) {
 
 func TestReadScreenNoBell(t *testing.T) {
 	s := newTestSession()
-	_, _ = s.term.Write([]byte("hello\r\n"))
+	writeTestTerm(t, s, "hello\r\n")
 
 	content := s.readScreen(5)
 	if strings.Contains(content, bellChar) {
@@ -161,20 +172,22 @@ func TestCountBells(t *testing.T) {
 	}
 }
 
+func TestOSCTitle(t *testing.T) {
+	s := newTestSession()
+
+	s.processTermData([]byte("\033]0;test-title\007"))
+
+	if name := s.getName(); name != "test-title" {
+		t.Errorf("expected session name %q, got %q", "test-title", name)
+	}
+}
+
 func TestOSCTitleDoesNotTriggerBell(t *testing.T) {
 	s := newTestSession()
 
-	// Simulate readLoop processing: write OSC title sequence
-	data := []byte("\x1b]0;✳ my-agent\x07")
-	s.mu.Lock()
-	bells := countBells(data, &s.inOSC, &s.escPending)
-	if bells > 0 {
-		s.bellPending = true
-	}
-	s.mu.Unlock()
-	_, _ = s.term.Write(data)
+	s.processTermData([]byte("\x1b]0;✳ my-agent\x07"))
 
-	if s.bellPending {
+	if bellPending(s) {
 		t.Error("OSC title BEL should not trigger bellPending")
 	}
 }
@@ -182,16 +195,9 @@ func TestOSCTitleDoesNotTriggerBell(t *testing.T) {
 func TestBareBellTriggersBellPending(t *testing.T) {
 	s := newTestSession()
 
-	// Simulate readLoop processing: bare bell
-	data := []byte("some output\x07")
-	s.mu.Lock()
-	bells := countBells(data, &s.inOSC, &s.escPending)
-	if bells > 0 {
-		s.bellPending = true
-	}
-	s.mu.Unlock()
+	s.processTermData([]byte("some output\x07"))
 
-	if !s.bellPending {
+	if !bellPending(s) {
 		t.Error("bare \\x07 should trigger bellPending")
 	}
 }
@@ -199,13 +205,11 @@ func TestBareBellTriggersBellPending(t *testing.T) {
 func TestReadScreenWithOSCTitle(t *testing.T) {
 	s := newTestSession()
 
-	// Write an OSC title sequence then content on a new line
-	_, _ = s.term.Write([]byte("\033]0;my-agent\007"))
-	_, _ = s.term.Write([]byte("some content\r\n"))
+	s.processTermData([]byte("\033]0;my-agent\007"))
+	s.processTermData([]byte("some content\r\n"))
 
-	title := s.term.Title()
-	if title != "my-agent" {
-		t.Errorf("expected title 'my-agent', got %q", title)
+	if name := s.getName(); name != "my-agent" {
+		t.Errorf("expected session name 'my-agent', got %q", name)
 	}
 
 	content := s.readScreen(24)

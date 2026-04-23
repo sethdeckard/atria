@@ -18,7 +18,9 @@ type session struct {
 	cmd  *exec.Cmd
 	term vt10x.Terminal
 
-	mu          sync.Mutex
+	mu     sync.Mutex // bell/OSC/name/exit state
+	termMu sync.Mutex // vt10x.Terminal is not goroutine-safe
+
 	name        string // from OSC title escapes
 	exited      bool
 	cleaned     bool // true after cleanupSession has run
@@ -37,27 +39,7 @@ func (s *session) readLoop() {
 	for {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
-			data := buf[:n]
-
-			// Count real bell characters, excluding BEL that terminates OSC sequences.
-			// State persists across reads since sequences can span buffer boundaries.
-			s.mu.Lock()
-			bells := countBells(data, &s.inOSC, &s.escPending)
-			s.mu.Unlock()
-
-			s.term.Write(data) //nolint:errcheck // vt10x emulator, no meaningful recovery
-
-			// Read title from vt10x (it parses OSC 0/1/2 natively)
-			title := s.term.Title()
-
-			s.mu.Lock()
-			if bells > 0 {
-				s.bellPending = true
-			}
-			if title != "" {
-				s.name = title
-			}
-			s.mu.Unlock()
+			s.processTermData(buf[:n])
 		}
 		if err != nil {
 			s.mu.Lock()
@@ -66,6 +48,34 @@ func (s *session) readLoop() {
 			return
 		}
 	}
+}
+
+// processTermData writes PTY output to the vt10x terminal and updates
+// bell/title state. This is the core of readLoop, extracted so tests
+// can exercise the same code path without spawning a shell.
+//
+// Lock discipline: acquires s.mu and s.termMu separately, never nested.
+// Callers must not hold either mutex.
+func (s *session) processTermData(data []byte) {
+	// Count real bell characters, excluding BEL that terminates OSC sequences.
+	// State persists across reads since sequences can span buffer boundaries.
+	s.mu.Lock()
+	bells := countBells(data, &s.inOSC, &s.escPending)
+	s.mu.Unlock()
+
+	s.termMu.Lock()
+	_, _ = s.term.Write(data) //nolint:errcheck // vt10x emulator, no meaningful recovery
+	title := s.term.Title()
+	s.termMu.Unlock()
+
+	s.mu.Lock()
+	if bells > 0 {
+		s.bellPending = true
+	}
+	if title != "" {
+		s.name = title
+	}
+	s.mu.Unlock()
 }
 
 // countBells counts real bell characters (\x07) in data, excluding BEL bytes
@@ -130,7 +140,7 @@ func countBells(data []byte, inOSC *bool, escPending *bool) int {
 // readScreen returns the last N lines from the vt10x screen buffer.
 // If a bell is pending, it prepends \x07 so HasBell() in the monitor works.
 func (s *session) readScreen(lines int) string {
-	content := s.term.String()
+	content := s.termString()
 
 	s.mu.Lock()
 	bell := s.bellPending
@@ -149,6 +159,22 @@ func (s *session) readScreen(lines int) string {
 		result = bellChar + result
 	}
 	return result
+}
+
+// termString returns the full vt10x screen buffer as a string.
+// Holds s.termMu; callers must not hold either mutex.
+func (s *session) termString() string {
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+	return s.term.String()
+}
+
+// resizeTerm updates the vt10x terminal dimensions.
+// Holds s.termMu; callers must not hold either mutex.
+func (s *session) resizeTerm(cols, rows int) {
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+	s.term.Resize(cols, rows)
 }
 
 // getName returns the current session name (from OSC title).

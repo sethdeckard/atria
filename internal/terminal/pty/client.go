@@ -223,7 +223,7 @@ func (c *Client) Resize(cols, rows int) {
 			continue
 		}
 		if err := pty.Setsize(s.ptmx, winSize); err == nil {
-			s.term.Resize(cols, rows)
+			s.resizeTerm(cols, rows)
 		}
 	}
 }

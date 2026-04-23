@@ -277,45 +277,6 @@ func shellOrDefault() string {
 	return "/bin/sh"
 }
 
-func TestOSCTitle(t *testing.T) {
-	c := NewClient(80, 24)
-	defer c.Close()
-
-	id, err := c.NewSession()
-	if err != nil {
-		t.Fatalf("NewSession() error: %v", err)
-	}
-
-	time.Sleep(200 * time.Millisecond)
-
-	// The shell (or its prompt) typically sets a title via OSC escapes.
-	// Verify the session picks up a non-empty name from these.
-	sessions, err := c.ListSessions()
-	if err != nil {
-		t.Fatalf("ListSessions() error: %v", err)
-	}
-	if len(sessions) != 1 {
-		t.Fatalf("expected 1 session, got %d", len(sessions))
-	}
-	// Many shells set title automatically; verify we captured it
-	if sessions[0].Name != "" {
-		t.Logf("OSC title captured: %q", sessions[0].Name)
-	}
-
-	// Write a known title directly to the vt10x terminal to test the
-	// OSC parsing mechanism without shell interference.
-	s, _ := c.getSession(id)
-	_, _ = s.term.Write([]byte("\033]0;test-title\007"))
-	time.Sleep(50 * time.Millisecond)
-
-	// The readLoop should pick up the title on next iteration, but since
-	// we wrote directly, update name manually via the same path.
-	title := s.term.Title()
-	if title != "test-title" {
-		t.Errorf("expected vt10x title 'test-title', got %q", title)
-	}
-}
-
 func TestSessionNotFound(t *testing.T) {
 	c := NewClient(80, 24)
 	_, err := c.ReadScreen("nonexistent", 25)
