@@ -19,7 +19,7 @@ const (
 	DefaultPtyCols     = 120
 	DefaultPtyRows     = 40
 
-	ThemeBuiltin = "builtin"
+	ThemeDefault = "default"
 	ThemeANSI    = "ansi"
 )
 
@@ -44,12 +44,12 @@ type Config struct {
 	Integrations []string `toml:"integrations"` // ["iterm2", "tmux"]
 }
 
-// NormalizeTheme returns ThemeANSI for "ansi", ThemeBuiltin for anything else.
+// NormalizeTheme returns ThemeANSI for "ansi", ThemeDefault for anything else.
 func NormalizeTheme(s string) string {
 	if s == ThemeANSI {
 		return ThemeANSI
 	}
-	return ThemeBuiltin
+	return ThemeDefault
 }
 
 // UpdateCheckEnabled returns whether the upgrade check is enabled.
@@ -146,11 +146,11 @@ func (cfg *Config) Save(path string) error {
 	sb.WriteString("\n")
 
 	// theme
-	sb.WriteString("# Color theme: \"builtin\" (default palette) or \"ansi\" (use terminal colors)\n")
+	sb.WriteString("# Color theme: \"default\" (default palette) or \"ansi\" (use terminal colors)\n")
 	if NormalizeTheme(cfg.Theme) == ThemeANSI {
 		sb.WriteString(fmt.Sprintf("theme = %q\n", ThemeANSI))
 	} else {
-		sb.WriteString("# theme = \"builtin\"\n")
+		sb.WriteString("# theme = \"default\"\n")
 	}
 	sb.WriteString("\n")
 

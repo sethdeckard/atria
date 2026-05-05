@@ -3985,8 +3985,8 @@ func TestSettingsThemeChoice(t *testing.T) {
 	if themeIdx < 0 {
 		t.Fatal("theme choice item not found in settings")
 	}
-	if m.settingsItems[themeIdx].value != config.ThemeBuiltin {
-		t.Fatalf("expected initial theme %q, got %q", config.ThemeBuiltin, m.settingsItems[themeIdx].value)
+	if m.settingsItems[themeIdx].value != config.ThemeDefault {
+		t.Fatalf("expected initial theme %q, got %q", config.ThemeDefault, m.settingsItems[themeIdx].value)
 	}
 
 	// Cycle to ansi
@@ -3997,7 +3997,7 @@ func TestSettingsThemeChoice(t *testing.T) {
 		t.Errorf("expected cfg.Theme %q after first cycle, got %q", config.ThemeANSI, um.cfg.Theme)
 	}
 
-	// Cycle back to builtin
+	// Cycle back to default
 	for i, item := range um.settingsItems {
 		if item.key == "theme" {
 			um.settingsCursor = i
@@ -4007,20 +4007,20 @@ func TestSettingsThemeChoice(t *testing.T) {
 	updated, _ = um.Update(ctrlKeyMsg(tea.KeyEnter))
 	um = modelFrom(updated)
 	if um.cfg.Theme != "" {
-		t.Errorf("expected cfg.Theme empty (builtin) after second cycle, got %q", um.cfg.Theme)
+		t.Errorf("expected cfg.Theme empty (default) after second cycle, got %q", um.cfg.Theme)
 	}
 }
 
 func TestSettingsThemeItemShows(t *testing.T) {
-	// When Theme is empty, item should show "builtin"
+	// When Theme is empty, item should show "default"
 	cfg := &config.Config{}
 	items := buildSettingsItems(StatusInfo{}, cfg, nil)
 	found := false
 	for _, item := range items {
 		if item.key == "theme" {
 			found = true
-			if item.value != config.ThemeBuiltin {
-				t.Errorf("expected %q for empty theme, got %q", config.ThemeBuiltin, item.value)
+			if item.value != config.ThemeDefault {
+				t.Errorf("expected %q for empty theme, got %q", config.ThemeDefault, item.value)
 			}
 		}
 	}

@@ -1928,7 +1928,7 @@ func (m Model) cycleSettingsChoice(item settingsItem) (Model, tea.Cmd) {
 		prevTheme := m.cfg.Theme
 		if config.NormalizeTheme(m.cfg.Theme) == config.ThemeANSI {
 			m.cfg.Theme = ""
-			ApplyBuiltinTheme()
+			ApplyDefaultTheme()
 		} else {
 			m.cfg.Theme = config.ThemeANSI
 			ApplyANSITheme()
@@ -1939,7 +1939,7 @@ func (m Model) cycleSettingsChoice(item settingsItem) (Model, tea.Cmd) {
 			if config.NormalizeTheme(prevTheme) == config.ThemeANSI {
 				ApplyANSITheme()
 			} else {
-				ApplyBuiltinTheme()
+				ApplyDefaultTheme()
 			}
 		})
 	}

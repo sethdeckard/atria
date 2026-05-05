@@ -196,8 +196,8 @@ func ApplyANSITheme() {
 	useReverseSelection = true
 }
 
-// ApplyBuiltinTheme restores the default hardcoded color palette.
-func ApplyBuiltinTheme() {
+// ApplyDefaultTheme restores the default hardcoded color palette.
+func ApplyDefaultTheme() {
 	titleStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.AdaptiveColor{Light: "#1a1a2e", Dark: "#e0e0e0"})

@@ -258,7 +258,7 @@ func TestSaveDefaults(t *testing.T) {
 	if !strings.Contains(s, "# default_agent = \"claude\"") {
 		t.Errorf("expected commented default_agent, got:\n%s", s)
 	}
-	if !strings.Contains(s, "# theme = \"builtin\"") {
+	if !strings.Contains(s, "# theme = \"default\"") {
 		t.Errorf("expected commented theme, got:\n%s", s)
 	}
 	if !strings.Contains(s, "# tmux_session = \"atria\"  # optional override") {
@@ -402,11 +402,11 @@ func TestNormalizeTheme(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"", ThemeBuiltin},
-		{"builtin", ThemeBuiltin},
+		{"", ThemeDefault},
+		{"default", ThemeDefault},
 		{"ansi", ThemeANSI},
-		{"garbage", ThemeBuiltin},
-		{"ANSI", ThemeBuiltin}, // case-sensitive
+		{"garbage", ThemeDefault},
+		{"ANSI", ThemeDefault}, // case-sensitive
 	}
 	for _, tc := range tests {
 		if got := NormalizeTheme(tc.input); got != tc.expected {
