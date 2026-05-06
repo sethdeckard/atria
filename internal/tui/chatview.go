@@ -11,6 +11,8 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 )
 
+const maxChatEntries = 200
+
 type chatEntry struct {
 	Timestamp time.Time
 	Direction string // "sent" | "received"
@@ -50,6 +52,11 @@ func (c *chatView) setSize(width, height int) {
 
 func (c *chatView) addEntry(entry chatEntry) {
 	c.entries = append(c.entries, entry)
+	if len(c.entries) > maxChatEntries {
+		trimmed := make([]chatEntry, maxChatEntries)
+		copy(trimmed, c.entries[len(c.entries)-maxChatEntries:])
+		c.entries = trimmed
+	}
 }
 
 func (c *chatView) renderHeader(session *model.AgentSession, project *model.Project, width int) string {
