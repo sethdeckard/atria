@@ -58,8 +58,8 @@ func TestParseListOutput(t *testing.T) {
 			wantLen: 0,
 		},
 		{
-			name: "missing optional fields",
-			input: `[{"pane_id": 5, "title": "shell", "cwd": "", "tty_name": ""}]`,
+			name:      "missing optional fields",
+			input:     `[{"pane_id": 5, "title": "shell", "cwd": "", "tty_name": ""}]`,
 			wantLen:   1,
 			wantID:    5,
 			wantTitle: "shell",

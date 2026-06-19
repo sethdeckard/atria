@@ -197,8 +197,13 @@ func (c *chatView) renderStreamBox(session *model.AgentSession, width, spinnerFr
 			sb.WriteString("\n")
 		}
 	} else {
-		lines := strings.Split(sanitizeBoxText(session.LastScreen), "\n")
-		for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		// Prefer styled (colored) content when available; fall back to plain.
+		displaySrc := session.LastScreen
+		if session.LastScreenStyled != "" {
+			displaySrc = session.LastScreenStyled
+		}
+		lines := strings.Split(sanitizeBoxTextStyled(displaySrc), "\n")
+		for len(lines) > 0 && isBlankLine(lines[len(lines)-1]) {
 			lines = lines[:len(lines)-1]
 		}
 		if len(lines) > streamLines {
@@ -271,15 +276,17 @@ func (c *chatView) renderStreamBox(session *model.AgentSession, width, spinnerFr
 }
 
 // renderBoxLine renders a single line inside box borders, truncating if needed.
+// SGR color/style escapes in the line are preserved; a reset is appended after
+// the content so color never bleeds into padding or the right border.
 func (c *chatView) renderBoxLine(line string, innerWidth int) string {
-	line = sanitizeBoxText(line)
-	line = truncateToWidth(line, innerWidth)
+	line = sanitizeBoxTextStyled(line)
+	line = truncateToWidthANSI(line, innerWidth)
 	lineWidth := lipgloss.Width(line)
 	pad := innerWidth - lineWidth
 	if pad < 0 {
 		pad = 0
 	}
-	return dimStyle.Render(" \u2502") + " " + line + strings.Repeat(" ", pad) + " " + dimStyle.Render("\u2502")
+	return dimStyle.Render(" \u2502") + " " + line + sgrReset + strings.Repeat(" ", pad) + " " + dimStyle.Render("\u2502")
 }
 
 func (c *chatView) render(session *model.AgentSession, project *model.Project, width, spinnerFrame int) string {

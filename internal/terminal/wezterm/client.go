@@ -157,6 +157,19 @@ func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 	return terminal.TrimScreenTail(string(out), lines), nil
 }
 
+// Compile-time check that the WezTerm backend supports styled reads.
+var _ terminal.StyledReader = (*Client)(nil)
+
+// ReadScreenStyled captures the visible screen text from a WezTerm pane with
+// ANSI color/style escapes preserved (for display only).
+func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
+	out, err := c.run("get-text", "--pane-id", sessionID, "--escapes")
+	if err != nil {
+		return "", err
+	}
+	return terminal.TrimScreenTail(string(out), lines), nil
+}
+
 func trimToLastN(text string, n int) string {
 	return terminal.TrimScreenTail(text, n)
 }

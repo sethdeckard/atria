@@ -11,14 +11,14 @@ type stubBackend struct {
 	label string
 }
 
-func (s *stubBackend) Available() error                                          { return nil }
-func (s *stubBackend) ListSessions() ([]terminal.Session, error)                { return nil, nil }
-func (s *stubBackend) NewSession() (string, error)                              { return "", nil }
-func (s *stubBackend) SendText(sessionID, text string) error                    { return nil }
-func (s *stubBackend) RunCommand(sessionID, cmd string) error                   { return nil }
-func (s *stubBackend) FocusSession(sessionID string) error                      { return nil }
-func (s *stubBackend) ReadScreen(sessionID string, lines int) (string, error)   { return "", nil }
-func (s *stubBackend) GetVar(sessionID, varName string) (string, error)         { return "", nil }
+func (s *stubBackend) Available() error                                       { return nil }
+func (s *stubBackend) ListSessions() ([]terminal.Session, error)              { return nil, nil }
+func (s *stubBackend) NewSession() (string, error)                            { return "", nil }
+func (s *stubBackend) SendText(sessionID, text string) error                  { return nil }
+func (s *stubBackend) RunCommand(sessionID, cmd string) error                 { return nil }
+func (s *stubBackend) FocusSession(sessionID string) error                    { return nil }
+func (s *stubBackend) ReadScreen(sessionID string, lines int) (string, error) { return "", nil }
+func (s *stubBackend) GetVar(sessionID, varName string) (string, error)       { return "", nil }
 func (s *stubBackend) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
 	return 0, nil
 }

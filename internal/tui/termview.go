@@ -11,14 +11,15 @@ import (
 
 // termView is the embedded terminal view component for the PTY backend.
 type termView struct {
-	sessionID    string
-	backend      terminal.Backend
-	content      string
-	status       model.AgentStatus
-	agentType    model.AgentType
-	spinnerFrame int
-	width        int
-	height       int
+	sessionID     string
+	backend       terminal.Backend
+	content       string
+	styledContent string // content with SGR color escapes preserved
+	status        model.AgentStatus
+	agentType     model.AgentType
+	spinnerFrame  int
+	width         int
+	height        int
 }
 
 func newTermView(sessionID string, backend terminal.Backend) termView {
@@ -79,9 +80,15 @@ func (tv termView) render() string {
 		contentHeight = 1
 	}
 
-	lines := strings.Split(tv.content, "\n")
-	// Trim trailing empty lines
-	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+	useStyled := tv.styledContent != ""
+	src := tv.content
+	if useStyled {
+		src = sanitizeBoxTextStyled(tv.styledContent)
+	}
+	lines := strings.Split(src, "\n")
+	// Trim trailing empty lines (ANSI-aware so styled rows of only spaces plus
+	// SGR are still treated as blank, matching the other styled views).
+	for len(lines) > 0 && isBlankLine(lines[len(lines)-1]) {
 		lines = lines[:len(lines)-1]
 	}
 	if len(lines) > contentHeight {
@@ -89,7 +96,11 @@ func (tv termView) render() string {
 	}
 
 	for _, line := range lines {
-		line = truncateToWidth(line, tv.width)
+		if useStyled {
+			line = truncateToWidthANSI(line, tv.width) + sgrReset
+		} else {
+			line = truncateToWidth(line, tv.width)
+		}
 		sb.WriteString(line)
 		sb.WriteString("\n")
 	}

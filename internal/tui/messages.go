@@ -91,7 +91,15 @@ type ScreenReadMsg struct {
 	SessionID  string
 	ProjectDir string
 	Content    string
-	Err        error
+	// StyledContent holds the same screen with SGR color escapes preserved,
+	// populated only for display-driving reads.
+	StyledContent string
+	// StyledFetched is true when a styled read was attempted and succeeded,
+	// even if StyledContent is empty (e.g. a cleared screen). This lets the
+	// handler distinguish "not fetched" (background tick) from "fetched but
+	// empty" so it can clear a stale styled snapshot.
+	StyledFetched bool
+	Err           error
 }
 
 // AgentDiscoveredMsg is sent when an untracked agent has been identified and

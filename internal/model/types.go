@@ -44,19 +44,20 @@ func (p *Project) DisplayName() string {
 }
 
 type AgentSession struct {
-	ProjectDir     string      `json:"project_dir"`
-	SessionID      string      `json:"session_id"`
-	Type           AgentType   `json:"type"`
-	Status         AgentStatus `json:"-"`
-	Activity       string      `json:"-"`
-	Attention      string      `json:"-"`
-	MonitorPID     int         `json:"-"`
-	MonitorLog     string      `json:"-"`
-	LastActivity   time.Time   `json:"-"`
-	ScreenChecked  bool        `json:"-"`
-	LastScreen     string      `json:"-"`
-	LastScreenRead time.Time   `json:"-"`
-	UnmatchedReads int         `json:"-"` // consecutive screen reads with no agent pattern
-	OrphanTicks    int         `json:"-"` // consecutive refreshes where name doesn't match agent while idle
-	Source         string      `json:"-"` // "pty", "iterm", "tmux"
+	ProjectDir       string      `json:"project_dir"`
+	SessionID        string      `json:"session_id"`
+	Type             AgentType   `json:"type"`
+	Status           AgentStatus `json:"-"`
+	Activity         string      `json:"-"`
+	Attention        string      `json:"-"`
+	MonitorPID       int         `json:"-"`
+	MonitorLog       string      `json:"-"`
+	LastActivity     time.Time   `json:"-"`
+	ScreenChecked    bool        `json:"-"`
+	LastScreen       string      `json:"-"`
+	LastScreenStyled string      `json:"-"` // screen content with SGR color escapes (display only)
+	LastScreenRead   time.Time   `json:"-"`
+	UnmatchedReads   int         `json:"-"` // consecutive screen reads with no agent pattern
+	OrphanTicks      int         `json:"-"` // consecutive refreshes where name doesn't match agent while idle
+	Source           string      `json:"-"` // "pty", "iterm", "tmux"
 }

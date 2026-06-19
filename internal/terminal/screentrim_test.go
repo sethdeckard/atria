@@ -13,6 +13,8 @@ func TestTrimScreenTail(t *testing.T) {
 		{"exact lines", "a\nb\nc", 3, "a\nb\nc"},
 		{"more lines than n", "a\nb\nc\nd\ne", 3, "c\nd\ne"},
 		{"blank tail anchored to content", "top\nbody\n\n\n\n", 3, "top\nbody"},
+		// Padding rows that contain only SGR sequences plus spaces are blank.
+		{"ansi-only tail anchored to content", "top\nbody\n\x1b[0m\n\x1b[44m   \x1b[0m\n", 3, "top\nbody"},
 		{"single line", "hello", 3, "hello"},
 		{"empty string", "", 3, ""},
 	}

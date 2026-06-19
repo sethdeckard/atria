@@ -90,6 +90,15 @@ func (c *CachedBackend) ReadScreen(sessionID string, lines int) (string, error) 
 	return c.inner.ReadScreen(sessionID, lines)
 }
 
+// ReadScreenStyled delegates to the inner backend's styled-read path, falling
+// back to plain ReadScreen when the inner backend does not implement it.
+func (c *CachedBackend) ReadScreenStyled(sessionID string, lines int) (string, error) {
+	if sr, ok := c.inner.(StyledReader); ok {
+		return sr.ReadScreenStyled(sessionID, lines)
+	}
+	return c.inner.ReadScreen(sessionID, lines)
+}
+
 // GetVar delegates to the inner backend.
 func (c *CachedBackend) GetVar(sessionID, varName string) (string, error) {
 	return c.inner.GetVar(sessionID, varName)
@@ -121,3 +130,6 @@ func (c *CachedBackend) Inner() Backend {
 
 // Compile-time check that CachedBackend implements Backend.
 var _ Backend = (*CachedBackend)(nil)
+
+// Compile-time check that CachedBackend supports styled reads.
+var _ StyledReader = (*CachedBackend)(nil)

@@ -631,11 +631,11 @@ func TestComposite_FailedSourcesClearedOnSuccess(t *testing.T) {
 
 func TestComposite_SelfTTYFiltering(t *testing.T) {
 	tests := []struct {
-		name     string
-		selfTTY  string
-		primary  []Session
-		integ    []Session
-		wantIDs  []string
+		name    string
+		selfTTY string
+		primary []Session
+		integ   []Session
+		wantIDs []string
 	}{
 		{
 			name:    "matching primary TTY removed",

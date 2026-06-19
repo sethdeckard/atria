@@ -11,14 +11,16 @@ type cwdMockBackend struct {
 	getVarErr    error
 }
 
-func (m *cwdMockBackend) Available() error                                          { return nil }
-func (m *cwdMockBackend) ListSessions() ([]Session, error)                          { return nil, nil }
-func (m *cwdMockBackend) NewSession() (string, error)                               { return "", nil }
-func (m *cwdMockBackend) SendText(sessionID, text string) error                     { return nil }
-func (m *cwdMockBackend) RunCommand(sessionID, cmd string) error                    { return nil }
-func (m *cwdMockBackend) FocusSession(sessionID string) error                       { return nil }
-func (m *cwdMockBackend) ReadScreen(sessionID string, lines int) (string, error)    { return "", nil }
-func (m *cwdMockBackend) GetVar(sessionID, varName string) (string, error)          { return m.getVarResult, m.getVarErr }
+func (m *cwdMockBackend) Available() error                                       { return nil }
+func (m *cwdMockBackend) ListSessions() ([]Session, error)                       { return nil, nil }
+func (m *cwdMockBackend) NewSession() (string, error)                            { return "", nil }
+func (m *cwdMockBackend) SendText(sessionID, text string) error                  { return nil }
+func (m *cwdMockBackend) RunCommand(sessionID, cmd string) error                 { return nil }
+func (m *cwdMockBackend) FocusSession(sessionID string) error                    { return nil }
+func (m *cwdMockBackend) ReadScreen(sessionID string, lines int) (string, error) { return "", nil }
+func (m *cwdMockBackend) GetVar(sessionID, varName string) (string, error) {
+	return m.getVarResult, m.getVarErr
+}
 func (m *cwdMockBackend) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
 	return 0, nil
 }

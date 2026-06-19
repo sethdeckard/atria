@@ -39,3 +39,17 @@ type Backend interface {
 	// and watching for patterns. Returns a process ID or pipe identifier.
 	MonitorOutput(sessionID, logPath, patterns string) (int, error)
 }
+
+// StyledReader is an optional interface for backends that can capture screen
+// content with SGR color/style escape sequences preserved. It is used for
+// display only (the chat stream preview and embedded terminal view) — never for
+// status classification, which always reads plain text via Backend.ReadScreen.
+//
+// Callers should type-assert a Backend to StyledReader and fall back to
+// ReadScreen when the assertion fails, so a missing implementation degrades to
+// plain (colorless) output rather than an error.
+type StyledReader interface {
+	// ReadScreenStyled captures visible terminal output from a session with
+	// SGR escape sequences (colors, bold, italic, underline, reverse) intact.
+	ReadScreenStyled(sessionID string, lines int) (string, error)
+}

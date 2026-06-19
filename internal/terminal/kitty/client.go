@@ -177,6 +177,19 @@ func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 	return terminal.TrimScreenTail(string(out), lines), nil
 }
 
+// Compile-time check that the Kitty backend supports styled reads.
+var _ terminal.StyledReader = (*Client)(nil)
+
+// ReadScreenStyled captures the visible screen text from a Kitty window with
+// ANSI color/style escapes preserved (for display only).
+func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
+	out, err := c.run("get-text", "--match", "id:"+sessionID, "--extent", "screen", "--ansi")
+	if err != nil {
+		return "", err
+	}
+	return terminal.TrimScreenTail(string(out), lines), nil
+}
+
 // lookupWindowVar finds a window by ID string and returns the requested variable.
 func lookupWindowVar(windows []kittyWindow, sessionID, varName string) (string, error) {
 	if varName != "path" && varName != "pid" {

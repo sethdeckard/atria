@@ -14,13 +14,13 @@ type mockBackend struct {
 	newSessionID string
 }
 
-func (m *mockBackend) Available() error                                    { return nil }
-func (m *mockBackend) NewSession() (string, error)                         { return m.newSessionID, nil }
-func (m *mockBackend) SendText(sessionID, text string) error               { return nil }
-func (m *mockBackend) RunCommand(sessionID, cmd string) error              { return nil }
-func (m *mockBackend) FocusSession(sessionID string) error                 { return nil }
+func (m *mockBackend) Available() error                                       { return nil }
+func (m *mockBackend) NewSession() (string, error)                            { return m.newSessionID, nil }
+func (m *mockBackend) SendText(sessionID, text string) error                  { return nil }
+func (m *mockBackend) RunCommand(sessionID, cmd string) error                 { return nil }
+func (m *mockBackend) FocusSession(sessionID string) error                    { return nil }
 func (m *mockBackend) ReadScreen(sessionID string, lines int) (string, error) { return "", nil }
-func (m *mockBackend) GetVar(sessionID, varName string) (string, error)    { return "", nil }
+func (m *mockBackend) GetVar(sessionID, varName string) (string, error)       { return "", nil }
 func (m *mockBackend) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
 	return 0, nil
 }

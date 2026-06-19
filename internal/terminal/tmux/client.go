@@ -231,6 +231,20 @@ func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 	return string(out), nil
 }
 
+// Compile-time check that the tmux backend supports styled reads.
+var _ terminal.StyledReader = (*Client)(nil)
+
+// ReadScreenStyled captures the last N lines from a tmux pane with ANSI
+// color/style escapes preserved (-e), for display only.
+func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
+	out, err := c.run("capture-pane", "-t", sessionID, "-p", "-e",
+		"-S", fmt.Sprintf("-%d", lines))
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
 // GetVar reads a tmux variable from a pane. Supported variables:
 // "path" -> #{pane_current_path}, "pid" -> #{pane_pid}.
 func (c *Client) GetVar(sessionID, varName string) (string, error) {

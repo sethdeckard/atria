@@ -45,6 +45,98 @@ func TestSanitizeBoxText(t *testing.T) {
 	}
 }
 
+func TestSanitizeBoxTextStyled(t *testing.T) {
+	// SGR color codes are preserved; cursor moves, OSC titles, bare BEL,
+	// control chars are dropped; tabs/CRLF normalized — same layout safety as
+	// the plain sanitizer, only color codes survive.
+	input := "alpha\tbeta\r\ngamma\rdelta\x00" +
+		"\x1b[33m warn\x1b[0m" +
+		"\x1b[2J\x1b[10;5H" + // cursor/erase — must be dropped
+		"\x1b]0;title\x07" + // OSC — dropped
+		string(rune(0x0007))
+	got := sanitizeBoxTextStyled(input)
+	want := "alpha    beta\ngamma\ndelta\x1b[33m warn\x1b[0m"
+	if got != want {
+		t.Fatalf("sanitizeBoxTextStyled() = %q, want %q", got, want)
+	}
+}
+
+func TestSanitizeBoxTextStyledHorizontalMotion(t *testing.T) {
+	// Terminals like WezTerm emit cursor-forward (\x1b[<n>C) and column-set
+	// (\x1b[<n>G) instead of literal spaces when dumping styled screens. These
+	// must become spaces so word spacing survives; SGR is still preserved.
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"cursor forward n", "a\x1b[3Cb", "a   b"},
+		{"cursor forward default", "a\x1b[Cb", "a b"},
+		{"column absolute", "ab\x1b[6Gc", "ab   c"},
+		{"sgr survives across motion", "\x1b[31ma\x1b[2Cb\x1b[0m", "\x1b[31ma  b\x1b[0m"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeBoxTextStyled(tt.input); got != tt.want {
+				t.Errorf("sanitizeBoxTextStyled(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeBoxTextStyledStripsNonSGREscapes(t *testing.T) {
+	// Charset-designation escapes (ESC ( B, ESC ) 0, …) and other non-SGR
+	// escapes must be fully consumed — their final byte must not leak as text
+	// (e.g. the "B" from ESC ( B). SGR is still preserved.
+	cases := []struct{ name, in, want string }{
+		{"charset G0 ascii", "a\x1b(Bb", "ab"},
+		{"charset G0 line-draw", "a\x1b(0b", "ab"},
+		{"charset G1", "a\x1b)Bb", "ab"},
+		{"two-byte escape (RIS)", "a\x1bcb", "ab"},
+		{"DCS string", "a\x1bP1;2|x\x1b\\b", "ab"},
+		{"sgr preserved alongside charset", "\x1b(B\x1b[31mx\x1b[0m", "\x1b[31mx\x1b[0m"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeBoxTextStyled(tt.in); got != tt.want {
+				t.Errorf("sanitizeBoxTextStyled(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTruncateToWidthANSI(t *testing.T) {
+	// Visual width ignores SGR; the escape is never split mid-sequence.
+	colored := "\x1b[31mhello world\x1b[0m"
+	got := truncateToWidthANSI(colored, 8)
+	if w := lipgloss.Width(got); w > 8 {
+		t.Errorf("truncated width = %d, want <= 8 (got %q)", w, got)
+	}
+	if !strings.Contains(got, "\x1b[31m") {
+		t.Errorf("truncation dropped the leading SGR: %q", got)
+	}
+	// Short colored text that fits is returned unchanged.
+	if out := truncateToWidthANSI(colored, 50); out != colored {
+		t.Errorf("fitting string altered: %q", out)
+	}
+}
+
+func TestIsBlankLine(t *testing.T) {
+	cases := map[string]bool{
+		"":                   true,
+		"   ":                true,
+		"\x1b[0m":            true,
+		"\x1b[44m   \x1b[0m": true,
+		"\x1b[31mx\x1b[0m":   false,
+		"text":               false,
+	}
+	for in, want := range cases {
+		if got := isBlankLine(in); got != want {
+			t.Errorf("isBlankLine(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
 func TestNextSelectableItem(t *testing.T) {
 	tests := []struct {
 		name  string

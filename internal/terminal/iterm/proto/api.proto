@@ -185,6 +185,74 @@ message WindowedCoordRange {
 
 message LineContents {
   optional string text = 1;
+  repeated CodePointsPerCell code_points_per_cell = 2;
+
+  enum Continuation {
+    CONTINUATION_HARD_EOL = 1;
+    CONTINUATION_SOFT_EOL = 2;
+  }
+  optional Continuation continuation = 3 [default = CONTINUATION_HARD_EOL];
+
+  repeated CellStyle style = 4;
+}
+
+message CodePointsPerCell {
+  optional int32 num_code_points = 1 [default = 1];
+  optional int32 repeats = 2;
+}
+
+enum AlternateColor {
+  DEFAULT = 0;
+  REVERSED_DEFAULT = 3;
+  SYSTEM_MESSAGE = 4;
+}
+
+message RGBColor {
+  optional uint32 red = 1;
+  optional uint32 green = 2;
+  optional uint32 blue = 3;
+}
+
+enum ImagePlaceholderType {
+  NONE = 0;
+  ITERM2 = 1;
+  KITTY = 2;
+}
+
+message URL {
+  optional string url = 1;
+  optional string identifier = 2;
+}
+
+message CellStyle {
+  oneof fgColor {
+    uint32 fgStandard = 1;
+    AlternateColor fgAlternate = 2;
+    RGBColor fgRgb = 3;
+    uint32 fgAlternatePlacementX = 4;
+  }
+  oneof bgColor {
+    uint32 bgStandard = 5;
+    AlternateColor bgAlternate = 6;
+    RGBColor bgRgb = 7;
+    uint32 bgAlternatePlacementY = 8;
+  }
+
+  optional bool bold = 9;
+  optional bool faint = 10;
+  optional bool italic = 11;
+  optional bool blink = 12;
+  optional bool underline = 13;
+  optional bool strikethrough = 14;
+  optional bool invisible = 15;
+  optional bool inverse = 16;
+  optional bool guarded = 17;
+
+  optional ImagePlaceholderType image = 18;
+  optional RGBColor underlineColor = 19;
+  optional string blockID = 20;
+  optional URL url = 21;
+  optional uint32 repeats = 22;
 }
 
 // --- Property ---

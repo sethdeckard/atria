@@ -186,6 +186,35 @@ func readScreenLines(backend terminal.Backend, sessionID, projectDir string, lin
 	}
 }
 
+// readScreenLinesStyled reads both the plain screen (for status classification)
+// and, when the backend supports it, the styled screen (for colored display).
+// Used for display-driving reads (visible chat/stream/terminal); background
+// status ticks use the plain readScreenLines to avoid extra work.
+func readScreenLinesStyled(backend terminal.Backend, sessionID, projectDir string, lines int) tea.Cmd {
+	return func() tea.Msg {
+		content, err := backend.ReadScreen(sessionID, lines)
+		msg := ScreenReadMsg{
+			SessionID:  sessionID,
+			ProjectDir: projectDir,
+			Content:    content,
+			Err:        err,
+		}
+		if err == nil {
+			if sr, ok := backend.(terminal.StyledReader); ok {
+				// Mark the styled read as attempted regardless of outcome. On
+				// success we adopt its content; on failure we leave it empty so
+				// handleScreenRead clears any stale styled snapshot and the view
+				// falls back to the fresh plain content instead of freezing.
+				msg.StyledFetched = true
+				if styled, serr := sr.ReadScreenStyled(sessionID, lines); serr == nil {
+					msg.StyledContent = styled
+				}
+			}
+		}
+		return msg
+	}
+}
+
 func discoveryTickCmd() tea.Cmd {
 	return tea.Tick(discoveryRefreshInterval, func(t time.Time) tea.Msg {
 		return DiscoveryTickMsg{}

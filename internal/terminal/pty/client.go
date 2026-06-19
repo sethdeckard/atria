@@ -171,6 +171,16 @@ func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 	return s.readScreen(lines), nil
 }
 
+// ReadScreenStyled returns the last N lines from the session's vt10x screen
+// buffer with SGR color/style escapes preserved (for display only).
+func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
+	s, err := c.getSession(sessionID)
+	if err != nil {
+		return "", err
+	}
+	return s.readScreenStyled(lines), nil
+}
+
 // GetVar reads session variables. Supported: "pid", "path".
 func (c *Client) GetVar(sessionID, varName string) (string, error) {
 	s, err := c.getSession(sessionID)

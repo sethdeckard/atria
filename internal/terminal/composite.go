@@ -203,6 +203,22 @@ func (c *CompositeBackend) ReadScreen(sessionID string, lines int) (string, erro
 	return b.ReadScreen(id, lines)
 }
 
+// ReadScreenStyled routes to the correct backend based on session ID prefix,
+// preferring its styled-read path and falling back to plain ReadScreen when the
+// owning backend does not implement StyledReader.
+func (c *CompositeBackend) ReadScreenStyled(sessionID string, lines int) (string, error) {
+	c.mu.RLock()
+	b, id, err := c.route(sessionID)
+	c.mu.RUnlock()
+	if err != nil {
+		return "", err
+	}
+	if sr, ok := b.(StyledReader); ok {
+		return sr.ReadScreenStyled(id, lines)
+	}
+	return b.ReadScreen(id, lines)
+}
+
 // GetVar routes to the correct backend based on session ID prefix.
 func (c *CompositeBackend) GetVar(sessionID, varName string) (string, error) {
 	c.mu.RLock()
@@ -324,3 +340,6 @@ func (c *CompositeBackend) Integrations() []Integration {
 
 // Compile-time check that CompositeBackend implements Backend.
 var _ Backend = (*CompositeBackend)(nil)
+
+// Compile-time check that CompositeBackend supports styled reads.
+var _ StyledReader = (*CompositeBackend)(nil)

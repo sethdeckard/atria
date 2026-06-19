@@ -731,22 +731,27 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 			sb.WriteString("\n")
 		}
 	} else {
-		// Split screen content, trim trailing blank lines, take from bottom
-		lines := strings.Split(sanitizeBoxText(session.LastScreen), "\n")
-		for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		// Split screen content, trim trailing blank lines, take from bottom.
+		// Prefer styled (colored) content when available; fall back to plain.
+		displaySrc := session.LastScreen
+		if session.LastScreenStyled != "" {
+			displaySrc = session.LastScreenStyled
+		}
+		lines := strings.Split(sanitizeBoxTextStyled(displaySrc), "\n")
+		for len(lines) > 0 && isBlankLine(lines[len(lines)-1]) {
 			lines = lines[:len(lines)-1]
 		}
 		if len(lines) > contentLines {
 			lines = lines[len(lines)-contentLines:]
 		}
 		for _, line := range lines {
-			line = truncateToWidth(line, innerWidth)
+			line = truncateToWidthANSI(line, innerWidth)
 			lineWidth := lipgloss.Width(line)
 			pad := innerWidth - lineWidth
 			if pad < 0 {
 				pad = 0
 			}
-			sb.WriteString(borderStyle.Render(" \u2502") + " " + line + strings.Repeat(" ", pad) + " " + borderStyle.Render("\u2502"))
+			sb.WriteString(borderStyle.Render(" \u2502") + " " + line + sgrReset + strings.Repeat(" ", pad) + " " + borderStyle.Render("\u2502"))
 			sb.WriteString("\n")
 		}
 		// Pad remaining lines
@@ -2397,6 +2402,14 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	content := strings.ReplaceAll(msg.Content, "\x00", " ")
 	screenChanged := content != as.LastScreen
 	as.LastScreen = content
+	// Styled content is populated only by display-driving reads. When a styled
+	// read was actually performed, adopt its result even if empty (a cleared
+	// screen) so stale color isn't shown. Background (plain-only) reads leave
+	// StyledFetched false, preserving the last snapshot so the preview/terminal
+	// view stays colored while not actively refreshing.
+	if msg.StyledFetched {
+		as.LastScreenStyled = strings.ReplaceAll(msg.StyledContent, "\x00", " ")
+	}
 	status, matchLine := terminal.ClassifyScreen(content, as.Type)
 
 	if m.debugLog != nil {
@@ -2466,6 +2479,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	m.rebuildRows()
 	if m.view == viewTerminal && m.termSessionID == msg.SessionID {
 		m.termView.content = content
+		m.termView.styledContent = as.LastScreenStyled
 		m.termView.status = status
 		m.termView.spinnerFrame = m.spinnerFrame
 	}
@@ -2555,7 +2569,7 @@ func (m Model) handleVisibleRefresh(msg VisibleRefreshMsg) (Model, tea.Cmd) {
 	m.visibleRefreshID = sessionID
 	cmds := []tea.Cmd{visibleRefreshCmd(sessionID, interval)}
 	if m.backendOK {
-		cmds = append(cmds, readScreenLines(m.backend, sessionID, as.ProjectDir, lines))
+		cmds = append(cmds, readScreenLinesStyled(m.backend, sessionID, as.ProjectDir, lines))
 	}
 	return m, tea.Batch(cmds...)
 }
