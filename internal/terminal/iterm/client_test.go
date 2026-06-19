@@ -346,7 +346,7 @@ func TestUnquoteJSON(t *testing.T) {
 	tests := []struct {
 		input, want string
 	}{
-		{`"\/Users\/seth\/projects"`, "/Users/seth/projects"},
+		{`"\/Users\/example\/projects"`, "/Users/example/projects"},
 		{`"go\/agent-tui"`, "go/agent-tui"},
 		{`"plain string"`, "plain string"},
 		{`"with \"quotes\""`, `with "quotes"`},

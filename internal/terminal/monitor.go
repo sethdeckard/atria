@@ -119,10 +119,20 @@ func statusPriority(s model.AgentStatus) int {
 // false matches. Only idle/completed match anywhere since they're harmless.
 const bottomLineCount = 8
 
-// bottomRegion returns the start index of the bottom region, measured
-// from the last non-blank line. Used to restrict active-status matching
-// to the live UI area and ignore scrollback history.
-func bottomRegion(lines []string) int {
+// todoFooterMaxScan bounds how far above the last non-blank line we look for a
+// trailing todo-footer header, so a stray match in scrollback can't relocate
+// the anchor.
+const todoFooterMaxScan = 24
+
+// todoFooterPattern matches the header of Claude Code's persistent todo/task
+// summary (e.g. "9 tasks (4 done, 1 in progress, 4 open)"), which renders
+// below the live prompt or working indicator.
+var todoFooterPattern = regexp.MustCompile(`(?i)^\s*\d+\s+tasks?\s+\(\d+\s+(?:done|open|in\s+progress)`)
+
+// bottomRegion returns the start index of the bottom region, measured from the
+// live UI anchor. Used to restrict active-status matching to the live UI area
+// and ignore scrollback history.
+func bottomRegion(lines []string, agentType model.AgentType) int {
 	lastNonBlank := 0
 	for i := len(lines) - 1; i >= 0; i-- {
 		if strings.TrimSpace(lines[i]) != "" {
@@ -130,11 +140,40 @@ func bottomRegion(lines []string) int {
 			break
 		}
 	}
-	start := lastNonBlank - bottomLineCount + 1
+	start := liveAnchor(lines, lastNonBlank, agentType) - bottomLineCount + 1
 	if start < 0 {
 		start = 0
 	}
 	return start
+}
+
+// liveAnchor returns the index of the last line of the live UI. Claude Code
+// renders a persistent todo/task footer below the active prompt or working
+// indicator; left alone, that footer pulls the bottom region down and hides the
+// prompt, so needs_input/working go undetected. When a trailing todo-footer
+// header is found near the bottom, the anchor moves to the last non-blank line
+// above it. The footer pattern is Claude-specific, so the adjustment is applied
+// only for Claude — other agents keep the plain lastNonBlank anchor, avoiding
+// false anchor shifts from coincidental "N tasks (...)" text in their output.
+func liveAnchor(lines []string, lastNonBlank int, agentType model.AgentType) int {
+	if agentType != model.AgentClaude {
+		return lastNonBlank
+	}
+	limit := lastNonBlank - todoFooterMaxScan
+	if limit < 0 {
+		limit = 0
+	}
+	for i := lastNonBlank; i >= limit; i-- {
+		if todoFooterPattern.MatchString(lines[i]) {
+			for j := i - 1; j >= 0; j-- {
+				if strings.TrimSpace(lines[j]) != "" {
+					return j
+				}
+			}
+			return 0
+		}
+	}
+	return lastNonBlank
 }
 
 // ClassifyScreen checks each line of multi-line screen content and returns
@@ -148,7 +187,7 @@ func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatu
 	bestStatus := model.AgentStatus("")
 	bestLine := ""
 
-	bottomStart := bottomRegion(lines)
+	bottomStart := bottomRegion(lines, agentType)
 
 	for i, line := range lines {
 		line = strings.TrimSpace(line)
@@ -187,7 +226,7 @@ func hasAgentScreen(content string, agentType model.AgentType, includeIdle bool)
 	}
 	lines := strings.Split(normalizeScreenText(content), "\n")
 
-	bottomStart := bottomRegion(lines)
+	bottomStart := bottomRegion(lines, agentType)
 
 	lastNonBlank := len(lines) - 1
 	for lastNonBlank > 0 && strings.TrimSpace(lines[lastNonBlank]) == "" {

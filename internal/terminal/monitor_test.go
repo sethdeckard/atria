@@ -117,7 +117,7 @@ func TestBottomRegion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := bottomRegion(tt.lines)
+			got := bottomRegion(tt.lines, model.AgentClaude)
 			if got != tt.want {
 				t.Errorf("bottomRegion() = %d, want %d", got, tt.want)
 			}
@@ -190,8 +190,17 @@ func TestClassifyScreen(t *testing.T) {
 			"Do you want to proceed?",
 		},
 		{
+			// Claude renders a persistent todo footer below the prompt; the
+			// anchor must skip it so the prompt stays in the bottom region.
+			"claude prompt above todo footer detected",
+			"earlier output\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again\n   3. No\n\n Esc to cancel · Tab to amend · ctrl+e to explain\n\n  5 tasks (2 done, 1 in progress, 2 open)\n  ◼ Task alpha\n  ◻ Task beta\n  ◻ Task gamma\n  ◻ Task delta\n   … +1 completed",
+			model.AgentClaude,
+			model.StatusNeedsInput,
+			"Do you want to proceed?",
+		},
+		{
 			"opencode permission prompt layout",
-			"Build · big-pickle · 9.2s\n\nread the file ../RESEARCH.md\n\nThinking: user wants to read a file\n\nRead /Users/seth/projects/go/RESEARCH.md\n\nBuild · big-pickle\n\n△ Permission required\nAccess external directory ~/projects/go\n\nPatterns\n\n- /Users/seth/projects/go/*\n\n\nAllow once   Allow always   Reject   ctrl+f fullscreen  enter confirm\n• OpenCode 1.2.21\n",
+			"Build · big-pickle · 9.2s\n\nread the file ../RESEARCH.md\n\nThinking: user wants to read a file\n\nRead /Users/example/projects/go/RESEARCH.md\n\nBuild · big-pickle\n\n△ Permission required\nAccess external directory ~/projects/go\n\nPatterns\n\n- /Users/example/projects/go/*\n\n\nAllow once   Allow always   Reject   ctrl+f fullscreen  enter confirm\n• OpenCode 1.2.21\n",
 			model.AgentOpenCode,
 			model.StatusNeedsInput,
 			"Allow once",
@@ -216,6 +225,16 @@ func TestClassifyScreen(t *testing.T) {
 			model.AgentCodex,
 			model.StatusWorking,
 			"• Working",
+		},
+		{
+			// The todo-footer anchor adjustment is Claude-only: a coincidental
+			// "N tasks (...)" line in Codex output must NOT pull the anchor up
+			// and admit the stale "Working" line from scrollback above it.
+			"codex tasks line does not shift anchor",
+			"out a\nout b\nout c\n• Working (30s • esc to interrupt)\nout e\nout f\nout g\nout h\nout i\nout j\n5 tasks (2 done, 3 open)\n› type a message",
+			model.AgentCodex,
+			model.StatusIdle,
+			"› type a message",
 		},
 		{
 			"codex plan question screen detected",
@@ -469,7 +488,7 @@ func TestInferAgentFromScreen(t *testing.T) {
 		},
 		{
 			name:    "plain shell stays unknown",
-			content: "seth@host project % ls",
+			content: "user@host project % ls",
 			want:    "",
 		},
 		{
