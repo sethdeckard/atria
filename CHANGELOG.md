@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.0
+
+- Show agents' terminal colors in the dashboard stream preview, chat view, and embedded terminal, reconstructed from each backend (PTY, iTerm2, tmux, Kitty, WezTerm) while status detection keeps reading plain text
+- Add a `theme` config option: `default` keeps Atria's built-in palette, while `ansi` renders the UI from your terminal's base-16 colors to match your scheme (Catppuccin, Solarized, Dracula, etc.); switchable live from the settings screen
+- Fix needs-input detection when Claude renders a todo/task summary below the active prompt, which previously left permission prompts showing as idle
+- Fix a data race on the vt10x terminal in the PTY backend
+- Fix unbounded growth of the chat view's entry list
+- Bump the minimum Go version to 1.26.2 for `go install` builds
+
 ## v0.4.3
 
 - Add responsive narrow dashboard layout that adapts columns for small terminal widths
