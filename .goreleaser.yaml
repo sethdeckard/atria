@@ -16,22 +16,32 @@ builds:
       - arm64
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
 
-brews:
+homebrew_casks:
   - repository:
       owner: sethdeckard
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/sethdeckard/atria
     description: "Agent multiplexer for your terminal"
-    license: MIT
-    install: |
-      bin.install "atria"
+    directory: Casks
+    binaries:
+      - atria
+    # The released macOS binaries are unsigned and un-notarized, so Gatekeeper
+    # blocks them without this. Remove the hook if Developer ID signing and
+    # notarization are ever adopted. The OS.mac? guard matters: this cask also
+    # installs on Linux, where /usr/bin/xattr does not exist.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/atria"]
+          end
 
 changelog:
   sort: asc
