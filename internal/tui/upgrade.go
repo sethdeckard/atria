@@ -49,11 +49,9 @@ func checkUpgrade(currentVersion string) tea.Cmd {
 			return nil
 		}
 
-		hint := "go install github.com/sethdeckard/atria@latest"
+		hint := goInstallHint
 		if exe, err := os.Executable(); err == nil {
-			if strings.HasPrefix(exe, "/opt/homebrew/") || strings.Contains(exe, "/Cellar/") {
-				hint = "brew upgrade atria"
-			}
+			hint = installHint(exe)
 		}
 
 		return UpgradeAvailableMsg{
@@ -61,6 +59,35 @@ func checkUpgrade(currentVersion string) tea.Cmd {
 			InstallHint:   hint,
 		}
 	}
+}
+
+const (
+	brewUpgradeHint = "brew upgrade atria"
+	goInstallHint   = "go install github.com/sethdeckard/atria@latest"
+)
+
+// isHomebrewPath reports whether exe lives inside a Homebrew installation,
+// covering both the formula (Cellar) and cask (Caskroom) layouts on macOS and
+// Linux. Casks matter because atria is distributed as one: on Linux,
+// os.Executable reads the fully resolved /proc/self/exe, which lands in
+// Caskroom rather than Cellar.
+func isHomebrewPath(exe string) bool {
+	if exe == "" {
+		return false
+	}
+	if strings.Contains(exe, "/Cellar/") || strings.Contains(exe, "/Caskroom/") {
+		return true
+	}
+	return strings.HasPrefix(exe, "/opt/homebrew/") ||
+		strings.HasPrefix(exe, "/home/linuxbrew/.linuxbrew/")
+}
+
+// installHint returns the upgrade command appropriate to how atria was installed.
+func installHint(exe string) string {
+	if isHomebrewPath(exe) {
+		return brewUpgradeHint
+	}
+	return goInstallHint
 }
 
 // isNewer returns true if latest is a higher semver than current.

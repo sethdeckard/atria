@@ -28,6 +28,30 @@ func TestIsNewer(t *testing.T) {
 	}
 }
 
+func TestInstallHint(t *testing.T) {
+	tests := []struct {
+		name string
+		exe  string
+		want string
+	}{
+		{"macos arm symlink", "/opt/homebrew/bin/atria", brewUpgradeHint},
+		{"macos cask", "/opt/homebrew/Caskroom/atria/0.6.0/atria", brewUpgradeHint},
+		{"macos intel formula", "/usr/local/Cellar/atria/0.5.0/bin/atria", brewUpgradeHint},
+		{"linux formula", "/home/linuxbrew/.linuxbrew/Cellar/atria/0.5.0/bin/atria", brewUpgradeHint},
+		{"linux cask", "/home/linuxbrew/.linuxbrew/Caskroom/atria/0.6.0/atria", brewUpgradeHint},
+		{"go install", "/Users/seth/go/bin/atria", goInstallHint},
+		{"hand installed", "/usr/local/bin/atria", goInstallHint},
+		{"empty", "", goInstallHint},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := installHint(tt.exe); got != tt.want {
+				t.Errorf("installHint(%q) = %q, want %q", tt.exe, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUpgradeNotice(t *testing.T) {
 	got := upgradeNotice("v0.5.0", "brew upgrade atria")
 	want := "Update available: v0.5.0 (brew upgrade atria)"
