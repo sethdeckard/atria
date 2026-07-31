@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.1
+
+- Homebrew installs are now published as a cask instead of a prebuilt-binary formula, which GoReleaser and Homebrew have both deprecated; `brew install sethdeckard/tap/atria` is unchanged, and both macOS and Linux (Linuxbrew) remain supported
+- Atria's unsigned macOS binaries are de-quarantined during cask installation so Gatekeeper does not block them
+
 ## v0.5.0
 
 - Show agents' terminal colors in the dashboard stream preview, chat view, and embedded terminal, reconstructed from each backend (PTY, iTerm2, tmux, Kitty, WezTerm) while status detection keeps reading plain text
