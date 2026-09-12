@@ -56,7 +56,10 @@ before tagged releases to catch newly added or updated modules.
 - `github.com/google/go-cmp` `v0.7.0`
 - `golang.org/x/exp` `v0.0.0-20260312153236-7ab1446f8b90`
 - `golang.org/x/mod` `v0.41.0`
+- `golang.org/x/sync` `v0.23.0`
 - `golang.org/x/sys` `v0.48.0`
 - `golang.org/x/text` `v0.42.0`
 - `golang.org/x/tools` `v0.49.0`
+- `golang.org/x/tools/go/expect` `v0.1.1-deprecated`
+- `golang.org/x/tools/go/packages/packagestest` `v0.1.1-deprecated`
 - `google.golang.org/protobuf` `v1.36.12`
