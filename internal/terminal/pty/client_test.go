@@ -5,7 +5,66 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sethdeckard/atria/internal/terminal"
 )
+
+// waitFor polls cond every 50ms until it returns true or timeout elapses.
+// It reports whether cond was satisfied.
+func waitFor(timeout time.Duration, cond func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if cond() {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// waitForScreen polls ReadScreen on the session until match returns true or
+// the timeout elapses. It returns the last screen content read, so callers can
+// assert on it (and include it in failure output) either way.
+func waitForScreen(t *testing.T, c *Client, id string, match func(string) bool) string {
+	t.Helper()
+	var content string
+	waitFor(3*time.Second, func() bool {
+		var err error
+		content, err = c.ReadScreen(id, 25)
+		if err != nil {
+			t.Fatalf("ReadScreen() error: %v", err)
+		}
+		return match(content)
+	})
+	return content
+}
+
+// waitForShell blocks until the session has produced any output. Prompts
+// vary by shell, so no attempt is made to recognise one: a nonblank screen is
+// taken as evidence that the shell has started and is ready for input.
+func waitForShell(t *testing.T, c *Client, id string) {
+	t.Helper()
+	content := waitForScreen(t, c, id, func(s string) bool {
+		return strings.TrimSpace(s) != ""
+	})
+	if strings.TrimSpace(content) == "" {
+		t.Fatal("shell produced no output")
+	}
+}
+
+// hasLine reports whether any line of content, after trimming whitespace,
+// equals want. Matching whole lines avoids false positives from the shell
+// echoing the command that was typed.
+func hasLine(content, want string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if strings.TrimSpace(line) == want {
+			return true
+		}
+	}
+	return false
+}
 
 func TestNewClient(t *testing.T) {
 	c := NewClient(80, 24)
@@ -60,24 +119,18 @@ func TestSendTextAndReadScreen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession() error: %v", err)
 	}
-
-	// Give the shell time to start
-	time.Sleep(200 * time.Millisecond)
+	waitForShell(t, c, id)
 
 	err = c.SendText(id, "echo hello-pty-test\r")
 	if err != nil {
 		t.Fatalf("SendText() error: %v", err)
 	}
 
-	// Wait for output
-	time.Sleep(300 * time.Millisecond)
-
-	content, err := c.ReadScreen(id, 25)
-	if err != nil {
-		t.Fatalf("ReadScreen() error: %v", err)
-	}
-	if !strings.Contains(content, "hello-pty-test") {
-		t.Errorf("expected screen to contain 'hello-pty-test', got:\n%s", content)
+	content := waitForScreen(t, c, id, func(s string) bool {
+		return hasLine(s, "hello-pty-test")
+	})
+	if !hasLine(content, "hello-pty-test") {
+		t.Errorf("expected screen to contain 'hello-pty-test' output line, got:\n%s", content)
 	}
 }
 
@@ -89,22 +142,18 @@ func TestRunCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession() error: %v", err)
 	}
-
-	time.Sleep(200 * time.Millisecond)
+	waitForShell(t, c, id)
 
 	err = c.RunCommand(id, "echo run-cmd-test")
 	if err != nil {
 		t.Fatalf("RunCommand() error: %v", err)
 	}
 
-	time.Sleep(300 * time.Millisecond)
-
-	content, err := c.ReadScreen(id, 25)
-	if err != nil {
-		t.Fatalf("ReadScreen() error: %v", err)
-	}
-	if !strings.Contains(content, "run-cmd-test") {
-		t.Errorf("expected screen to contain 'run-cmd-test', got:\n%s", content)
+	content := waitForScreen(t, c, id, func(s string) bool {
+		return hasLine(s, "run-cmd-test")
+	})
+	if !hasLine(content, "run-cmd-test") {
+		t.Errorf("expected screen to contain 'run-cmd-test' output line, got:\n%s", content)
 	}
 }
 
@@ -116,8 +165,7 @@ func TestProcessExitFiltered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession() error: %v", err)
 	}
-
-	time.Sleep(200 * time.Millisecond)
+	waitForShell(t, c, id)
 
 	// Exit the shell
 	err = c.SendText(id, "exit\r")
@@ -125,13 +173,15 @@ func TestProcessExitFiltered(t *testing.T) {
 		t.Fatalf("SendText() error: %v", err)
 	}
 
-	// Wait for process to exit
-	time.Sleep(500 * time.Millisecond)
-
-	sessions, err := c.ListSessions()
-	if err != nil {
-		t.Fatalf("ListSessions() error: %v", err)
-	}
+	var sessions []terminal.Session
+	waitFor(5*time.Second, func() bool {
+		var err error
+		sessions, err = c.ListSessions()
+		if err != nil {
+			t.Fatalf("ListSessions() error: %v", err)
+		}
+		return len(sessions) == 0
+	})
 	if len(sessions) != 0 {
 		t.Errorf("expected 0 sessions after exit, got %d", len(sessions))
 	}
@@ -186,8 +236,7 @@ func TestBellDetection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession() error: %v", err)
 	}
-
-	time.Sleep(200 * time.Millisecond)
+	waitForShell(t, c, id)
 
 	// Send a bell character via printf
 	err = c.SendText(id, "printf '\\a'\r")
@@ -195,12 +244,11 @@ func TestBellDetection(t *testing.T) {
 		t.Fatalf("SendText() error: %v", err)
 	}
 
-	time.Sleep(300 * time.Millisecond)
-
-	content, err := c.ReadScreen(id, 25)
-	if err != nil {
-		t.Fatalf("ReadScreen() error: %v", err)
-	}
+	// ReadScreen consumes the pending bell, so poll until the read that
+	// observes it rather than sleeping and hoping the shell has run printf.
+	content := waitForScreen(t, c, id, func(s string) bool {
+		return strings.Contains(s, "\x07")
+	})
 	if !strings.Contains(content, "\x07") {
 		t.Error("expected bell character in ReadScreen output")
 	}
@@ -248,24 +296,26 @@ func TestChildShellDoesNotInheritITermCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession() error: %v", err)
 	}
-
-	time.Sleep(200 * time.Millisecond)
+	waitForShell(t, c, id)
 
 	err = c.SendText(id, "printf '%s|%s\\n' \"$ITERM2_COOKIE\" \"$ITERM2_KEY\"\r")
 	if err != nil {
 		t.Fatalf("SendText() error: %v", err)
 	}
 
-	time.Sleep(300 * time.Millisecond)
-
-	content, err := c.ReadScreen(id, 25)
-	if err != nil {
-		t.Fatalf("ReadScreen() error: %v", err)
+	// The shell echoes the command, which also contains "|", so wait for the
+	// printf output line itself: exactly "|" when both vars are empty, or a
+	// line carrying a leaked secret.
+	leaked := func(s string) bool {
+		return strings.Contains(s, "secret-cookie") || strings.Contains(s, "secret-key")
 	}
-	if strings.Contains(content, "secret-cookie") || strings.Contains(content, "secret-key") {
+	content := waitForScreen(t, c, id, func(s string) bool {
+		return hasLine(s, "|") || leaked(s)
+	})
+	if leaked(content) {
 		t.Fatalf("expected child shell to not inherit iTerm credentials, got:\n%s", content)
 	}
-	if !strings.Contains(content, "|") {
+	if !hasLine(content, "|") {
 		t.Fatalf("expected printf output marker, got:\n%s", content)
 	}
 }
@@ -334,8 +384,7 @@ func TestListSessionsCleansUpExited(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession() error: %v", err)
 	}
-
-	time.Sleep(200 * time.Millisecond)
+	waitForShell(t, c, id)
 
 	// Exit the shell
 	if err := c.SendText(id, "exit\r"); err != nil {
@@ -343,17 +392,13 @@ func TestListSessionsCleansUpExited(t *testing.T) {
 	}
 
 	// Poll until ListSessions returns empty (exited sessions are excluded).
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	waitFor(5*time.Second, func() bool {
 		sessions, err := c.ListSessions()
 		if err != nil {
 			t.Fatalf("ListSessions() error: %v", err)
 		}
-		if len(sessions) == 0 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		return len(sessions) == 0
+	})
 
 	// Session remains addressable for ReadScreen (UI can still render it).
 	_, err = c.ReadScreen(id, 25)
