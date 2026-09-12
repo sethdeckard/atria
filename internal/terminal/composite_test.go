@@ -167,7 +167,7 @@ func TestComposite_IntegrationErrorNonFatal(t *testing.T) {
 
 func TestComposite_NewSessionAlwaysPrimary(t *testing.T) {
 	primary := &trackingBackend{}
-	primary.mockBackend.sessions = nil
+	primary.sessions = nil
 
 	comp := NewCompositeBackend(primary, "pty", []Integration{
 		{Prefix: "iterm:", Source: "iterm", Backend: &trackingBackend{}},

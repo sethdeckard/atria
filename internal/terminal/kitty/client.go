@@ -66,7 +66,7 @@ func (c *Client) Available() error {
 
 	// Verify remote control is enabled by running ls via socket.
 	if _, err := c.run("ls"); err != nil {
-		return fmt.Errorf("Kitty remote control is not enabled")
+		return fmt.Errorf("kitty remote control is not enabled")
 	}
 	return nil
 }

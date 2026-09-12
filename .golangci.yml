@@ -1,21 +1,26 @@
+version: "2"
+
 linters:
+  # The default set includes errcheck, govet, ineffassign, staticcheck, and
+  # unused. Staticcheck includes the gosimple checks.
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosimple
-    - misspell
     - gocritic
+    - misspell
     - revive
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+  exclusions:
+    # Ignore unchecked errors from common standard-library cleanup and
+    # printing functions.
+    presets:
+      - std-error-handling
+    paths:
+      - internal/terminal/iterm/proto
 
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        disabled: true
-
-issues:
-  exclude-dirs:
-    - internal/terminal/iterm/proto
+formatters:
+  enable:
+    - gofmt
+    - goimports

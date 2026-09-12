@@ -107,9 +107,10 @@ func countBells(data []byte, inOSC *bool, escPending *bool) int {
 		}
 
 		if *inOSC {
-			if data[i] == '\x07' {
+			switch data[i] {
+			case '\x07':
 				*inOSC = false // BEL terminates OSC — not a real bell
-			} else if data[i] == '\x1b' {
+			case '\x1b':
 				if i+1 < len(data) {
 					if data[i+1] == '\\' {
 						*inOSC = false // ST (\x1b\) terminates OSC
@@ -120,7 +121,8 @@ func countBells(data []byte, inOSC *bool, escPending *bool) int {
 				}
 			}
 		} else {
-			if data[i] == '\x1b' {
+			switch data[i] {
+			case '\x1b':
 				if i+1 < len(data) {
 					if data[i+1] == ']' {
 						*inOSC = true
@@ -129,7 +131,7 @@ func countBells(data []byte, inOSC *bool, escPending *bool) int {
 				} else {
 					*escPending = true
 				}
-			} else if data[i] == '\x07' {
+			case '\x07':
 				bells++
 			}
 		}

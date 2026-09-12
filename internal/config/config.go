@@ -139,7 +139,7 @@ func (cfg *Config) Save(path string) error {
 	// default_agent
 	sb.WriteString("# Default agent to launch: \"claude\", \"codex\", \"opencode\", or \"copilot\"\n")
 	if cfg.DefaultAgent != "" {
-		sb.WriteString(fmt.Sprintf("default_agent = %q\n", cfg.DefaultAgent))
+		fmt.Fprintf(&sb, "default_agent = %q\n", cfg.DefaultAgent)
 	} else {
 		sb.WriteString("# default_agent = \"claude\"\n")
 	}
@@ -148,7 +148,7 @@ func (cfg *Config) Save(path string) error {
 	// theme
 	sb.WriteString("# Color theme: \"default\" (default palette) or \"ansi\" (use terminal colors)\n")
 	if NormalizeTheme(cfg.Theme) == ThemeANSI {
-		sb.WriteString(fmt.Sprintf("theme = %q\n", ThemeANSI))
+		fmt.Fprintf(&sb, "theme = %q\n", ThemeANSI)
 	} else {
 		sb.WriteString("# theme = \"default\"\n")
 	}
@@ -157,14 +157,14 @@ func (cfg *Config) Save(path string) error {
 	// pty_cols, pty_rows
 	sb.WriteString("# PTY terminal dimensions (built-in backend)\n")
 	if cfg.PtyCols != 0 && cfg.PtyCols != DefaultPtyCols {
-		sb.WriteString(fmt.Sprintf("pty_cols = %d\n", cfg.PtyCols))
+		fmt.Fprintf(&sb, "pty_cols = %d\n", cfg.PtyCols)
 	} else {
-		sb.WriteString(fmt.Sprintf("# pty_cols = %d\n", DefaultPtyCols))
+		fmt.Fprintf(&sb, "# pty_cols = %d\n", DefaultPtyCols)
 	}
 	if cfg.PtyRows != 0 && cfg.PtyRows != DefaultPtyRows {
-		sb.WriteString(fmt.Sprintf("pty_rows = %d\n", cfg.PtyRows))
+		fmt.Fprintf(&sb, "pty_rows = %d\n", cfg.PtyRows)
 	} else {
-		sb.WriteString(fmt.Sprintf("# pty_rows = %d\n", DefaultPtyRows))
+		fmt.Fprintf(&sb, "# pty_rows = %d\n", DefaultPtyRows)
 	}
 	sb.WriteString("\n")
 
@@ -173,12 +173,12 @@ func (cfg *Config) Save(path string) error {
 	sb.WriteString("# Empty uses the current tmux session when inside tmux,\n")
 	sb.WriteString("# otherwise launches into a detached fallback session.\n")
 	if cfg.TmuxSession != "" {
-		sb.WriteString(fmt.Sprintf("tmux_session = %q\n", cfg.TmuxSession))
+		fmt.Fprintf(&sb, "tmux_session = %q\n", cfg.TmuxSession)
 	} else {
 		sb.WriteString("# tmux_session = \"atria\"  # optional override\n")
 	}
 	if cfg.TmuxPath != "" {
-		sb.WriteString(fmt.Sprintf("tmux_path = %q\n", contractHome(cfg.TmuxPath)))
+		fmt.Fprintf(&sb, "tmux_path = %q\n", contractHome(cfg.TmuxPath))
 	} else {
 		sb.WriteString("# tmux_path = \"/usr/bin/tmux\"\n")
 	}
@@ -187,7 +187,7 @@ func (cfg *Config) Save(path string) error {
 	// kitty settings
 	sb.WriteString("# Kitty backend settings\n")
 	if cfg.KittenPath != "" {
-		sb.WriteString(fmt.Sprintf("kitten_path = %q\n", contractHome(cfg.KittenPath)))
+		fmt.Fprintf(&sb, "kitten_path = %q\n", contractHome(cfg.KittenPath))
 	} else {
 		sb.WriteString("# kitten_path = \"kitten\"\n")
 	}
@@ -196,7 +196,7 @@ func (cfg *Config) Save(path string) error {
 	// wezterm settings
 	sb.WriteString("# WezTerm backend settings\n")
 	if cfg.WezTermPath != "" {
-		sb.WriteString(fmt.Sprintf("wezterm_path = %q\n", contractHome(cfg.WezTermPath)))
+		fmt.Fprintf(&sb, "wezterm_path = %q\n", contractHome(cfg.WezTermPath))
 	} else {
 		sb.WriteString("# wezterm_path = \"wezterm\"\n")
 	}
@@ -258,7 +258,7 @@ func writeSliceField(sb *strings.Builder, key string, values []string, transform
 			if transform != nil {
 				val = transform(v)
 			}
-			sb.WriteString(fmt.Sprintf("%q", val))
+			fmt.Fprintf(sb, "%q", val)
 		}
 		sb.WriteString("]\n")
 	} else {

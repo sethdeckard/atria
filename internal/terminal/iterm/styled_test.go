@@ -93,7 +93,7 @@ func stripSGRTest(s string) string {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
 			j := i + 2
-			for j < len(s) && !(s[j] >= 0x40 && s[j] <= 0x7e) {
+			for j < len(s) && (s[j] < 0x40 || s[j] > 0x7e) {
 				j++
 			}
 			i = j
