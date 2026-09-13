@@ -386,6 +386,71 @@ func TestComposite_AddRemoveIntegration(t *testing.T) {
 	}
 }
 
+// closableBackend extends trackingBackend and records Close calls.
+type closableBackend struct {
+	trackingBackend
+	closeCalls int
+}
+
+func (c *closableBackend) Close() {
+	c.closeCalls++
+}
+
+func TestComposite_RemoveIntegrationClosesBackend(t *testing.T) {
+	primary := &trackingBackend{}
+	integ := &closableBackend{}
+	comp := NewCompositeBackend(primary, "tmux", []Integration{
+		{Prefix: "pty:", Source: "pty", Backend: integ},
+	})
+
+	comp.RemoveIntegration("pty:")
+
+	if integ.closeCalls != 1 {
+		t.Errorf("Close calls = %d, want 1", integ.closeCalls)
+	}
+	if len(comp.Integrations()) != 0 {
+		t.Errorf("expected 0 integrations after remove, got %d", len(comp.Integrations()))
+	}
+}
+
+func TestComposite_DetachIntegrationKeepsBackendOpen(t *testing.T) {
+	primary := &trackingBackend{}
+	pty := &closableBackend{
+		trackingBackend: trackingBackend{
+			mockBackend: mockBackend{
+				sessions: []Session{{ID: "pty-0", Name: "claude"}},
+			},
+		},
+	}
+	other := &trackingBackend{}
+	comp := NewCompositeBackend(primary, "tmux", []Integration{
+		{Prefix: "pty:", Source: "pty", Backend: pty},
+		{Prefix: "iterm:", Source: "iterm", Backend: other},
+	})
+
+	// Promote PTY back to primary, as the settings toggle does, then detach
+	// its integration entry.
+	comp.SetPrimary(pty, "pty")
+	comp.DetachIntegration("pty:")
+
+	if pty.closeCalls != 0 {
+		t.Errorf("Close calls = %d, want 0", pty.closeCalls)
+	}
+	integs := comp.Integrations()
+	if len(integs) != 1 || integs[0].Prefix != "iterm:" {
+		t.Fatalf("expected only iterm: integration to remain, got %+v", integs)
+	}
+
+	// PTY sessions are now served unprefixed by the primary.
+	sessions, err := comp.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != "pty-0" || sessions[0].Source != "pty" {
+		t.Errorf("sessions = %+v, want one unprefixed pty-0", sessions)
+	}
+}
+
 // resizableBackend extends trackingBackend with Resize support.
 type resizableBackend struct {
 	trackingBackend

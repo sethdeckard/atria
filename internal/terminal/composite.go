@@ -321,6 +321,21 @@ func (c *CompositeBackend) RemoveIntegration(prefix string) {
 	c.integrations = filtered
 }
 
+// DetachIntegration removes integrations matching the given prefix without
+// closing their backends. Use it when the backend stays in service elsewhere,
+// such as PTY being promoted back to primary. Thread-safe.
+func (c *CompositeBackend) DetachIntegration(prefix string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	filtered := c.integrations[:0]
+	for _, integ := range c.integrations {
+		if integ.Prefix != prefix {
+			filtered = append(filtered, integ)
+		}
+	}
+	c.integrations = filtered
+}
+
 // SetPrimary changes the primary backend and its source label. Thread-safe.
 func (c *CompositeBackend) SetPrimary(b Backend, source string) {
 	c.mu.Lock()

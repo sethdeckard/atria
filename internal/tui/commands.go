@@ -330,7 +330,9 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 							remapped["pty:"+s.ID] = s.ID
 						}
 					}
-					composite.RemoveIntegration("pty:")
+					// Detach rather than remove: the PTY client is now the primary
+					// again and must keep its sessions alive.
+					composite.DetachIntegration("pty:")
 				}
 			}
 
