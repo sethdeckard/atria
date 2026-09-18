@@ -121,7 +121,7 @@ Integrations let atria discover agents already running in other terminals and la
 - **Kitty**: discovers agents in Kitty windows; launches native windows when atria runs inside Kitty
 - **tmux**: discovers agents across all tmux sessions; when atria runs inside tmux, launches into the current session by default
 - **WezTerm**: discovers agents in WezTerm panes and tabs; launches native tabs when atria runs inside WezTerm
-- **DeviceTerm**: discovers agents in DeviceTerm tabs and panes and launches native tabs, but only when atria itself runs in a DeviceTerm Automation tab
+- **[DeviceTerm](https://deviceterm.com)**: discovers agents in DeviceTerm tabs and panes and launches native tabs, but only when atria itself runs in a DeviceTerm Automation tab
 
 Enable in config or toggle from the settings screen (`I`):
 
@@ -195,7 +195,7 @@ integrations = ["wezterm"]
 
 ### DeviceTerm
 
-Drives DeviceTerm through its `deviceterm` CLI. atria has to run inside a DeviceTerm Automation tab (Shell ▸ Open Automation Tab, ⇧⌘T), because reading screens, sending input, focusing panes, and opening tabs all need that tab's automation grant.
+Drives [DeviceTerm](https://deviceterm.com) through its `deviceterm` CLI. atria has to run inside a DeviceTerm Automation tab (Shell ▸ Open Automation Tab, ⇧⌘T), because reading screens, sending input, focusing panes, and opening tabs all need that tab's automation grant.
 
 **Requirements:**
 - DeviceTerm 0.11.0 or later

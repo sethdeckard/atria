@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.0
+
+- Add a DeviceTerm integration (`integrations = ["deviceterm"]`): agents in DeviceTerm tabs and split panes appear on the dashboard with status, focus, chat, and native launch into a new tab; requires DeviceTerm 0.11.0 or later and atria running in a DeviceTerm Automation tab, because the CLI verbs it uses need that tab's automation grant
+- Show product names in the dashboard's env column (DeviceTerm, WezTerm, Kitty, iTerm2) instead of config keys, and size the column to its longest label
+- Fix embedded PTY agents being killed when the integration serving as launch target is disabled from settings; they now survive the switch back to the built-in terminal
+- Fix the launch target depending on the order integrations were toggled in settings; the settings screen now follows the same precedence as startup
+- Fix tracked sessions being dropped and rediscovered with their state lost when enabling or disabling an integration changes the launch target
+
 ## v0.5.1
 
 - Homebrew installs are now published as a cask instead of a prebuilt-binary formula, which GoReleaser and Homebrew have both deprecated; `brew install sethdeckard/tap/atria` is unchanged, and both macOS and Linux (Linuxbrew) remain supported
