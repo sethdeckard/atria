@@ -159,12 +159,33 @@ func renderColumnHeaders(nameWidth, typeWidth, totalWidth int, col sortColumn, d
 	return dimStyle.Render(line)
 }
 
-func envLabel(source string) string {
-	if source == "pty" {
-		return "embedded"
+// envColumnWidth sizes the env column to the longest label plus two
+// spaces of gap before the status column, never narrower than 10 so the
+// layout is unchanged for the labels that fit that width.
+func envColumnWidth(rows []projectRow) int {
+	width := 10
+	for _, r := range rows {
+		if w := len(envLabel(r.session.Source)) + 2; w > width {
+			width = w
+		}
 	}
-	if source == "" {
-		return ""
+	return width
+}
+
+// envLabel is the display name for a session's composite source. Sources are
+// config keys and stay lowercase; the column shows product names.
+func envLabel(source string) string {
+	switch source {
+	case "pty":
+		return "embedded"
+	case "deviceterm":
+		return "DeviceTerm"
+	case "wezterm":
+		return "WezTerm"
+	case "kitty":
+		return "Kitty"
+	case "iterm":
+		return "iTerm2"
 	}
 	return source
 }
@@ -209,7 +230,7 @@ func renderWideRows(rows []projectRow, cursor, width, maxRows, scrollOffset, spi
 			break
 		}
 	}
-	envWidth := 10
+	envWidth := envColumnWidth(rows)
 
 	// Compute column widths
 	nameWidth := 20

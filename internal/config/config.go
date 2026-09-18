@@ -25,19 +25,20 @@ const (
 
 // Config holds the application configuration parsed from a TOML file.
 type Config struct {
-	WatchDirs    []string `toml:"watch_dirs"`
-	TmuxPath     string   `toml:"tmux_path"`
-	TmuxSession  string   `toml:"tmux_session"`
-	KittenPath   string   `toml:"kitten_path"`
-	WezTermPath  string   `toml:"wezterm_path"`
-	DataDir      string   `toml:"data_dir"`
-	MonitorDir   string   `toml:"monitor_dir"`
-	CacheTTL     int      `toml:"cache_ttl"`
-	DefaultAgent string   `toml:"default_agent"`
-	LaunchDir    string   `toml:"launch_dir"`
-	PtyCols      int      `toml:"pty_cols"`
-	PtyRows      int      `toml:"pty_rows"`
-	FocusMode    string   `toml:"focus_mode"`
+	WatchDirs      []string `toml:"watch_dirs"`
+	TmuxPath       string   `toml:"tmux_path"`
+	TmuxSession    string   `toml:"tmux_session"`
+	KittenPath     string   `toml:"kitten_path"`
+	WezTermPath    string   `toml:"wezterm_path"`
+	DeviceTermPath string   `toml:"deviceterm_path"`
+	DataDir        string   `toml:"data_dir"`
+	MonitorDir     string   `toml:"monitor_dir"`
+	CacheTTL       int      `toml:"cache_ttl"`
+	DefaultAgent   string   `toml:"default_agent"`
+	LaunchDir      string   `toml:"launch_dir"`
+	PtyCols        int      `toml:"pty_cols"`
+	PtyRows        int      `toml:"pty_rows"`
+	FocusMode      string   `toml:"focus_mode"`
 
 	Theme        string   `toml:"theme"`
 	UpdateCheck  *bool    `toml:"update_check"`
@@ -83,6 +84,7 @@ func Load(path string) (*Config, error) {
 	cfg.TmuxPath = expandHome(cfg.TmuxPath)
 	cfg.KittenPath = expandHome(cfg.KittenPath)
 	cfg.WezTermPath = expandHome(cfg.WezTermPath)
+	cfg.DeviceTermPath = expandHome(cfg.DeviceTermPath)
 	cfg.LaunchDir = expandHome(cfg.LaunchDir)
 
 	for i, dir := range cfg.WatchDirs {
@@ -132,7 +134,8 @@ func (cfg *Config) Save(path string) error {
 	sb.WriteString("# Available: \"iterm2\" (macOS, requires iTerm2 Python API),\n")
 	sb.WriteString("#            \"tmux\" (requires running inside tmux),\n")
 	sb.WriteString("#            \"kitty\" (requires Kitty remote control),\n")
-	sb.WriteString("#            \"wezterm\" (requires a running WezTerm instance)\n")
+	sb.WriteString("#            \"wezterm\" (requires a running WezTerm instance),\n")
+	sb.WriteString("#            \"deviceterm\" (requires running atria in a DeviceTerm Automation tab)\n")
 	writeSliceField(&sb, "integrations", cfg.Integrations, nil)
 	sb.WriteString("\n")
 
@@ -199,6 +202,15 @@ func (cfg *Config) Save(path string) error {
 		fmt.Fprintf(&sb, "wezterm_path = %q\n", contractHome(cfg.WezTermPath))
 	} else {
 		sb.WriteString("# wezterm_path = \"wezterm\"\n")
+	}
+	sb.WriteString("\n")
+
+	// deviceterm settings
+	sb.WriteString("# DeviceTerm backend settings (requires atria to run in an Automation tab)\n")
+	if cfg.DeviceTermPath != "" {
+		fmt.Fprintf(&sb, "deviceterm_path = %q\n", contractHome(cfg.DeviceTermPath))
+	} else {
+		sb.WriteString("# deviceterm_path = \"deviceterm\"\n")
 	}
 	sb.WriteString("\n")
 

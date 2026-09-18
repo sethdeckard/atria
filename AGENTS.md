@@ -35,6 +35,7 @@ internal/
   terminal/cwd.go                # CWD discovery strategies (shared)
   terminal/kitty/client.go       # Kitty backend (kitten @ CLI via socket)
   terminal/wezterm/client.go     # WezTerm backend (wezterm cli)
+  terminal/deviceterm/client.go  # DeviceTerm backend (deviceterm CLI, Automation tab)
   terminal/iterm/proto/api.proto  # iTerm2 protobuf spec (trimmed)
   terminal/iterm/proto/api.pb.go  # Generated protobuf Go code
   terminal/iterm/conn.go         # iTerm2 WebSocket connection manager
@@ -170,6 +171,47 @@ Uses WezTerm's `wezterm cli` over a Unix socket (auto-discovered via `WEZTERM_UN
 
 **MonitorOutput:** Unsupported (no-op with error). Screen reads via `get-text` are the primary status mechanism.
 
+### DeviceTerm (`integrations = ["deviceterm"]`)
+
+Uses the `deviceterm` CLI, spawned as a direct child process for every call. Atria must run inside a DeviceTerm **Automation tab** (Shell ▸ Open Automation Tab, ⇧⌘T): the daemon authenticates each CLI call by walking its parent chain back to that tab, and only a human-opened Automation tab holds the automation grant that `capture-text`, `send-input`, `focus`, and `tab open` require. Never spawn the CLI detached (`setsid`, a reparented launcher) — it would lose the ancestry and be refused.
+
+**Requirements:**
+- DeviceTerm v0.11.0 or later (`pane list --all`, per-pane `terminal.title` and `terminal.tty`, `session show`, `send-input --raw`, lowercase ids). There is no version check: an older CLI has no `session` verb, so the grant check fails with `cli.invalidUsage`, which Atria reports as "requires DeviceTerm 0.11.0 or later".
+- Atria running in an Automation tab
+
+**Config options:**
+- `deviceterm_path` — path to deviceterm binary (default: found via `$PATH`, then `$DEVICETERM_SHIM_DIR/deviceterm`)
+
+**Activation (`Available()`):**
+1. Binary resolves and `DEVICETERM_SESSION` is set (Atria's own session id).
+2. `deviceterm session show --json` reports the caller's authority in one daemon-wide round trip: `{id, role, automationGrant}`. The boolean is the authority; `role` is metadata and is not read. Four states, classified by `grantState`:
+   - `automationGrant: true` → active;
+   - `false` with `id` present → enabled but inactive, "open an Automation tab";
+   - `false` with `id` omitted (outside any tab, or ancestry broken as under tmux) → "not recognized as a DeviceTerm session";
+   - typed `transport.*` error, nonzero exit → "DeviceTerm unreachable: <code>".
+
+**CLI commands used:**
+- `deviceterm session show --json` — grant check, run in `Available()` and at the top of every `ListSessions()`
+- `deviceterm pane list --all --json` — flat array of every pane across all visible windows; terminal rows carry `terminal.{sessionId,title,tty,cwd}`
+- `deviceterm pane capture-text <pane> --json` — viewport text (`--ansi` for the styled read); no scrollback
+- `deviceterm pane send-input --json --raw <pane> -- <text>` — text as written, no C-escape decoding; raw CR submits
+- `deviceterm pane focus <pane>` — commits window + tab + pane
+- `deviceterm tab open --json` — waits for the session and returns `.pane.id`
+
+**Errors:** JSON verbs emit `{"error":{"code","message","details"}}` on stdout with exit 1. `run()` decodes it into `*CLIError`; branch on `Code`, never on message text. Empty stdout on failure is an untyped error (stderr is used).
+
+**Session mapping:** Each terminal pane is a session; the pane `id` (== `terminal.sessionId`, a lowercase UUID) is the session ID. `terminal.title` is the pane's own live label (OSC title, then user-assigned name, then cwd basename), so two agents split in one tab are typed independently. `terminal.tty` populates `Session.TTY`, so the composite's `SetSelfTTY` filter drops Atria's own pane and TTY dedup works as for any other backend; it is absent only transiently before a shell attaches. Enumeration is two subprocesses per refresh (`session show`, `pane list --all`) behind the session-list cache (`cache_ttl`, 5s by default). A lost grant or any listing failure fails the whole refresh rather than returning a partial list, because Atria drops tracked sessions that go missing. `GetVar("path")` returns the `terminal.cwd` cached by the last successful `ListSessions`, without revalidating the grant; the field itself is grant-gated and best-effort, and an empty value falls through to the `lsof`-by-TTY and name-matching strategies.
+
+**Composite role — primary or absent:** DeviceTerm is registered only as a primary candidate and is **never** appended to the composite `integrations` list (no `deviceterm:` prefix exists at runtime). A granted Automation tab is never inside tmux, Kitty, WezTerm, or iTerm, and outside one DeviceTerm cannot capture, send, or focus, so it would contribute sessions it cannot service. Enabled but not granted, it contributes nothing, which satisfies the rule that discovery implies focus + chat. In `toggleIntegration`, enabling it promotes it to primary (demoting PTY to `pty:`) instead of calling `AddIntegration`; disabling it selects the highest-priority remaining backend whose environment matches, falling back to PTY. DeviceTerm rows carry TTY metadata, so a prefixed secondary role would be possible, but secondary discovery is unsupported because no use case needs it.
+
+**Limitations:**
+- `terminal.cwd` is best-effort; DeviceTerm omits it when the session's process identity is ambiguous.
+- A grant revoked mid-session (GUI connection lost) fails every refresh with the Automation-tab reason. The grant belongs to the tab and only the GUI issues one, so recovery means restarting Atria in a new Automation tab.
+- The styled capture leaves rows that are only background color uncolored or dropped (the formatter judges blankness by text). Cosmetic; status uses the plain read.
+- tmux nested inside a DeviceTerm tab breaks process ancestry; `session show` returns no `id` and Atria reports the session as unrecognized.
+
+**MonitorOutput:** Unsupported (no-op with error). Screen reads via `pane capture-text` are the primary status mechanism.
+
 ### PTY (built-in, always available)
 
 Built-in terminal multiplexer — no external dependencies. Each agent runs in its own pseudo-terminal with a vt10x emulator. Screen reads come directly from the in-memory buffer (sub-millisecond, no subprocesses).
@@ -198,7 +240,7 @@ Built-in terminal multiplexer — no external dependencies. Each agent runs in i
 
 ### Composite Architecture
 
-PTY is always the base, and iTerm2/tmux/Kitty/WezTerm act as **discovery integrations** that find existing agent sessions.
+PTY is always the base, and iTerm2/tmux/Kitty/WezTerm act as **discovery integrations** that find existing agent sessions. DeviceTerm is the exception: it is either the launch primary or absent, never a discovery integration (see its section).
 
 ```
 CachedBackend → CompositeBackend
@@ -208,9 +250,10 @@ CachedBackend → CompositeBackend
     - tmux.Client     (discover + read)
     - kitty.Client    (discover + read)
     - wezterm.Client  (discover + read)
+  deviceterm.Client is never listed here: primary or absent
 ```
 
-- **Primary** backend handles `NewSession()` (launches). Derived from environment + available integrations: tmux in tmux, Kitty in Kitty, WezTerm in WezTerm, iTerm in iTerm, PTY otherwise.
+- **Primary** backend handles `NewSession()` (launches). Derived from environment + available integrations: DeviceTerm in a granted Automation tab, tmux in tmux, Kitty in Kitty, WezTerm in WezTerm, iTerm in iTerm, PTY otherwise.
 - **Integrations** contribute to `ListSessions()` and handle `ReadScreen/SendText/FocusSession/GetVar` for their own sessions.
 - **Session ID routing**: integration sessions get prefixed (`iterm:`, `tmux:`, `kitty:`, `wezterm:`, `pty:`). The composite strips prefixes when delegating. When PTY is primary, its sessions are unprefixed (`pty-N`).
 - **Deduplication**: sessions sharing the same TTY are deduplicated (primary wins).
@@ -218,17 +261,18 @@ CachedBackend → CompositeBackend
 
 **Config:**
 ```toml
-integrations = ["iterm2", "tmux", "kitty", "wezterm"]  # discovery backends to probe
+integrations = ["iterm2", "tmux", "kitty", "wezterm", "deviceterm"]  # backends to probe
 ```
 
 **Launch target selection** (no config needed — derived automatically):
+- `$DEVICETERM_SESSION` set + deviceterm available (`session show` reports a grant) → launch via DeviceTerm
 - `$TMUX` set + tmux integration available → launch via tmux
 - `$KITTY_WINDOW_ID` set + kitty integration available → launch via Kitty
 - `$TERM_PROGRAM == "WezTerm"` or `$WEZTERM_UNIX_SOCKET` set + wezterm integration available → launch via WezTerm
 - `$TERM_PROGRAM == "iTerm.app"` + iterm2 integration available → launch via iTerm
 - Otherwise → launch via PTY
 
-When the primary is non-PTY, PTY is added as an integration (`pty:` prefix) so its sessions remain discoverable.
+When the primary is non-PTY, PTY is added as an integration (`pty:` prefix) so its sessions remain discoverable. When PTY is promoted back to primary at runtime, that entry is *detached* (`DetachIntegration`), not removed, because `RemoveIntegration` closes the backend and would kill every embedded session.
 
 ### Explicit Integrations
 

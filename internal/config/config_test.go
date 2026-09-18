@@ -432,3 +432,49 @@ func TestLoadDefaultAgent(t *testing.T) {
 		t.Errorf("expected default_agent 'codex', got %q", cfg.DefaultAgent)
 	}
 }
+
+func TestSaveLoadDeviceTermPath(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := &Config{
+		Integrations:   []string{"deviceterm"},
+		DeviceTermPath: filepath.Join(home, "bin", "deviceterm"),
+	}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `deviceterm_path = "~/bin/deviceterm"`) {
+		t.Errorf("saved config missing contracted deviceterm_path:\n%s", data)
+	}
+	if !strings.Contains(string(data), `"deviceterm" (requires running atria in a DeviceTerm Automation tab)`) {
+		t.Errorf("saved config missing deviceterm help line:\n%s", data)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.DeviceTermPath != filepath.Join(home, "bin", "deviceterm") {
+		t.Errorf("DeviceTermPath = %q, want expanded home path", loaded.DeviceTermPath)
+	}
+	if len(loaded.Integrations) != 1 || loaded.Integrations[0] != "deviceterm" {
+		t.Errorf("Integrations = %v, want [deviceterm]", loaded.Integrations)
+	}
+
+	// Unset path is written as a commented default.
+	empty := &Config{}
+	if err := empty.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	data, _ = os.ReadFile(path)
+	if !strings.Contains(string(data), `# deviceterm_path = "deviceterm"`) {
+		t.Errorf("saved config missing commented deviceterm_path default:\n%s", data)
+	}
+}

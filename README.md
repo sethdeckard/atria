@@ -16,7 +16,7 @@ You already have agents running in tmux windows? Keep doing that. Enable the tmu
 
 ### Keep your terminal tabs
 
-Same for iTerm2, Kitty, and WezTerm. Keep using tabs and panes the way you always have. atria finds your agents, tracks their status, and makes it easy to jump between them.
+Same for iTerm2, Kitty, WezTerm, and DeviceTerm. Keep using tabs and panes the way you always have. atria finds your agents, tracks their status, and makes it easy to jump between them.
 
 ### Just want a simple multiplexer?
 
@@ -117,15 +117,16 @@ Press `Enter` on an agent to open the chat view. Type a prompt and press `Enter`
 
 Integrations let atria discover agents already running in other terminals and launch new ones as native tabs/windows. They must be explicitly enabled — without them, only the built-in PTY backend is used.
 
-- **iTerm2** — discovers agents in iTerm2 tabs/panes; launches as native tabs when running inside iTerm2
-- **Kitty** — discovers agents in Kitty windows; launches as native windows when running inside Kitty
-- **tmux** — discovers agents in tmux windows; launches in a detached tmux session
-- **WezTerm** — discovers agents in WezTerm panes/tabs; launches as native windows when running inside WezTerm
+- **iTerm2**: discovers agents in iTerm2 tabs and panes; launches native tabs when atria runs inside iTerm2
+- **Kitty**: discovers agents in Kitty windows; launches native windows when atria runs inside Kitty
+- **tmux**: discovers agents across all tmux sessions; when atria runs inside tmux, launches into the current session by default
+- **WezTerm**: discovers agents in WezTerm panes and tabs; launches native tabs when atria runs inside WezTerm
+- **DeviceTerm**: discovers agents in DeviceTerm tabs and panes and launches native tabs, but only when atria itself runs in a DeviceTerm Automation tab
 
 Enable in config or toggle from the settings screen (`I`):
 
 ```toml
-integrations = ["iterm2", "kitty", "tmux", "wezterm"]
+integrations = ["iterm2", "kitty", "tmux", "wezterm", "deviceterm"]
 ```
 
 When an integration is active (i.e., you're running inside that terminal with its integration enabled), pressing `n` to launch offers a choice between the native terminal (e.g., a new tmux window) and the embedded PTY. When no integration is active, agents launch directly in the embedded PTY.
@@ -192,6 +193,22 @@ integrations = ["wezterm"]
 # wezterm_path = "wezterm"
 ```
 
+### DeviceTerm
+
+Drives DeviceTerm through its `deviceterm` CLI. atria has to run inside a DeviceTerm Automation tab (Shell ▸ Open Automation Tab, ⇧⌘T), because reading screens, sending input, focusing panes, and opening tabs all need that tab's automation grant.
+
+**Requirements:**
+- DeviceTerm 0.11.0 or later
+- atria running in an Automation tab
+
+**Config:**
+```toml
+integrations = ["deviceterm"]
+# deviceterm_path = "deviceterm"
+```
+
+In an ordinary DeviceTerm tab the integration shows as enabled but inactive in settings, with a hint to open an Automation tab, and discovers nothing until you do. Inside tmux running in a DeviceTerm tab it is also inactive, because the grant doesn't reach tmux panes.
+
 ## FAQ
 
 ### What problem does atria solve?
@@ -204,7 +221,7 @@ tmux and terminal tabs manage terminals. atria manages agent sessions — it add
 
 ### How does discovery work?
 
-atria detects running agent sessions in supported backends and shows them in the dashboard automatically. If you already have Claude Code running in a tmux window, atria surfaces that session without requiring a relaunch. Enable integrations to discover sessions across iTerm2, Kitty, tmux, and WezTerm — or use the built-in PTY to launch agents directly.
+atria detects running agent sessions in supported backends and shows them in the dashboard automatically. If you already have Claude Code running in a tmux window, atria surfaces that session without requiring a relaunch. Enable integrations to discover sessions across iTerm2, Kitty, tmux, WezTerm, and DeviceTerm, or use the built-in PTY to launch agents directly.
 
 ### Can atria show sessions from multiple backends at once?
 

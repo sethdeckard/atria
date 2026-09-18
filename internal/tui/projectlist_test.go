@@ -581,3 +581,46 @@ func TestSortColumnLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestEnvLabel(t *testing.T) {
+	tests := map[string]string{
+		"pty":        "embedded",
+		"deviceterm": "DeviceTerm",
+		"wezterm":    "WezTerm",
+		"kitty":      "Kitty",
+		"iterm":      "iTerm2",
+		"tmux":       "tmux",
+		"unknown":    "unknown",
+		"":           "",
+	}
+	for source, want := range tests {
+		if got := envLabel(source); got != want {
+			t.Errorf("envLabel(%q) = %q, want %q", source, got, want)
+		}
+	}
+}
+
+func TestEnvColumnWidth(t *testing.T) {
+	row := func(source string) projectRow {
+		return projectRow{session: &model.AgentSession{Source: source}}
+	}
+	tests := []struct {
+		name string
+		rows []projectRow
+		want int
+	}{
+		{"no rows keeps the floor", nil, 10},
+		{"short labels keep the floor", []projectRow{row("tmux"), row("wezterm")}, 10},
+		{"embedded fits the floor", []projectRow{row("pty")}, 10},
+		// "DeviceTerm" is ten characters; without padding it would touch
+		// the status column.
+		{"longest label plus two spaces", []projectRow{row("wezterm"), row("deviceterm")}, 12},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := envColumnWidth(tt.rows); got != tt.want {
+				t.Errorf("envColumnWidth() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

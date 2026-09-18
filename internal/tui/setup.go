@@ -121,6 +121,8 @@ func envDetected(name string) bool {
 		return os.Getenv("KITTY_WINDOW_ID") != ""
 	case "wezterm":
 		return os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != ""
+	case "deviceterm":
+		return os.Getenv("DEVICETERM_SESSION") != ""
 	}
 	return false
 }
@@ -145,6 +147,7 @@ func setupStepDescription(step int, cfg *config.Config) string {
 		inITerm := os.Getenv("TERM_PROGRAM") == "iTerm.app"
 		inKitty := os.Getenv("KITTY_WINDOW_ID") != ""
 		inWezTerm := os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != ""
+		inDeviceTerm := os.Getenv("DEVICETERM_SESSION") != ""
 
 		switch {
 		case inTmux && inITerm:
@@ -161,8 +164,10 @@ func setupStepDescription(step int, cfg *config.Config) string {
 			return fmt.Sprintf("You're running inside Kitty. Enabling the kitty integration lets\n%s discover agent sessions in your Kitty tabs.", atria)
 		case inWezTerm:
 			return fmt.Sprintf("You're running inside WezTerm. Enabling the wezterm integration lets\n%s discover agent sessions in your WezTerm panes.", atria)
+		case inDeviceTerm:
+			return fmt.Sprintf("You're running inside DeviceTerm. Enabling the deviceterm integration lets\n%s discover agent sessions in your DeviceTerm tabs. It needs an Automation tab.", atria)
 		default:
-			return fmt.Sprintf("Integrations let %s discover agent sessions running in\nexternal terminal multiplexers like tmux, iTerm2, Kitty, or WezTerm.", atria)
+			return fmt.Sprintf("Integrations let %s discover agent sessions running in\nexternal terminal multiplexers like tmux, iTerm2, Kitty, WezTerm, or DeviceTerm.", atria)
 		}
 
 	case 1:
@@ -216,6 +221,13 @@ func integrationHint(name string, info StatusInfo) string {
 		}
 		if !bs.Enabled && !envDetected(name) {
 			return "Enable inside WezTerm to discover agent sessions."
+		}
+	case "deviceterm":
+		if bs.Enabled && !bs.Active && bs.Reason != "" {
+			return "Requires DeviceTerm 0.11.0 or later; run atria in an Automation tab (Shell ▸ Open Automation Tab, ⇧⌘T)."
+		}
+		if !bs.Enabled && !envDetected(name) {
+			return "Enable inside DeviceTerm to discover agent sessions."
 		}
 	}
 	return ""

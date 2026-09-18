@@ -11,6 +11,7 @@ import (
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
+	devicetermbackend "github.com/sethdeckard/atria/internal/terminal/deviceterm"
 	"github.com/sethdeckard/atria/internal/terminal/iterm"
 	"github.com/sethdeckard/atria/internal/terminal/kitty"
 	"github.com/sethdeckard/atria/internal/terminal/tmux"
@@ -288,6 +289,8 @@ func integrationMeta(name string) (prefix, source string) {
 		return "kitty:", "kitty"
 	case "wezterm":
 		return "wezterm:", "wezterm"
+	case "deviceterm":
+		return "deviceterm:", "deviceterm"
 	default:
 		return name + ":", name
 	}
@@ -372,6 +375,10 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			wt := weztermbackend.NewClient(cfg.WezTermPath)
 			probeErr = wt.Available()
 			backend = wt
+		case "deviceterm":
+			dt := devicetermbackend.NewClient(cfg.DeviceTermPath)
+			probeErr = dt.Available()
+			backend = dt
 		}
 
 		if probeErr != nil {
@@ -381,11 +388,15 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 		}
 
 		// Save succeeded and probe OK — apply runtime changes.
-		composite.AddIntegration(terminal.Integration{
-			Prefix:  prefix,
-			Source:  source,
-			Backend: backend,
-		})
+		// DeviceTerm participates only as a primary candidate; promotion
+		// happens below.
+		if name != "deviceterm" {
+			composite.AddIntegration(terminal.Integration{
+				Prefix:  prefix,
+				Source:  source,
+				Backend: backend,
+			})
+		}
 
 		// Mark active only when the environment matches.
 		if (name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app") ||
@@ -413,26 +424,17 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			})
 		}
 
-		switch {
-		case name == "tmux" && os.Getenv("TMUX") != "":
+		// Promote using the same precedence startup applies, so the launch
+		// target does not depend on the order integrations were toggled.
+		if outranksPrimary(name, composite.PrimarySource()) {
 			if composite.PrimarySource() == "pty" {
 				demotePTY()
 			}
-			composite.SetPrimary(backend, "tmux")
-		case name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "" && composite.PrimarySource() != "tmux":
-			if composite.PrimarySource() == "pty" {
-				demotePTY()
+			composite.SetPrimary(backend, source)
+			if name == "deviceterm" {
+				// Active only once it is the primary (never a secondary discoverer).
+				status.Active = true
 			}
-			composite.SetPrimary(backend, "kitty")
-		case name == "wezterm" && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") &&
-			composite.PrimarySource() != "tmux" && composite.PrimarySource() != "kitty":
-			if composite.PrimarySource() == "pty" {
-				demotePTY()
-			}
-			composite.SetPrimary(backend, "wezterm")
-		case name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app" && composite.PrimarySource() == "pty":
-			demotePTY()
-			composite.SetPrimary(backend, "iterm")
 		}
 
 		return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped, NewPrimary: composite.PrimarySource()}
@@ -446,8 +448,42 @@ func saveConfig(cfg *config.Config, path string, rollback func(m *Model)) tea.Cm
 	}
 }
 
+// primaryRank orders launch backends by composite source name, highest
+// first: deviceterm > tmux > kitty > wezterm > iterm > pty. It is the single
+// precedence that startup (main.go) and the settings toggle both follow.
+func primaryRank(source string) int {
+	switch source {
+	case "deviceterm":
+		return 5
+	case "tmux":
+		return 4
+	case "kitty":
+		return 3
+	case "wezterm":
+		return 2
+	case "iterm":
+		return 1
+	}
+	return 0
+}
+
+// outranksPrimary reports whether the integration named by config name has
+// a matching environment and a rank strictly above the current primary
+// source. Callers must probe availability first; this checks environment
+// and rank only. A lower backend never displaces a higher one, and a higher
+// one always takes over, regardless of toggle order.
+func outranksPrimary(name, current string) bool {
+	if !envDetected(name) {
+		return false
+	}
+	_, source := integrationMeta(name)
+	return primaryRank(source) > primaryRank(current)
+}
+
 // derivePrimary selects the best launch backend from available integrations,
-// following documented precedence: tmux (if in tmux) > iterm (if in iTerm) > PTY.
+// following documented precedence: tmux > kitty > wezterm > iterm > PTY, each
+// only when its environment matches. DeviceTerm is excluded because it is
+// never a discovery integration. PTY is the fallback.
 func derivePrimary(integrations []terminal.Integration, ptyClient terminal.Backend) (terminal.Backend, string) {
 	integMap := make(map[string]terminal.Backend)
 	for _, integ := range integrations {

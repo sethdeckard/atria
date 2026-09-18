@@ -88,7 +88,7 @@ func TestDerivePrimary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear relevant env vars then set test values.
-			for _, key := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM"} {
+			for _, key := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM", "WEZTERM_UNIX_SOCKET", "DEVICETERM_SESSION"} {
 				t.Setenv(key, "")
 			}
 			for k, v := range tt.envVars {
@@ -103,6 +103,62 @@ func TestDerivePrimary(t *testing.T) {
 	}
 }
 
+func TestOutranksPrimary(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     map[string]string
+		enable  string
+		current string
+		want    bool
+	}{
+		// DeviceTerm outranks every other primary, in either toggle order.
+		{"deviceterm over pty", map[string]string{"DEVICETERM_SESSION": "s"}, "deviceterm", "pty", true},
+		{"deviceterm over wezterm", map[string]string{"DEVICETERM_SESSION": "s"}, "deviceterm", "wezterm", true},
+		{"deviceterm over tmux", map[string]string{"DEVICETERM_SESSION": "s"}, "deviceterm", "tmux", true},
+		{"wezterm never displaces deviceterm", map[string]string{"WEZTERM_UNIX_SOCKET": "/tmp/w"}, "wezterm", "deviceterm", false},
+		{"kitty never displaces deviceterm", map[string]string{"KITTY_WINDOW_ID": "1"}, "kitty", "deviceterm", false},
+		{"tmux never displaces deviceterm", map[string]string{"TMUX": "/tmp/t"}, "tmux", "deviceterm", false},
+		{"iterm never displaces deviceterm", map[string]string{"TERM_PROGRAM": "iTerm.app"}, "iterm2", "deviceterm", false},
+		// Other backends follow tmux > Kitty > WezTerm > iTerm > PTY precedence.
+		{"tmux over kitty", map[string]string{"TMUX": "/tmp/t"}, "tmux", "kitty", true},
+		{"kitty over wezterm", map[string]string{"KITTY_WINDOW_ID": "1"}, "kitty", "wezterm", true},
+		{"kitty not over tmux", map[string]string{"KITTY_WINDOW_ID": "1"}, "kitty", "tmux", false},
+		{"wezterm over iterm", map[string]string{"WEZTERM_UNIX_SOCKET": "/tmp/w"}, "wezterm", "iterm", true},
+		{"wezterm not over kitty", map[string]string{"WEZTERM_UNIX_SOCKET": "/tmp/w"}, "wezterm", "kitty", false},
+		{"iterm over pty", map[string]string{"TERM_PROGRAM": "iTerm.app"}, "iterm2", "pty", true},
+		{"iterm not over wezterm", map[string]string{"TERM_PROGRAM": "iTerm.app"}, "iterm2", "wezterm", false},
+		// Same backend or no environment match never promotes.
+		{"same source", map[string]string{"DEVICETERM_SESSION": "s"}, "deviceterm", "deviceterm", false},
+		{"env missing", map[string]string{}, "deviceterm", "pty", false},
+		{"unknown name", map[string]string{}, "mystery", "pty", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, key := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM", "WEZTERM_UNIX_SOCKET", "DEVICETERM_SESSION"} {
+				t.Setenv(key, "")
+			}
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+			if got := outranksPrimary(tt.enable, tt.current); got != tt.want {
+				t.Errorf("outranksPrimary(%q, %q) = %v, want %v", tt.enable, tt.current, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrimaryRankMatchesStartupOrder(t *testing.T) {
+	order := []string{"deviceterm", "tmux", "kitty", "wezterm", "iterm", "pty"}
+	for i := 1; i < len(order); i++ {
+		if primaryRank(order[i-1]) <= primaryRank(order[i]) {
+			t.Errorf("%s should outrank %s", order[i-1], order[i])
+		}
+	}
+	if primaryRank("unknown") != primaryRank("pty") {
+		t.Errorf("unknown sources should rank with pty")
+	}
+}
+
 func TestIntegrationMeta(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -112,6 +168,8 @@ func TestIntegrationMeta(t *testing.T) {
 		{"iterm2", "iterm:", "iterm"},
 		{"tmux", "tmux:", "tmux"},
 		{"kitty", "kitty:", "kitty"},
+		{"wezterm", "wezterm:", "wezterm"},
+		{"deviceterm", "deviceterm:", "deviceterm"},
 		{"unknown", "unknown:", "unknown"},
 	}
 	for _, tt := range tests {

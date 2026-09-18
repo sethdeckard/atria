@@ -12,6 +12,7 @@ import (
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
+	devicetermbackend "github.com/sethdeckard/atria/internal/terminal/deviceterm"
 	"github.com/sethdeckard/atria/internal/terminal/iterm"
 	"github.com/sethdeckard/atria/internal/terminal/kitty"
 	ptybackend "github.com/sethdeckard/atria/internal/terminal/pty"
@@ -140,6 +141,18 @@ func main() {
 				bs.Active = true
 			}
 			backendStatuses = append(backendStatuses, bs)
+		case "deviceterm":
+			bs := tui.BackendStatus{Name: "deviceterm", Enabled: true}
+			dt := devicetermbackend.NewClient(cfg.DeviceTermPath)
+			if err := dt.Available(); err != nil {
+				bs.Reason = err.Error()
+				backendStatuses = append(backendStatuses, bs)
+				continue
+			}
+			// DeviceTerm is registered only as a primary candidate, never
+			// as an integration entry. Active is set after primary selection.
+			availableIntegrations["deviceterm"] = dt
+			backendStatuses = append(backendStatuses, bs)
 		default:
 			fmt.Fprintf(os.Stderr, "unknown integration: %s\n", name)
 		}
@@ -158,12 +171,19 @@ func main() {
 	if !configuredSet["wezterm"] {
 		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "wezterm"})
 	}
+	if !configuredSet["deviceterm"] {
+		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "deviceterm"})
+	}
 
 	// Derive launch target from environment + available integrations.
-	// Prefer tmux (most specific), then iTerm, then PTY.
+	// DeviceTerm wins when available (its grant proves the Automation tab,
+	// which no other terminal can share), then tmux, Kitty, WezTerm, iTerm, PTY.
 	var primary terminal.Backend = ptyClient
 	primarySource := "pty"
-	if b, ok := availableIntegrations["tmux"]; ok && os.Getenv("TMUX") != "" {
+	if b, ok := availableIntegrations["deviceterm"]; ok && os.Getenv("DEVICETERM_SESSION") != "" {
+		primary = b
+		primarySource = "deviceterm"
+	} else if b, ok := availableIntegrations["tmux"]; ok && os.Getenv("TMUX") != "" {
 		primary = b
 		primarySource = "tmux"
 	} else if b, ok := availableIntegrations["kitty"]; ok && os.Getenv("KITTY_WINDOW_ID") != "" {
@@ -175,6 +195,14 @@ func main() {
 	} else if b, ok := availableIntegrations["iterm2"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
 		primary = b
 		primarySource = "iterm"
+	}
+
+	// DeviceTerm is only active when it is the primary: it never discovers
+	// as a secondary integration, and active implies focus + chat.
+	for i, bs := range backendStatuses {
+		if bs.Name == "deviceterm" && bs.Enabled && bs.Reason == "" {
+			backendStatuses[i].Active = primarySource == "deviceterm"
+		}
 	}
 
 	// Mark launch targets in status info.
