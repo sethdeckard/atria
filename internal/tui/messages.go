@@ -114,11 +114,22 @@ type AgentDiscoveredMsg struct {
 
 // IntegrationToggledMsg is sent after toggling an integration on or off.
 type IntegrationToggledMsg struct {
-	Name        string
-	Status      BackendStatus
-	Err         error
-	RemappedIDs map[string]string // old session ID → new session ID (e.g. PTY demotion)
-	NewPrimary  string            // source of the new launch target (set on both enable and disable)
+	Name       string
+	Status     BackendStatus
+	Err        error
+	Remap      *SourceRemap // a backend changed role and its tracked session ids must follow
+	NewPrimary string       // source of the new launch target (set on both enable and disable)
+}
+
+// SourceRemap describes a backend moving between the primary and
+// integration roles. Its sessions are listed unprefixed while primary and
+// as Prefix + id while an integration, so tracked ids must be rewritten.
+// The remap is expressed by source rather than as an id map so the handler
+// derives it from the store, with no dependence on a fresh listing.
+type SourceRemap struct {
+	Source     string // composite source whose sessions change id
+	Prefix     string // that source's integration prefix, e.g. "pty:"
+	ToPrefixed bool   // leaving primary adds Prefix; becoming primary strips it
 }
 
 // ConfigSavedMsg is sent after persisting config to disk.

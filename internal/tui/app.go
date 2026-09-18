@@ -430,26 +430,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.statusText = "Toggle failed: " + msg.Err.Error()
 		} else {
-			// Remap session IDs if PTY was demoted from primary to integration.
-			// This keeps store, attention map, and chat/term references consistent.
-			if len(msg.RemappedIDs) > 0 {
-				for _, s := range m.store.Sessions {
-					if newID, ok := msg.RemappedIDs[s.SessionID]; ok {
-						oldID := s.SessionID
-						s.SessionID = newID
-						if t, has := m.attentionSessions[oldID]; has {
-							delete(m.attentionSessions, oldID)
-							m.attentionSessions[newID] = t
-						}
-						if m.chatSessionID == oldID {
-							m.chatSessionID = newID
-						}
-						if m.termSessionID == oldID {
-							m.termSessionID = newID
-						}
-					}
-				}
+			// A disabled backend's sessions are gone; drop them before any
+			// remap so a promoted backend's bare ids cannot collide with
+			// them (ids are only unique within a backend).
+			if !msg.Status.Enabled {
+				_, source := integrationMeta(msg.Name)
+				m.dropSessionsFromSource(source)
 			}
+			// Rewrite tracked ids for a backend that changed role. This keeps
+			// store, attention map, and chat/term references consistent.
+			if msg.Remap != nil {
+				m.applySourceRemap(*msg.Remap)
+			}
+			// Rows hold session pointers; rebuild now rather than on the
+			// next refresh so a dropped session cannot be acted on.
+			m.rebuildRows()
 			// Update the toggled backend's status.
 			for i, bs := range m.statusInfo.Backends {
 				if bs.Name == msg.Name {
@@ -2698,4 +2693,69 @@ func isShellJob(job string) bool {
 
 func EnsureMonitorDir(dir string) error {
 	return os.MkdirAll(dir, 0o700)
+}
+
+// dropSessionsFromSource removes every tracked session contributed by
+// source, with the bookkeeping the refresh path applies to dead sessions
+// plus one more step: chat and terminal references to a dropped id are
+// cleared, because a promoted backend may reuse that id and the old
+// conversation must not carry over. IDs are collected first because
+// RemoveSession mutates the slice.
+func (m *Model) dropSessionsFromSource(source string) {
+	var ids []string
+	for _, s := range m.store.Sessions {
+		if s.Source == source {
+			ids = append(ids, s.SessionID)
+		}
+	}
+	for _, id := range ids {
+		delete(m.attentionSessions, id)
+		if m.quickResponseArmedFor(id) {
+			m.clearQuickResponseArm(true)
+		}
+		if m.chatSessionID == id {
+			m.chatSessionID = ""
+			if m.view == viewChat {
+				m.view = viewProjectList
+			}
+		}
+		if m.termSessionID == id {
+			m.termSessionID = ""
+			if m.view == viewTerminal {
+				m.view = viewProjectList
+			}
+		}
+		m.store.RemoveSession(id)
+	}
+}
+
+// applySourceRemap rewrites the ids of tracked sessions from r.Source to
+// the form their backend's new role lists them under, moving attention,
+// chat, and terminal references with them. It reads the store rather than
+// the backend, so a listing failure cannot leave ids half-migrated.
+func (m *Model) applySourceRemap(r SourceRemap) {
+	for _, s := range m.store.Sessions {
+		if s.Source != r.Source {
+			continue
+		}
+		oldID := s.SessionID
+		newID := strings.TrimPrefix(oldID, r.Prefix)
+		if r.ToPrefixed {
+			newID = r.Prefix + newID
+		}
+		if newID == oldID {
+			continue
+		}
+		s.SessionID = newID
+		if t, has := m.attentionSessions[oldID]; has {
+			delete(m.attentionSessions, oldID)
+			m.attentionSessions[newID] = t
+		}
+		if m.chatSessionID == oldID {
+			m.chatSessionID = newID
+		}
+		if m.termSessionID == oldID {
+			m.termSessionID = newID
+		}
+	}
 }

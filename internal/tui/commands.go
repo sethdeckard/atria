@@ -318,28 +318,16 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			}
 
 			// Save succeeded — apply runtime changes.
-			var remapped map[string]string
+			var remap *SourceRemap
 			composite.RemoveIntegration(prefix)
 			if composite.PrimarySource() == source {
 				// Re-derive primary from remaining integrations.
 				newPrimary, newSource := derivePrimary(composite.Integrations(), ptyClient)
 				composite.SetPrimary(newPrimary, newSource)
-				if newPrimary == ptyClient {
-					// PTY promoted back to primary — remap pty:pty-N → pty-N.
-					ptySessions, _ := ptyClient.ListSessions()
-					if len(ptySessions) > 0 {
-						remapped = make(map[string]string, len(ptySessions))
-						for _, s := range ptySessions {
-							remapped["pty:"+s.ID] = s.ID
-						}
-					}
-					// Detach rather than remove: the PTY client is now the primary
-					// again and must keep its sessions alive.
-					composite.DetachIntegration("pty:")
-				}
+				remap = promoteRemap(composite, newSource)
 			}
 
-			return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped, NewPrimary: composite.PrimarySource()}
+			return IntegrationToggledMsg{Name: name, Status: status, Remap: remap, NewPrimary: composite.PrimarySource()}
 		}
 
 		// Persist first — add to config and save.
@@ -406,30 +394,13 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			status.Active = true
 		}
 
-		// Re-derive primary based on environment.
-		// When PTY is demoted from primary to integration, existing PTY
-		// session IDs change from "pty-N" to "pty:pty-N". Build a remap
-		// so the store can migrate tracked sessions.
-		var remapped map[string]string
-		demotePTY := func() {
-			ptySessions, _ := ptyClient.ListSessions()
-			if len(ptySessions) > 0 {
-				remapped = make(map[string]string, len(ptySessions))
-				for _, s := range ptySessions {
-					remapped[s.ID] = "pty:" + s.ID
-				}
-			}
-			composite.AddIntegration(terminal.Integration{
-				Prefix: "pty:", Source: "pty", Backend: ptyClient,
-			})
-		}
-
 		// Promote using the same precedence startup applies, so the launch
 		// target does not depend on the order integrations were toggled.
+		// The outgoing primary's sessions change id when it becomes an
+		// integration; the handler rewrites tracked ids from the remap.
+		var remap *SourceRemap
 		if outranksPrimary(name, composite.PrimarySource()) {
-			if composite.PrimarySource() == "pty" {
-				demotePTY()
-			}
+			remap = demoteRemap(composite, ptyClient)
 			composite.SetPrimary(backend, source)
 			if name == "deviceterm" {
 				// Active only once it is the primary (never a secondary discoverer).
@@ -437,7 +408,7 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			}
 		}
 
-		return IntegrationToggledMsg{Name: name, Status: status, RemappedIDs: remapped, NewPrimary: composite.PrimarySource()}
+		return IntegrationToggledMsg{Name: name, Status: status, Remap: remap, NewPrimary: composite.PrimarySource()}
 	}
 }
 
@@ -446,6 +417,56 @@ func saveConfig(cfg *config.Config, path string, rollback func(m *Model)) tea.Cm
 		err := cfg.Save(path)
 		return ConfigSavedMsg{Err: err, Rollback: rollback}
 	}
+}
+
+// integrationPrefix returns the prefix that serves source in the
+// integration role. PTY has no standing entry, so it is answered directly.
+func integrationPrefix(composite *terminal.CompositeBackend, source string) (string, bool) {
+	if source == "pty" {
+		return "pty:", true
+	}
+	for _, integ := range composite.Integrations() {
+		if integ.Source == source {
+			return integ.Prefix, true
+		}
+	}
+	return "", false
+}
+
+// demoteRemap prepares the current primary for demotion and describes the
+// resulting session id change; callers change the primary afterwards with
+// SetPrimary. PTY gains the integration entry it lacks; every other backend
+// keeps the entry it already has, and the composite dedups by TTY. A
+// primary with no entry (DeviceTerm) cannot be routed afterwards, so nil is
+// returned and its sessions drop on refresh.
+func demoteRemap(composite *terminal.CompositeBackend, ptyClient terminal.Backend) *SourceRemap {
+	prev := composite.PrimarySource()
+	if prev == "pty" {
+		composite.AddIntegration(terminal.Integration{
+			Prefix: "pty:", Source: "pty", Backend: ptyClient,
+		})
+	}
+	prefix, ok := integrationPrefix(composite, prev)
+	if !ok {
+		return nil
+	}
+	return &SourceRemap{Source: prev, Prefix: prefix, ToPrefixed: true}
+}
+
+// promoteRemap is the reverse: the backend named by source has just become
+// primary, so its tracked sessions lose their prefix. PTY's entry is
+// detached (its sessions are unprefixed only while it is primary, and
+// detaching rather than removing keeps the client open); other backends
+// keep their entry.
+func promoteRemap(composite *terminal.CompositeBackend, source string) *SourceRemap {
+	prefix, ok := integrationPrefix(composite, source)
+	if !ok {
+		return nil
+	}
+	if source == "pty" {
+		composite.DetachIntegration("pty:")
+	}
+	return &SourceRemap{Source: source, Prefix: prefix, ToPrefixed: false}
 }
 
 // primaryRank orders launch backends by composite source name, highest

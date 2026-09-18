@@ -3429,6 +3429,7 @@ func TestIntegrationToggledMsgRemapsIDs(t *testing.T) {
 		ProjectDir: "/proj",
 		Type:       model.AgentClaude,
 		Status:     model.StatusIdle,
+		Source:     "pty",
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.cfg = &config.Config{}
@@ -3443,9 +3444,9 @@ func TestIntegrationToggledMsgRemapsIDs(t *testing.T) {
 	m.termSessionID = "old-1"
 
 	msg := IntegrationToggledMsg{
-		Name:        "tmux",
-		Status:      BackendStatus{Name: "tmux", Enabled: true, Active: true},
-		RemappedIDs: map[string]string{"old-1": "pty:old-1"},
+		Name:   "tmux",
+		Status: BackendStatus{Name: "tmux", Enabled: true, Active: true},
+		Remap:  &SourceRemap{Source: "pty", Prefix: "pty:", ToPrefixed: true},
 	}
 	updated, _ := m.Update(msg)
 	um := modelFrom(updated)
@@ -4037,5 +4038,106 @@ func TestSettingsThemeItemShows(t *testing.T) {
 				t.Errorf("expected %q for ansi theme, got %q", config.ThemeANSI, item.value)
 			}
 		}
+	}
+}
+
+func TestIntegrationToggledDropsDisabledSourceBeforeRemap(t *testing.T) {
+	store := makeStore(t)
+	store.AddProject("/w/a")
+	store.AddProject("/w/b")
+	store.SetSession(&model.AgentSession{SessionID: "42", Source: "kitty", ProjectDir: "/w/a"})
+	store.SetSession(&model.AgentSession{SessionID: "wezterm:42", Source: "wezterm", ProjectDir: "/w/b"})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.rebuildRows()
+	if len(m.rows) != 2 {
+		t.Fatalf("precondition: rows = %d, want 2", len(m.rows))
+	}
+	m.attentionSessions = map[string]time.Time{"42": time.Now()}
+	m.chatSessionID = "42" // chatting with Kitty 42
+	m.view = viewChat
+	m.termSessionID = "wezterm:42"
+
+	// Kitty was primary (bare ids) and is disabled; WezTerm takes over and
+	// its ids lose the prefix. Without dropping Kitty first, both backends'
+	// session 42 would collide, and a chat reference to Kitty's 42 would
+	// silently start addressing WezTerm's.
+	updated, _ := m.Update(IntegrationToggledMsg{
+		Name:       "kitty",
+		Status:     BackendStatus{Name: "kitty"},
+		Remap:      &SourceRemap{Source: "wezterm", Prefix: "wezterm:", ToPrefixed: false},
+		NewPrimary: "wezterm",
+	})
+	m = modelFrom(updated)
+
+	if len(m.store.Sessions) != 1 {
+		t.Fatalf("sessions = %d, want only the WezTerm one: %+v", len(m.store.Sessions), m.store.Sessions)
+	}
+	got := m.store.Sessions[0]
+	if got.SessionID != "42" || got.Source != "wezterm" {
+		t.Errorf("remaining session = %+v, want WezTerm 42", got)
+	}
+	if _, has := m.attentionSessions["42"]; has {
+		t.Errorf("attention for the dropped Kitty session should be cleared")
+	}
+	if m.chatSessionID != "" || m.view != viewProjectList {
+		t.Errorf("chat on the dropped session should close: chatSessionID=%q view=%v", m.chatSessionID, m.view)
+	}
+	if m.termSessionID != "42" {
+		t.Errorf("termSessionID = %q, want WezTerm's remapped 42", m.termSessionID)
+	}
+	if len(m.rows) != 1 || m.rows[0].session.SessionID != "42" || m.rows[0].session.Source != "wezterm" {
+		t.Errorf("rows should be rebuilt to the surviving WezTerm session, got %d rows", len(m.rows))
+	}
+}
+
+func TestIntegrationToggledRemapsOnlyTheNamedSource(t *testing.T) {
+	store := makeStore(t)
+	store.SetSession(&model.AgentSession{SessionID: "5", Source: "wezterm", ProjectDir: "/w/a"})
+	store.SetSession(&model.AgentSession{SessionID: "pty:pty-0", Source: "pty", ProjectDir: "/w/b"})
+	m := newTestModelWithStore(&mockBackend{}, store)
+	m.attentionSessions = map[string]time.Time{"5": time.Now()}
+	m.termSessionID = "5"
+
+	// DeviceTerm is enabled over a WezTerm primary: WezTerm's ids gain
+	// their prefix, PTY's already-prefixed ids are untouched, and no
+	// backend listing is involved.
+	updated, _ := m.Update(IntegrationToggledMsg{
+		Name:       "deviceterm",
+		Status:     BackendStatus{Name: "deviceterm", Enabled: true, Active: true},
+		Remap:      &SourceRemap{Source: "wezterm", Prefix: "wezterm:", ToPrefixed: true},
+		NewPrimary: "deviceterm",
+	})
+	m = modelFrom(updated)
+
+	ids := map[string]string{}
+	for _, s := range m.store.Sessions {
+		ids[s.Source] = s.SessionID
+	}
+	if ids["wezterm"] != "wezterm:5" || ids["pty"] != "pty:pty-0" {
+		t.Errorf("ids by source = %v", ids)
+	}
+	if _, has := m.attentionSessions["wezterm:5"]; !has {
+		t.Errorf("attention should follow the remapped id")
+	}
+	if m.termSessionID != "wezterm:5" {
+		t.Errorf("termSessionID = %q, want wezterm:5", m.termSessionID)
+	}
+}
+
+func TestIntegrationToggledDisableWithoutRemapDropsSource(t *testing.T) {
+	store := makeStore(t)
+	store.SetSession(&model.AgentSession{SessionID: "kitty:7", Source: "kitty", ProjectDir: "/w/a"})
+	store.SetSession(&model.AgentSession{SessionID: "pty-0", Source: "pty", ProjectDir: "/w/b"})
+	m := newTestModelWithStore(&mockBackend{}, store)
+
+	updated, _ := m.Update(IntegrationToggledMsg{
+		Name:       "kitty",
+		Status:     BackendStatus{Name: "kitty"},
+		NewPrimary: "pty",
+	})
+	m = modelFrom(updated)
+
+	if len(m.store.Sessions) != 1 || m.store.Sessions[0].SessionID != "pty-0" {
+		t.Errorf("sessions = %+v, want only pty-0", m.store.Sessions)
 	}
 }

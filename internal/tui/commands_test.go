@@ -6,7 +6,7 @@ import (
 	"github.com/sethdeckard/atria/internal/terminal"
 )
 
-// stubBackend satisfies terminal.Backend for derivePrimary tests.
+// stubBackend satisfies terminal.Backend for derivePrimary and remap tests.
 type stubBackend struct {
 	label string
 }
@@ -101,6 +101,89 @@ func TestDerivePrimary(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDemoteRemap(t *testing.T) {
+	pty := &stubBackend{label: "pty"}
+	wez := &stubBackend{label: "wezterm"}
+	dt := &stubBackend{label: "deviceterm"}
+
+	t.Run("pty gains an entry and its ids gain the prefix", func(t *testing.T) {
+		comp := terminal.NewCompositeBackend(pty, "pty", nil)
+		got := demoteRemap(comp, pty)
+		want := &SourceRemap{Source: "pty", Prefix: "pty:", ToPrefixed: true}
+		if got == nil || *got != *want {
+			t.Errorf("remap = %+v, want %+v", got, want)
+		}
+		integs := comp.Integrations()
+		if len(integs) != 1 || integs[0].Prefix != "pty:" {
+			t.Errorf("integrations = %+v, want a pty: entry", integs)
+		}
+	})
+
+	t.Run("a native primary keeps its entry and its ids gain the prefix", func(t *testing.T) {
+		comp := terminal.NewCompositeBackend(wez, "wezterm", []terminal.Integration{
+			{Prefix: "wezterm:", Source: "wezterm", Backend: wez},
+		})
+		got := demoteRemap(comp, pty)
+		want := &SourceRemap{Source: "wezterm", Prefix: "wezterm:", ToPrefixed: true}
+		if got == nil || *got != *want {
+			t.Errorf("remap = %+v, want %+v", got, want)
+		}
+		if integs := comp.Integrations(); len(integs) != 1 || integs[0].Prefix != "wezterm:" {
+			t.Errorf("integrations = %+v, want only the existing wezterm: entry", integs)
+		}
+	})
+
+	t.Run("a primary with no entry yields no remap", func(t *testing.T) {
+		comp := terminal.NewCompositeBackend(dt, "deviceterm", nil)
+		if got := demoteRemap(comp, pty); got != nil {
+			t.Errorf("remap = %+v, want nil", got)
+		}
+		if len(comp.Integrations()) != 0 {
+			t.Errorf("no entry should be added for a source without one")
+		}
+	})
+}
+
+func TestPromoteRemap(t *testing.T) {
+	pty := &stubBackend{label: "pty"}
+	wez := &stubBackend{label: "wezterm"}
+
+	t.Run("pty loses the prefix and its entry is detached", func(t *testing.T) {
+		comp := terminal.NewCompositeBackend(pty, "pty", []terminal.Integration{
+			{Prefix: "pty:", Source: "pty", Backend: pty},
+		})
+		got := promoteRemap(comp, "pty")
+		want := &SourceRemap{Source: "pty", Prefix: "pty:", ToPrefixed: false}
+		if got == nil || *got != *want {
+			t.Errorf("remap = %+v, want %+v", got, want)
+		}
+		if len(comp.Integrations()) != 0 {
+			t.Errorf("pty: entry should be detached once PTY is primary")
+		}
+	})
+
+	t.Run("a native backend loses the prefix and keeps its entry", func(t *testing.T) {
+		comp := terminal.NewCompositeBackend(wez, "wezterm", []terminal.Integration{
+			{Prefix: "wezterm:", Source: "wezterm", Backend: wez},
+		})
+		got := promoteRemap(comp, "wezterm")
+		want := &SourceRemap{Source: "wezterm", Prefix: "wezterm:", ToPrefixed: false}
+		if got == nil || *got != *want {
+			t.Errorf("remap = %+v, want %+v", got, want)
+		}
+		if integs := comp.Integrations(); len(integs) != 1 || integs[0].Prefix != "wezterm:" {
+			t.Errorf("integrations = %+v, want the wezterm: entry kept", integs)
+		}
+	})
+
+	t.Run("an unknown source yields no remap", func(t *testing.T) {
+		comp := terminal.NewCompositeBackend(pty, "pty", nil)
+		if got := promoteRemap(comp, "mystery"); got != nil {
+			t.Errorf("remap = %+v, want nil", got)
+		}
+	})
 }
 
 func TestOutranksPrimary(t *testing.T) {
