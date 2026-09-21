@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 // SessionsRefreshedMsg is sent when the session list has been refreshed.
@@ -15,7 +15,7 @@ type SessionsRefreshedMsg struct {
 type AgentLaunchedMsg struct {
 	ProjectDir string
 	SessionID  string
-	AgentType  model.AgentType
+	AgentType  agent.Type
 	Source     string // backend source ("pty", "tmux", etc.), empty = use primary
 	Err        error
 }
@@ -30,7 +30,7 @@ type PromptSentMsg struct {
 type StatusUpdatedMsg struct {
 	SessionID  string
 	ProjectDir string
-	Status     model.AgentStatus
+	Status     agent.Status
 	Activity   string
 	Attention  string
 }
@@ -106,7 +106,7 @@ type ScreenReadMsg struct {
 // its CWD resolved.
 type AgentDiscoveredMsg struct {
 	SessionID string
-	AgentType model.AgentType
+	AgentType agent.Type
 	Source    string // backend source ("pty", "iterm", "tmux", etc.)
 	Dir       string // resolved working directory, empty if not found
 	DebugSkip string // optional discovery skip reason for debug logging

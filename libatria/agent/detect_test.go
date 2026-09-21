@@ -1,38 +1,36 @@
-package terminal
+package agent
 
 import (
 	"testing"
-
-	"github.com/sethdeckard/atria/internal/model"
 )
 
-func TestDetectAgent(t *testing.T) {
+func TestDetect(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected model.AgentType
+		expected Type
 	}{
-		{"sparkle prefix", "✳ Editing src/game.go", model.AgentClaude},
-		{"asterisk flower prefix", "✻ Reading…", model.AgentClaude},
-		{"asterisk star prefix", "✶ Doodling…", model.AgentClaude},
-		{"asterisk eight spoke prefix", "✽ Frosting…", model.AgentClaude},
-		{"asterisk four teardrop prefix", "✢ Frosting…", model.AgentClaude},
-		{"sparkle only", "✳", model.AgentClaude},
-		{"claude lowercase", "my-claude-session", model.AgentClaude},
-		{"claude uppercase", "CLAUDE-CODE", model.AgentClaude},
-		{"claude mixed case", "Claude Agent", model.AgentClaude},
-		{"codex lowercase", "codex-session", model.AgentCodex},
-		{"codex uppercase", "CODEX", model.AgentCodex},
-		{"codex mixed case", "OpenAI Codex", model.AgentCodex},
-		{"opencode lowercase", "opencode", model.AgentOpenCode},
-		{"opencode in title", "OC | Reading file (opencode)", model.AgentOpenCode},
-		{"opencode in session name", "my-opencode-session", model.AgentOpenCode},
-		{"copilot lowercase", "copilot", model.AgentCopilot},
-		{"copilot in session name", "my-copilot-session", model.AgentCopilot},
-		{"copilot uppercase", "COPILOT", model.AgentCopilot},
-		{"copilot mixed case", "GitHub Copilot", model.AgentCopilot},
-		{"copilot robot prefix", "🤖 Asking clarifying question", model.AgentCopilot},
-		{"copilot robot only", "🤖", model.AgentCopilot},
+		{"sparkle prefix", "✳ Editing src/game.go", Claude},
+		{"asterisk flower prefix", "✻ Reading…", Claude},
+		{"asterisk star prefix", "✶ Doodling…", Claude},
+		{"asterisk eight spoke prefix", "✽ Frosting…", Claude},
+		{"asterisk four teardrop prefix", "✢ Frosting…", Claude},
+		{"sparkle only", "✳", Claude},
+		{"claude lowercase", "my-claude-session", Claude},
+		{"claude uppercase", "CLAUDE-CODE", Claude},
+		{"claude mixed case", "Claude Agent", Claude},
+		{"codex lowercase", "codex-session", Codex},
+		{"codex uppercase", "CODEX", Codex},
+		{"codex mixed case", "OpenAI Codex", Codex},
+		{"opencode lowercase", "opencode", OpenCode},
+		{"opencode in title", "OC | Reading file (opencode)", OpenCode},
+		{"opencode in session name", "my-opencode-session", OpenCode},
+		{"copilot lowercase", "copilot", Copilot},
+		{"copilot in session name", "my-copilot-session", Copilot},
+		{"copilot uppercase", "COPILOT", Copilot},
+		{"copilot mixed case", "GitHub Copilot", Copilot},
+		{"copilot robot prefix", "🤖 Asking clarifying question", Copilot},
+		{"copilot robot only", "🤖", Copilot},
 		{"plain session", "my-project", ""},
 		{"empty string", "", ""},
 		{"bash session", "bash", ""},
@@ -41,9 +39,9 @@ func TestDetectAgent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := DetectAgent(tt.input)
+			got := Detect(tt.input)
 			if got != tt.expected {
-				t.Errorf("DetectAgent(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("Detect(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}

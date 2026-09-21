@@ -1,22 +1,28 @@
-package terminal
+package agent
 
 import (
 	"regexp"
-
-	"github.com/sethdeckard/atria/internal/model"
 )
 
-// AgentPatterns holds compiled regexes for a specific agent type.
-type AgentPatterns struct {
-	NeedsInput     []*regexp.Regexp
-	Working        []*regexp.Regexp
-	WorkingExclude []*regexp.Regexp // lines matching these skip working detection
-	Idle           []*regexp.Regexp
+// Patterns holds the compiled regular expressions that classify one agent's
+// screen lines. Each slice is tried in order; the first match decides.
+type Patterns struct {
+	NeedsInput     []*regexp.Regexp // the agent is waiting on a prompt, permission, or question
+	Working        []*regexp.Regexp // spinner, "esc to interrupt", and similar activity markers
+	WorkingExclude []*regexp.Regexp // lines matching these are never counted as working
+	Idle           []*regexp.Regexp // the agent's input prompt or help footer
+}
+
+// PatternsFor returns the registry's patterns for t, or nil for an unknown
+// type. The returned value is the registry's own entry: don't modify the
+// struct, its slices, or the regular expressions.
+func PatternsFor(t Type) *Patterns {
+	return registry[t]
 }
 
 // Per-agent pattern definitions.
 
-var claudePatterns = &AgentPatterns{
+var claudePatterns = &Patterns{
 	NeedsInput: []*regexp.Regexp{
 		regexp.MustCompile(`Do you want to proceed`),
 		regexp.MustCompile(`Would you like to proceed`),
@@ -37,7 +43,7 @@ var claudePatterns = &AgentPatterns{
 	},
 }
 
-var codexPatterns = &AgentPatterns{
+var codexPatterns = &Patterns{
 	NeedsInput: []*regexp.Regexp{
 		regexp.MustCompile(`Waiting for .+ input`),
 		regexp.MustCompile(`Would you like to run`),
@@ -58,7 +64,7 @@ var codexPatterns = &AgentPatterns{
 	},
 }
 
-var openCodePatterns = &AgentPatterns{
+var openCodePatterns = &Patterns{
 	NeedsInput: []*regexp.Regexp{
 		regexp.MustCompile(`Permission required`),
 		regexp.MustCompile(`Allow once`),
@@ -74,7 +80,7 @@ var openCodePatterns = &AgentPatterns{
 	},
 }
 
-var copilotPatterns = &AgentPatterns{
+var copilotPatterns = &Patterns{
 	NeedsInput: []*regexp.Regexp{
 		regexp.MustCompile(`Do you trust the files in this folder`),
 		regexp.MustCompile(`Permission request`),
@@ -91,11 +97,12 @@ var copilotPatterns = &AgentPatterns{
 	},
 }
 
-var agentPatternRegistry = map[model.AgentType]*AgentPatterns{
-	model.AgentClaude:   claudePatterns,
-	model.AgentCodex:    codexPatterns,
-	model.AgentOpenCode: openCodePatterns,
-	model.AgentCopilot:  copilotPatterns,
+// registry maps each supported agent to its patterns.
+var registry = map[Type]*Patterns{
+	Claude:   claudePatterns,
+	Codex:    codexPatterns,
+	OpenCode: openCodePatterns,
+	Copilot:  copilotPatterns,
 }
 
 // Shared patterns that apply to all agent types.

@@ -1,62 +1,64 @@
-package terminal
+package agent
 
 import (
 	"regexp"
 	"strings"
-
-	"github.com/sethdeckard/atria/internal/model"
 )
 
-var detectableAgents = []model.AgentType{
-	model.AgentClaude,
-	model.AgentCodex,
-	model.AgentOpenCode,
-	model.AgentCopilot,
+var detectableAgents = []Type{
+	Claude,
+	Codex,
+	OpenCode,
+	Copilot,
 }
 
 func normalizeScreenText(s string) string {
 	return strings.ReplaceAll(s, "\x00", " ")
 }
 
-var brandedAgentPatterns = map[model.AgentType][]*regexp.Regexp{
-	model.AgentClaude: {
+var brandedAgentPatterns = map[Type][]*regexp.Regexp{
+	Claude: {
 		regexp.MustCompile(`(?m)^\s*Claude Code(?:\s+v[\d.]+)?\b`),
 	},
-	model.AgentCodex: {
+	Codex: {
 		regexp.MustCompile(`(?m)\bgpt-\S+-codex\b`),
 		regexp.MustCompile(`(?m)^\s*OpenAI Codex\b`),
 	},
-	model.AgentOpenCode: {
+	OpenCode: {
 		regexp.MustCompile(`(?m)^\s*OC \| .+\(opencode\)\s*$`),
 		regexp.MustCompile(`(?m)^\s*(?:•\s*)?OpenCode(?:\s+\d[\w.]*)?\b`),
 	},
-	model.AgentCopilot: {
+	Copilot: {
 		regexp.MustCompile(`(?m)^\s*GitHub Copilot\b`),
 	},
 }
 
-// ClassifyOutput determines agent status from a single line of output text.
-// Agent-specific patterns are checked first, then shared fallbacks.
-func ClassifyOutput(text string, agentType model.AgentType) model.AgentStatus {
+// ClassifyOutput classifies one line of screen text for the given agent and
+// returns "" when nothing matches. The order is fixed: a bell character, the
+// agent's needs_input patterns, the shared "Error:" pattern, the agent's
+// working patterns (unless a WorkingExclude pattern also matches), the shared
+// completed and shell-prompt patterns, then the agent's idle patterns. Use
+// ClassifyScreen for whole screens; it adds the bottom-region rule.
+func ClassifyOutput(text string, agentType Type) Status {
 	// 1. Shared bell → needs_input
 	if sharedBellPattern.MatchString(text) {
-		return model.StatusNeedsInput
+		return StatusNeedsInput
 	}
 
-	patterns := agentPatternRegistry[agentType]
+	patterns := registry[agentType]
 
 	// 2. Agent-specific needs_input
 	if patterns != nil {
 		for _, re := range patterns.NeedsInput {
 			if re.MatchString(text) {
-				return model.StatusNeedsInput
+				return StatusNeedsInput
 			}
 		}
 	}
 
 	// 3. Shared error
 	if sharedErrorPattern.MatchString(text) {
-		return model.StatusError
+		return StatusError
 	}
 
 	// 4. Agent-specific working (with exclusion check)
@@ -71,7 +73,7 @@ func ClassifyOutput(text string, agentType model.AgentType) model.AgentStatus {
 		if !excluded {
 			for _, re := range patterns.Working {
 				if re.MatchString(text) {
-					return model.StatusWorking
+					return StatusWorking
 				}
 			}
 		}
@@ -79,17 +81,17 @@ func ClassifyOutput(text string, agentType model.AgentType) model.AgentStatus {
 
 	// 5. Shared idle (completed, shell prompt)
 	if sharedCompletedPattern.MatchString(text) {
-		return model.StatusIdle
+		return StatusIdle
 	}
 	if sharedShellPrompt.MatchString(text) {
-		return model.StatusIdle
+		return StatusIdle
 	}
 
 	// 6. Agent-specific idle
 	if patterns != nil {
 		for _, re := range patterns.Idle {
 			if re.MatchString(text) {
-				return model.StatusIdle
+				return StatusIdle
 			}
 		}
 	}
@@ -98,15 +100,15 @@ func ClassifyOutput(text string, agentType model.AgentType) model.AgentStatus {
 }
 
 // statusPriority returns a numeric priority for status (lower = more urgent).
-func statusPriority(s model.AgentStatus) int {
+func statusPriority(s Status) int {
 	switch s {
-	case model.StatusNeedsInput:
+	case StatusNeedsInput:
 		return 0
-	case model.StatusError:
+	case StatusError:
 		return 1
-	case model.StatusWorking:
+	case StatusWorking:
 		return 2
-	case model.StatusIdle:
+	case StatusIdle:
 		return 3
 	default:
 		return 4
@@ -132,7 +134,7 @@ var todoFooterPattern = regexp.MustCompile(`(?i)^\s*\d+\s+tasks?\s+\(\d+\s+(?:do
 // bottomRegion returns the start index of the bottom region, measured from the
 // live UI anchor. Used to restrict active-status matching to the live UI area
 // and ignore scrollback history.
-func bottomRegion(lines []string, agentType model.AgentType) int {
+func bottomRegion(lines []string, agentType Type) int {
 	lastNonBlank := 0
 	for i := len(lines) - 1; i >= 0; i-- {
 		if strings.TrimSpace(lines[i]) != "" {
@@ -155,8 +157,8 @@ func bottomRegion(lines []string, agentType model.AgentType) int {
 // above it. The footer pattern is Claude-specific, so the adjustment is applied
 // only for Claude — other agents keep the plain lastNonBlank anchor, avoiding
 // false anchor shifts from coincidental "N tasks (...)" text in their output.
-func liveAnchor(lines []string, lastNonBlank int, agentType model.AgentType) int {
-	if agentType != model.AgentClaude {
+func liveAnchor(lines []string, lastNonBlank int, agentType Type) int {
+	if agentType != Claude {
 		return lastNonBlank
 	}
 	limit := lastNonBlank - todoFooterMaxScan
@@ -176,15 +178,17 @@ func liveAnchor(lines []string, lastNonBlank int, agentType model.AgentType) int
 	return lastNonBlank
 }
 
-// ClassifyScreen checks each line of multi-line screen content and returns
-// the highest priority status found. Active statuses (needs_input, error,
-// working) are only matched in the bottom region where the live UI appears.
-// The bottom region is measured from the last non-blank line (not the
-// absolute bottom) to handle blank padding below dialog prompts.
-// Idle/completed can match anywhere.
-func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatus, string) {
+// ClassifyScreen classifies a multi-line screen capture and returns the most
+// urgent status found together with the line that matched, or "" and "" when
+// no line matched. Active statuses (needs_input, error, working) count only
+// in the bottom region, because scrollback above quotes prompt text and
+// spinners. The region starts seven lines above the live anchor (the last
+// non-blank line, or for Claude Code the last line above a trailing todo/task
+// footer) and runs to the end of the capture. Idle patterns count anywhere. Pass 25 lines or more: Codex pads its screen with blank lines
+// and its prompt can sit 20 lines from the bottom.
+func ClassifyScreen(content string, agentType Type) (Status, string) {
 	lines := strings.Split(normalizeScreenText(content), "\n")
-	bestStatus := model.AgentStatus("")
+	bestStatus := Status("")
 	bestLine := ""
 
 	bottomStart := bottomRegion(lines, agentType)
@@ -199,7 +203,7 @@ func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatu
 			continue
 		}
 		// Only trust active statuses from the bottom region
-		if i < bottomStart && status != model.StatusIdle {
+		if i < bottomStart && status != StatusIdle {
 			continue
 		}
 		if bestStatus == "" || statusPriority(status) < statusPriority(bestStatus) {
@@ -211,16 +215,18 @@ func ClassifyScreen(content string, agentType model.AgentType) (model.AgentStatu
 	return bestStatus, bestLine
 }
 
-// HasAgentScreen checks whether agent-specific patterns appear in the bottom
-// region of the screen content. Unlike ClassifyScreen (which matches idle
-// patterns anywhere), this restricts ALL patterns to the bottom region so
-// scrollback from a previously-exited agent doesn't count as a positive signal.
-func HasAgentScreen(content string, agentType model.AgentType) bool {
+// HasScreen reports whether the agent's UI (any of its needs_input, working,
+// or idle patterns) appears in the bottom region of the screen. Unlike
+// ClassifyScreen it restricts idle patterns to the bottom region too, so the
+// scrollback of an agent that already exited is not a positive signal. It is
+// the check to run before dropping a session whose title stopped naming an
+// agent.
+func HasScreen(content string, agentType Type) bool {
 	return hasAgentScreen(content, agentType, true)
 }
 
-func hasAgentScreen(content string, agentType model.AgentType, includeIdle bool) bool {
-	patterns := agentPatternRegistry[agentType]
+func hasAgentScreen(content string, agentType Type, includeIdle bool) bool {
+	patterns := registry[agentType]
 	if patterns == nil {
 		return false
 	}
@@ -268,14 +274,18 @@ func hasAgentScreen(content string, agentType model.AgentType, includeIdle bool)
 	return false
 }
 
-func hasActiveAgentScreen(content string, agentType model.AgentType) bool {
+func hasActiveAgentScreen(content string, agentType Type) bool {
 	return hasAgentScreen(content, agentType, false)
 }
 
-// InferAgentFromScreen tries to identify the agent from screen content.
-// It prefers explicit product text, then falls back to agent-specific bottom
-// region patterns. If multiple agents remain plausible, it returns "".
-func InferAgentFromScreen(content string) model.AgentType {
+// InferFromScreen identifies the agent from screen text when the title gave
+// nothing. Product text ("Claude Code", "OpenAI Codex", a gpt-*-codex model
+// line, "OpenCode", "GitHub Copilot") takes precedence; when several products
+// match, which one is returned is unspecified. Otherwise the agents' active
+// patterns are tried in the bottom region, then all of their patterns; each
+// stage returns a type only when exactly one agent matches, and "" when none
+// or several do.
+func InferFromScreen(content string) Type {
 	content = normalizeScreenText(content)
 	for agentType, patterns := range brandedAgentPatterns {
 		for _, re := range patterns {
@@ -285,7 +295,7 @@ func InferAgentFromScreen(content string) model.AgentType {
 		}
 	}
 
-	var activeMatches []model.AgentType
+	var activeMatches []Type
 	for _, agentType := range detectableAgents {
 		if hasActiveAgentScreen(content, agentType) {
 			activeMatches = append(activeMatches, agentType)
@@ -295,9 +305,9 @@ func InferAgentFromScreen(content string) model.AgentType {
 		return activeMatches[0]
 	}
 
-	var matches []model.AgentType
+	var matches []Type
 	for _, agentType := range detectableAgents {
-		if HasAgentScreen(content, agentType) {
+		if HasScreen(content, agentType) {
 			matches = append(matches, agentType)
 		}
 	}

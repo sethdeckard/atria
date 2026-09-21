@@ -1,91 +1,89 @@
-package terminal
+package agent
 
 import (
 	"strings"
 	"testing"
-
-	"github.com/sethdeckard/atria/internal/model"
 )
 
 func TestClassifyOutput(t *testing.T) {
 	tests := []struct {
 		name      string
 		input     string
-		agentType model.AgentType
-		expected  model.AgentStatus
+		agentType Type
+		expected  Status
 	}{
 		// Claude patterns
-		{"claude allow prompt", "Allow this action?", model.AgentClaude, model.StatusNeedsInput},
-		{"claude allow edit", "Allow file edit?", model.AgentClaude, model.StatusNeedsInput},
-		{"claude proceed prompt", "Do you want to proceed?", model.AgentClaude, model.StatusNeedsInput},
-		{"claude esc to cancel", "Esc to cancel · Tab to amend", model.AgentClaude, model.StatusNeedsInput},
-		{"claude plan mode prompt", "Would you like to proceed?", model.AgentClaude, model.StatusNeedsInput},
-		{"claude working spinner", "✻ Reading…", model.AgentClaude, model.StatusWorking},
-		{"claude thinking", "✶ Doodling… (thought for 6s)", model.AgentClaude, model.StatusWorking},
-		{"claude dot spinner", "· Doodling… (48s)", model.AgentClaude, model.StatusWorking},
-		{"claude background task not working", "⏵⏵ accept edits on · tail -f log (running) · esc to interrupt", model.AgentClaude, ""},
-		{"claude shell background task working", "shell · ⏵⏵ accept edits on · esc to interrupt · ↓ to manage", model.AgentClaude, model.StatusWorking},
-		{"claude idle prompt", "❯ ", model.AgentClaude, model.StatusIdle},
-		{"claude idle prompt with path", "~/projects ❯", model.AgentClaude, model.StatusIdle},
-		{"claude shortcuts", "? for shortcuts", model.AgentClaude, model.StatusIdle},
-		{"claude done static", "✻", model.AgentClaude, ""},
+		{"claude allow prompt", "Allow this action?", Claude, StatusNeedsInput},
+		{"claude allow edit", "Allow file edit?", Claude, StatusNeedsInput},
+		{"claude proceed prompt", "Do you want to proceed?", Claude, StatusNeedsInput},
+		{"claude esc to cancel", "Esc to cancel · Tab to amend", Claude, StatusNeedsInput},
+		{"claude plan mode prompt", "Would you like to proceed?", Claude, StatusNeedsInput},
+		{"claude working spinner", "✻ Reading…", Claude, StatusWorking},
+		{"claude thinking", "✶ Doodling… (thought for 6s)", Claude, StatusWorking},
+		{"claude dot spinner", "· Doodling… (48s)", Claude, StatusWorking},
+		{"claude background task not working", "⏵⏵ accept edits on · tail -f log (running) · esc to interrupt", Claude, ""},
+		{"claude shell background task working", "shell · ⏵⏵ accept edits on · esc to interrupt · ↓ to manage", Claude, StatusWorking},
+		{"claude idle prompt", "❯ ", Claude, StatusIdle},
+		{"claude idle prompt with path", "~/projects ❯", Claude, StatusIdle},
+		{"claude shortcuts", "? for shortcuts", Claude, StatusIdle},
+		{"claude done static", "✻", Claude, ""},
 
 		// Codex patterns
-		{"codex working bullet", "• Working (30s • esc to interrupt)", model.AgentCodex, model.StatusWorking},
-		{"codex working simple", "• Working", model.AgentCodex, model.StatusWorking},
-		{"codex waiting for input", "Waiting for user input", model.AgentCodex, model.StatusNeedsInput},
-		{"codex run command prompt", "Would you like to run the following command?", model.AgentCodex, model.StatusNeedsInput},
-		{"codex confirm prompt", "Press enter to confirm or esc to cancel", model.AgentCodex, model.StatusNeedsInput},
-		{"codex question banner", "Question 1/1 (1 unanswered)", model.AgentCodex, model.StatusNeedsInput},
-		{"codex none of the above option", "4. None of the above", model.AgentCodex, model.StatusNeedsInput},
-		{"codex prompt", "› Write tests for @filename", model.AgentCodex, model.StatusIdle},
-		{"codex status bar idle", "gpt-5.3-codex default · 73% left · ~/projects/foo", model.AgentCodex, model.StatusIdle},
+		{"codex working bullet", "• Working (30s • esc to interrupt)", Codex, StatusWorking},
+		{"codex working simple", "• Working", Codex, StatusWorking},
+		{"codex waiting for input", "Waiting for user input", Codex, StatusNeedsInput},
+		{"codex run command prompt", "Would you like to run the following command?", Codex, StatusNeedsInput},
+		{"codex confirm prompt", "Press enter to confirm or esc to cancel", Codex, StatusNeedsInput},
+		{"codex question banner", "Question 1/1 (1 unanswered)", Codex, StatusNeedsInput},
+		{"codex none of the above option", "4. None of the above", Codex, StatusNeedsInput},
+		{"codex prompt", "› Write tests for @filename", Codex, StatusIdle},
+		{"codex status bar idle", "gpt-5.3-codex default · 73% left · ~/projects/foo", Codex, StatusIdle},
 
 		// OpenCode patterns
-		{"opencode permission required", "△ Permission required", model.AgentOpenCode, model.StatusNeedsInput},
-		{"opencode allow once button", "Allow once   Allow always   Reject", model.AgentOpenCode, model.StatusNeedsInput},
-		{"opencode working", "■ ..... esc interrupt", model.AgentOpenCode, model.StatusWorking},
-		{"opencode idle footer", "ctrl+t variants  tab agents  ctrl+p commands", model.AgentOpenCode, model.StatusIdle},
+		{"opencode permission required", "△ Permission required", OpenCode, StatusNeedsInput},
+		{"opencode allow once button", "Allow once   Allow always   Reject", OpenCode, StatusNeedsInput},
+		{"opencode working", "■ ..... esc interrupt", OpenCode, StatusWorking},
+		{"opencode idle footer", "ctrl+t variants  tab agents  ctrl+p commands", OpenCode, StatusIdle},
 
 		// Shared patterns (work for any agent type)
-		{"shared bell character", "\x07", model.AgentClaude, model.StatusNeedsInput},
-		{"shared bell with text", "prompt\x07here", model.AgentCodex, model.StatusNeedsInput},
-		{"shared error message", "Error: file not found", model.AgentClaude, model.StatusError},
-		{"shared error with context", "compilation Error: syntax", model.AgentOpenCode, model.StatusError},
-		{"shared completed check", "✓ All tests passed", model.AgentClaude, model.StatusIdle},
-		{"shared completed text", "Task completed successfully", model.AgentCodex, model.StatusIdle},
-		{"shared completed metric not idle", "checkpoint_loaded completed=1 path=/tmp/checkpoint.json", model.AgentClaude, ""},
-		{"shared no findings", "No findings reported", model.AgentOpenCode, model.StatusIdle},
-		{"shared shell prompt", "user@host $ ", model.AgentClaude, model.StatusIdle},
+		{"shared bell character", "\x07", Claude, StatusNeedsInput},
+		{"shared bell with text", "prompt\x07here", Codex, StatusNeedsInput},
+		{"shared error message", "Error: file not found", Claude, StatusError},
+		{"shared error with context", "compilation Error: syntax", OpenCode, StatusError},
+		{"shared completed check", "✓ All tests passed", Claude, StatusIdle},
+		{"shared completed text", "Task completed successfully", Codex, StatusIdle},
+		{"shared completed metric not idle", "checkpoint_loaded completed=1 path=/tmp/checkpoint.json", Claude, ""},
+		{"shared no findings", "No findings reported", OpenCode, StatusIdle},
+		{"shared shell prompt", "user@host $ ", Claude, StatusIdle},
 
 		// Cross-agent isolation: agent-specific patterns must NOT match other agents
-		{"claude prompt not codex", "❯ ", model.AgentCodex, ""},
-		{"claude prompt not opencode", "❯ ", model.AgentOpenCode, ""},
-		{"claude shortcuts not codex", "? for shortcuts", model.AgentCodex, ""},
-		{"codex prompt not claude", "› Write tests", model.AgentClaude, ""},
-		{"codex prompt not opencode", "› Write tests", model.AgentOpenCode, ""},
-		{"codex working not claude", "• Working", model.AgentClaude, ""},
-		{"codex working not opencode", "• Working", model.AgentOpenCode, ""},
-		{"opencode idle not claude", "ctrl+p commands", model.AgentClaude, ""},
-		{"opencode idle not codex", "ctrl+p commands", model.AgentCodex, ""},
-		{"claude proceed not codex", "Do you want to proceed?", model.AgentCodex, ""},
-		{"opencode permission not claude", "Permission required", model.AgentClaude, ""},
+		{"claude prompt not codex", "❯ ", Codex, ""},
+		{"claude prompt not opencode", "❯ ", OpenCode, ""},
+		{"claude shortcuts not codex", "? for shortcuts", Codex, ""},
+		{"codex prompt not claude", "› Write tests", Claude, ""},
+		{"codex prompt not opencode", "› Write tests", OpenCode, ""},
+		{"codex working not claude", "• Working", Claude, ""},
+		{"codex working not opencode", "• Working", OpenCode, ""},
+		{"opencode idle not claude", "ctrl+p commands", Claude, ""},
+		{"opencode idle not codex", "ctrl+p commands", Codex, ""},
+		{"claude proceed not codex", "Do you want to proceed?", Codex, ""},
+		{"opencode permission not claude", "Permission required", Claude, ""},
 
 		// Unknown agent type: only shared patterns match
-		{"unknown bell", "\x07", "unknown", model.StatusNeedsInput},
-		{"unknown error", "Error: oops", "unknown", model.StatusError},
-		{"unknown completed", "✓ done", "unknown", model.StatusIdle},
-		{"unknown shell prompt", "user@host $ ", "unknown", model.StatusIdle},
+		{"unknown bell", "\x07", "unknown", StatusNeedsInput},
+		{"unknown error", "Error: oops", "unknown", StatusError},
+		{"unknown completed", "✓ done", "unknown", StatusIdle},
+		{"unknown shell prompt", "user@host $ ", "unknown", StatusIdle},
 		{"unknown claude spinner", "✻ Reading…", "unknown", ""},
 		{"unknown codex working", "• Working", "unknown", ""},
 		{"unknown no match", "Hello world", "unknown", ""},
 
 		// Misc
-		{"generic question no match", "Do you want to continue?", model.AgentClaude, ""},
-		{"bare continue no match", "Press Continue to proceed", model.AgentClaude, ""},
-		{"generic working output", "Compiling main.go...", model.AgentClaude, ""},
-		{"empty string", "", model.AgentClaude, ""},
-		{"random text", "Hello world", model.AgentClaude, ""},
+		{"generic question no match", "Do you want to continue?", Claude, ""},
+		{"bare continue no match", "Press Continue to proceed", Claude, ""},
+		{"generic working output", "Compiling main.go...", Claude, ""},
+		{"empty string", "", Claude, ""},
+		{"random text", "Hello world", Claude, ""},
 	}
 
 	for _, tt := range tests {
@@ -117,7 +115,7 @@ func TestBottomRegion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := bottomRegion(tt.lines, model.AgentClaude)
+			got := bottomRegion(tt.lines, Claude)
 			if got != tt.want {
 				t.Errorf("bottomRegion() = %d, want %d", got, tt.want)
 			}
@@ -129,64 +127,64 @@ func TestClassifyScreen(t *testing.T) {
 	tests := []struct {
 		name       string
 		content    string
-		agentType  model.AgentType
-		wantStatus model.AgentStatus
+		agentType  Type
+		wantStatus Status
 		wantLine   string
 	}{
 		{
 			"claude needs_input wins over idle",
 			"Do you want to proceed?\n❯ prompt here\n? for shortcuts",
-			model.AgentClaude,
-			model.StatusNeedsInput,
+			Claude,
+			StatusNeedsInput,
 			"Do you want to proceed?",
 		},
 		{
 			"claude working wins over idle",
 			"✻ Reading…\n❯ \n? for shortcuts",
-			model.AgentClaude,
-			model.StatusWorking,
+			Claude,
+			StatusWorking,
 			"✻ Reading…",
 		},
 		{
 			"claude idle only",
 			"some output\n❯ \n? for shortcuts",
-			model.AgentClaude,
-			model.StatusIdle,
+			Claude,
+			StatusIdle,
 			"❯",
 		},
 		{
 			"shared error wins over idle",
 			"Error: something broke\n❯ prompt",
-			model.AgentClaude,
-			model.StatusError,
+			Claude,
+			StatusError,
 			"Error: something broke",
 		},
 		{
 			"empty content",
 			"",
-			model.AgentClaude,
+			Claude,
 			"",
 			"",
 		},
 		{
 			"no match",
 			"just some random text\nnothing special",
-			model.AgentClaude,
+			Claude,
 			"",
 			"",
 		},
 		{
 			"claude needs_input in scrollback ignored",
 			"line1\nline2\nDo you want to proceed?\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n❯ \n? for shortcuts",
-			model.AgentClaude,
-			model.StatusIdle,
+			Claude,
+			StatusIdle,
 			"❯",
 		},
 		{
 			"claude needs_input near bottom detected",
 			"line1\nline2\nline3\nline4\n❯ \nDo you want to proceed?\n1. Yes\n2. No\nEsc to cancel",
-			model.AgentClaude,
-			model.StatusNeedsInput,
+			Claude,
+			StatusNeedsInput,
 			"Do you want to proceed?",
 		},
 		{
@@ -194,36 +192,36 @@ func TestClassifyScreen(t *testing.T) {
 			// anchor must skip it so the prompt stays in the bottom region.
 			"claude prompt above todo footer detected",
 			"earlier output\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again\n   3. No\n\n Esc to cancel · Tab to amend · ctrl+e to explain\n\n  5 tasks (2 done, 1 in progress, 2 open)\n  ◼ Task alpha\n  ◻ Task beta\n  ◻ Task gamma\n  ◻ Task delta\n   … +1 completed",
-			model.AgentClaude,
-			model.StatusNeedsInput,
+			Claude,
+			StatusNeedsInput,
 			"Do you want to proceed?",
 		},
 		{
 			"opencode permission prompt layout",
 			"Build · big-pickle · 9.2s\n\nread the file ../RESEARCH.md\n\nThinking: user wants to read a file\n\nRead /Users/example/projects/go/RESEARCH.md\n\nBuild · big-pickle\n\n△ Permission required\nAccess external directory ~/projects/go\n\nPatterns\n\n- /Users/example/projects/go/*\n\n\nAllow once   Allow always   Reject   ctrl+f fullscreen  enter confirm\n• OpenCode 1.2.21\n",
-			model.AgentOpenCode,
-			model.StatusNeedsInput,
+			OpenCode,
+			StatusNeedsInput,
 			"Allow once",
 		},
 		{
 			"claude plan mode prompt with selection cursor",
 			"Would you like to proceed?\n\n ❯ 1. Yes, clear context (62% used) and auto-accept edits (shift+tab)\n   2. Yes, auto-accept edits\n   3. Yes, manually approve edits\n   4. Type here to tell Claude what to change\n\n ctrl-g to edit in Mvim · ~/.claude/plans/...",
-			model.AgentClaude,
-			model.StatusNeedsInput,
+			Claude,
+			StatusNeedsInput,
 			"Would you like to proceed?",
 		},
 		{
 			"claude working in scrollback ignored",
 			"line1\n✻ Reading…\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n❯ \n? for shortcuts",
-			model.AgentClaude,
-			model.StatusIdle,
+			Claude,
+			StatusIdle,
 			"❯",
 		},
 		{
 			"codex screen with working",
 			"some output\n• Working (30s • esc to interrupt)\n",
-			model.AgentCodex,
-			model.StatusWorking,
+			Codex,
+			StatusWorking,
 			"• Working",
 		},
 		{
@@ -232,28 +230,28 @@ func TestClassifyScreen(t *testing.T) {
 			// and admit the stale "Working" line from scrollback above it.
 			"codex tasks line does not shift anchor",
 			"out a\nout b\nout c\n• Working (30s • esc to interrupt)\nout e\nout f\nout g\nout h\nout i\nout j\n5 tasks (2 done, 3 open)\n› type a message",
-			model.AgentCodex,
-			model.StatusIdle,
+			Codex,
+			StatusIdle,
 			"› type a message",
 		},
 		{
 			"codex plan question screen detected",
 			"• Placeholder line one.\n\n• Placeholder line two.\n\nQuestion 1/1 (1 unanswered)\nChoose one option.\n\n› 1. Option A (Recommended)  Placeholder detail.\n  2. Option B                Placeholder detail.\n  3. Option C                Placeholder detail.\n  4. None of the above       Placeholder detail.\n",
-			model.AgentCodex,
-			model.StatusNeedsInput,
+			Codex,
+			StatusNeedsInput,
 			"Question 1/1",
 		},
 		{
 			"codex numbered prose without ui marker stays unmatched",
 			"1. Placeholder item\n2. Placeholder item\n3. Placeholder item\n",
-			model.AgentCodex,
+			Codex,
 			"",
 			"",
 		},
 		{
 			"cross-agent: claude spinner not detected for codex",
 			"✻ Reading…\n",
-			model.AgentCodex,
+			Codex,
 			"",
 			"",
 		},
@@ -271,125 +269,125 @@ func TestClassifyScreen(t *testing.T) {
 	}
 }
 
-func TestHasAgentScreen(t *testing.T) {
+func TestHasScreen(t *testing.T) {
 	tests := []struct {
 		name      string
 		content   string
-		agentType model.AgentType
+		agentType Type
 		expected  bool
 	}{
 		{
 			"claude idle prompt in bottom",
 			"some output\n❯ ",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude working spinner",
 			"some output\n✻ Reading…",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude ascii working spinner",
 			"some output\n* Germinating…",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude ascii three-dot working spinner",
 			"some output\n* Germinating...",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude eight spoke working spinner",
 			"some output\n✽ Frosting…",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude four teardrop working spinner",
 			"some output\n✢ Frosting…",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude waiting for task",
 			"Task Output worker123\nWaiting for task (esc to give additional instructions)",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude shell background task",
 			"some output\nshell · ⏵⏵ accept edits on · esc to interrupt · ↓ to manage",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude shell background task with nulls",
 			"some output\n\x001\x00shell ·\x00⏵⏵\x00accept\x00edits\x00on ·\x00esc\x00to\x00interrupt\x00·\x00↓\x00to\x00manage",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude spinner token with null separator",
 			"some output\n✻\x00Reading…",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"claude needs_input",
 			"some output\nAllow file edit?",
-			model.AgentClaude,
+			Claude,
 			true,
 		},
 		{
 			"codex idle prompt",
 			"some output\n› Write tests",
-			model.AgentCodex,
+			Codex,
 			true,
 		},
 		{
 			"codex working",
 			"some output\n• Working (30s • esc to interrupt)",
-			model.AgentCodex,
+			Codex,
 			true,
 		},
 		{
 			"opencode idle",
 			"some output\nctrl+p commands",
-			model.AgentOpenCode,
+			OpenCode,
 			true,
 		},
 		{
 			"opencode needs_input",
 			"some output\n△ Permission required",
-			model.AgentOpenCode,
+			OpenCode,
 			true,
 		},
 		{
 			"cross-agent isolation: claude prompt on codex screen",
 			"some output\n❯ ",
-			model.AgentCodex,
+			Codex,
 			false,
 		},
 		{
 			"cross-agent isolation: codex prompt on claude screen",
 			"some output\n› Write tests",
-			model.AgentClaude,
+			Claude,
 			false,
 		},
 		{
 			"pattern in scrollback only above bottom region",
 			"❯ \nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nline11\nline12",
-			model.AgentClaude,
+			Claude,
 			false,
 		},
 		{
 			"empty content",
 			"",
-			model.AgentClaude,
+			Claude,
 			false,
 		},
 		{
@@ -402,89 +400,89 @@ func TestHasAgentScreen(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := HasAgentScreen(tt.content, tt.agentType)
+			got := HasScreen(tt.content, tt.agentType)
 			if got != tt.expected {
-				t.Errorf("HasAgentScreen(%q, %q) = %v, want %v", tt.content, tt.agentType, got, tt.expected)
+				t.Errorf("HasScreen(%q, %q) = %v, want %v", tt.content, tt.agentType, got, tt.expected)
 			}
 		})
 	}
 }
 
-func TestInferAgentFromScreen(t *testing.T) {
+func TestInferFromScreen(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		want    model.AgentType
+		want    Type
 	}{
 		{
 			name: "claude explicit product text",
 			content: "Claude Code\n\n" +
 				"* Germinating…\n" +
 				"❯ Try \"fix tests\"",
-			want: model.AgentClaude,
+			want: Claude,
 		},
 		{
 			name:    "claude working pattern",
 			content: "some output\n✻ Reading…",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name:    "claude ascii working pattern",
 			content: "some output\n* Germinating…",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name:    "claude ascii three-dot working pattern",
 			content: "some output\n* Germinating...",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name:    "claude eight spoke working pattern",
 			content: "some output\n✽ Frosting…",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name:    "claude four teardrop working pattern",
 			content: "some output\n✢ Frosting…",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name:    "claude waiting for task pattern",
 			content: "Task Output worker123\nWaiting for task (esc to give additional instructions)",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name:    "claude shell background task pattern",
 			content: "some output\nshell · ⏵⏵ accept edits on · esc to interrupt · ↓ to manage",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name:    "claude shell background task pattern with nulls",
 			content: "some output\n\x001\x00shell ·\x00⏵⏵\x00accept\x00edits\x00on ·\x00esc\x00to\x00interrupt\x00·\x00↓\x00to\x00manage",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name:    "claude spinner token with null separator",
 			content: "some output\n✻\x00Reading…",
-			want:    model.AgentClaude,
+			want:    Claude,
 		},
 		{
 			name: "claude active signal beats ambiguous idle prompt",
 			content: "some output\n" +
 				"\x001\x00shell ·\x00⏵⏵\x00accept\x00edits\x00on ·\x00esc\x00to\x00interrupt\x00·\x00↓\x00to\x00manage\n" +
 				"❯ ",
-			want: model.AgentClaude,
+			want: Claude,
 		},
 		{
 			name: "codex product text",
 			content: "gpt-5.4-codex default · 90% left\n\n" +
 				"• Working (30s • esc to interrupt)",
-			want: model.AgentCodex,
+			want: Codex,
 		},
 		{
 			name:    "opencode product text",
 			content: "OC | Editing file (opencode)\nctrl+p commands",
-			want:    model.AgentOpenCode,
+			want:    OpenCode,
 		},
 		{
 			name:    "plain shell stays unknown",
@@ -500,8 +498,8 @@ func TestInferAgentFromScreen(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := InferAgentFromScreen(tt.content); got != tt.want {
-				t.Errorf("InferAgentFromScreen() = %q, want %q", got, tt.want)
+			if got := InferFromScreen(tt.content); got != tt.want {
+				t.Errorf("InferFromScreen() = %q, want %q", got, tt.want)
 			}
 		})
 	}

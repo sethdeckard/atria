@@ -9,15 +9,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
-	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 const setupStepCount = 3
 
 var boldStyle = lipgloss.NewStyle().Bold(true)
 
-func buildSetupStepItems(step int, info StatusInfo, cfg *config.Config, agents []model.AgentType) []settingsItem {
+func buildSetupStepItems(step int, info StatusInfo, cfg *config.Config, agents []agent.Type) []settingsItem {
 	switch step {
 	case 0:
 		return buildSetupIntegrationItems(info)
@@ -63,7 +63,7 @@ func buildSetupWatchDirItems(cfg *config.Config) []settingsItem {
 	return items
 }
 
-func buildSetupDefaultItems(cfg *config.Config, agents []model.AgentType) []settingsItem {
+func buildSetupDefaultItems(cfg *config.Config, agents []agent.Type) []settingsItem {
 	var items []settingsItem
 
 	// Default agent — one radio item per agent
@@ -542,7 +542,7 @@ func (m Model) selectSetupRadio(item settingsItem) (Model, tea.Cmd) {
 	name := item.value
 	prevAgent := m.defaultAgent
 	prevCfgAgent := m.cfg.DefaultAgent
-	m.defaultAgent = model.AgentType(name)
+	m.defaultAgent = agent.Type(name)
 	m.cfg.DefaultAgent = name
 	m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
 	return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {
@@ -590,7 +590,7 @@ func (m Model) cycleSetupChoice(item settingsItem) (Model, tea.Cmd) {
 	}
 	prevAgent := m.defaultAgent
 	prevCfgAgent := m.cfg.DefaultAgent
-	m.defaultAgent = model.AgentType(next)
+	m.defaultAgent = agent.Type(next)
 	m.cfg.DefaultAgent = next
 	m.setupItems = buildSetupStepItems(m.setupStep, m.statusInfo, m.cfg, m.availableAgents)
 	return m, saveConfig(m.cfg, m.configPath, func(rm *Model) {

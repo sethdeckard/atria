@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sethdeckard/atria/internal/model"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 func TestEnableDebugLogSafeModeOmitsScreenContent(t *testing.T) {
@@ -21,8 +22,8 @@ func TestEnableDebugLogSafeModeOmitsScreenContent(t *testing.T) {
 	sess := &model.AgentSession{
 		ProjectDir: "/tmp/project",
 		SessionID:  "sess-1",
-		Type:       model.AgentCodex,
-		Status:     model.StatusIdle,
+		Type:       agent.Codex,
+		Status:     agent.StatusIdle,
 		Source:     "pty",
 	}
 	m.store.SetSession(sess)
@@ -65,8 +66,8 @@ func TestEnableDebugLogUnsafeModeIncludesScreenContent(t *testing.T) {
 	sess := &model.AgentSession{
 		ProjectDir: "/tmp/project",
 		SessionID:  "sess-1",
-		Type:       model.AgentCodex,
-		Status:     model.StatusIdle,
+		Type:       agent.Codex,
+		Status:     agent.StatusIdle,
 		Source:     "pty",
 	}
 	m.store.SetSession(sess)

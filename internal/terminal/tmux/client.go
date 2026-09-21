@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 // Client implements terminal.Backend using the tmux CLI.
@@ -116,9 +117,9 @@ func chooseSessionName(paneTitle, windowName string) string {
 	window := strings.TrimSpace(windowName)
 
 	switch {
-	case title != "" && terminal.DetectAgent(title) != "":
+	case title != "" && agent.Detect(title) != "":
 		return title
-	case window != "" && terminal.DetectAgent(window) != "":
+	case window != "" && agent.Detect(window) != "":
 		return window
 	case title != "":
 		return title

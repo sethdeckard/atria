@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/model"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 // mockStore implements the buildRows store interface for testing.
@@ -45,8 +46,8 @@ func TestBuildRows(t *testing.T) {
 			projects: []*model.Project{{Name: "foo", Dir: "/tmp/foo"}},
 			sessions: map[string][]*model.AgentSession{
 				"/tmp/foo": {
-					{SessionID: "s1", Type: model.AgentClaude},
-					{SessionID: "s2", Type: model.AgentCodex},
+					{SessionID: "s1", Type: agent.Claude},
+					{SessionID: "s2", Type: agent.Codex},
 				},
 			},
 		}
@@ -67,9 +68,9 @@ func TestBuildRows(t *testing.T) {
 				{Name: "svc", Dir: "/c/svc"},
 			},
 			sessions: map[string][]*model.AgentSession{
-				"/a/svc": {{SessionID: "s1", Type: model.AgentClaude}},
-				"/b/svc": {{SessionID: "s2", Type: model.AgentClaude}},
-				"/c/svc": {{SessionID: "s3", Type: model.AgentClaude}},
+				"/a/svc": {{SessionID: "s1", Type: agent.Claude}},
+				"/b/svc": {{SessionID: "s2", Type: agent.Claude}},
+				"/c/svc": {{SessionID: "s3", Type: agent.Claude}},
 			},
 		}
 		rows := buildRows(s)
@@ -96,9 +97,9 @@ func TestBuildRows(t *testing.T) {
 				{Name: "svc", Dir: "/z/same/svc"},
 			},
 			sessions: map[string][]*model.AgentSession{
-				"/x/same/svc": {{SessionID: "s1", Type: model.AgentClaude}},
-				"/y/same/svc": {{SessionID: "s2", Type: model.AgentClaude}},
-				"/z/same/svc": {{SessionID: "s3", Type: model.AgentClaude}},
+				"/x/same/svc": {{SessionID: "s1", Type: agent.Claude}},
+				"/y/same/svc": {{SessionID: "s2", Type: agent.Claude}},
+				"/z/same/svc": {{SessionID: "s3", Type: agent.Claude}},
 			},
 		}
 		rows := buildRows(s)
@@ -123,8 +124,8 @@ func TestBuildRows(t *testing.T) {
 				{Name: "beta", Dir: "/b/beta"},
 			},
 			sessions: map[string][]*model.AgentSession{
-				"/a/alpha": {{SessionID: "s1", Type: model.AgentClaude}},
-				"/b/beta":  {{SessionID: "s2", Type: model.AgentClaude}},
+				"/a/alpha": {{SessionID: "s1", Type: agent.Claude}},
+				"/b/beta":  {{SessionID: "s2", Type: agent.Claude}},
 			},
 		}
 		rows := buildRows(s)
@@ -136,13 +137,13 @@ func TestBuildRows(t *testing.T) {
 
 func TestAgentTypeLabel(t *testing.T) {
 	tests := []struct {
-		agentType model.AgentType
+		agentType agent.Type
 		expected  string
 	}{
-		{model.AgentClaude, "Claude"},
-		{model.AgentCodex, "Codex"},
-		{model.AgentOpenCode, "OpenCode"},
-		{model.AgentCopilot, "Copilot"},
+		{agent.Claude, "Claude"},
+		{agent.Codex, "Codex"},
+		{agent.OpenCode, "OpenCode"},
+		{agent.Copilot, "Copilot"},
 		{"mystery", "Mystery"}, // fallback capitalizes first letter
 	}
 	for _, tt := range tests {
@@ -157,7 +158,7 @@ func TestAgentTypeLabel(t *testing.T) {
 
 func TestAgentTypeStyle(t *testing.T) {
 	t.Run("known type returns specific style", func(t *testing.T) {
-		style := agentTypeStyle(model.AgentClaude)
+		style := agentTypeStyle(agent.Claude)
 		if style.GetForeground() == normalStyle.GetForeground() {
 			t.Error("expected a distinct style for Claude, got normalStyle")
 		}
@@ -202,8 +203,8 @@ func TestFormatNarrowRow(t *testing.T) {
 		project: &model.Project{Name: "myproject", Dir: "/tmp/myproject"},
 		session: &model.AgentSession{
 			SessionID:    "s1",
-			Type:         model.AgentClaude,
-			Status:       model.StatusIdle,
+			Type:         agent.Claude,
+			Status:       agent.StatusIdle,
 			Activity:     "idle",
 			LastActivity: time.Now().Add(-5 * time.Minute),
 		},
@@ -292,8 +293,8 @@ func TestNarrowLayoutNamePriority(t *testing.T) {
 		project: &model.Project{Name: longName, Dir: "/tmp/" + longName},
 		session: &model.AgentSession{
 			SessionID:    "s1",
-			Type:         model.AgentClaude,
-			Status:       model.StatusWorking,
+			Type:         agent.Claude,
+			Status:       agent.StatusWorking,
 			Activity:     "thinking",
 			LastActivity: time.Now().Add(-1 * time.Minute),
 		},
@@ -358,8 +359,8 @@ func TestFormatNarrowSelectedRow(t *testing.T) {
 		project: &model.Project{Name: "test", Dir: "/tmp/test"},
 		session: &model.AgentSession{
 			SessionID:    "s1",
-			Type:         model.AgentClaude,
-			Status:       model.StatusWorking,
+			Type:         agent.Claude,
+			Status:       agent.StatusWorking,
 			Activity:     "thinking",
 			LastActivity: time.Now(),
 		},
@@ -497,11 +498,11 @@ func TestProjectListLayoutNarrowStreamShortTerminal(t *testing.T) {
 				rows: []projectRow{
 					{
 						project: &model.Project{Name: "a", Dir: "/a"},
-						session: &model.AgentSession{SessionID: "s1", Type: model.AgentClaude, Status: model.StatusIdle},
+						session: &model.AgentSession{SessionID: "s1", Type: agent.Claude, Status: agent.StatusIdle},
 					},
 					{
 						project: &model.Project{Name: "b", Dir: "/b"},
-						session: &model.AgentSession{SessionID: "s2", Type: model.AgentClaude, Status: model.StatusWorking},
+						session: &model.AgentSession{SessionID: "s2", Type: agent.Claude, Status: agent.StatusWorking},
 					},
 				},
 			}
@@ -536,7 +537,7 @@ func TestProjectListLayoutNarrowStreamShortTerminal(t *testing.T) {
 func TestRenderFooterNarrow(t *testing.T) {
 	selected := &projectRow{
 		project:     &model.Project{Name: "test", Dir: "/tmp/test"},
-		session:     &model.AgentSession{SessionID: "s1", Type: model.AgentClaude, Status: model.StatusIdle},
+		session:     &model.AgentSession{SessionID: "s1", Type: agent.Claude, Status: agent.StatusIdle},
 		displayName: "test",
 	}
 
@@ -552,7 +553,7 @@ func TestRenderFooterNarrow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := renderFooter(1, selected, model.AgentClaude, false, tt.lp.width, tt.lp)
+			result := renderFooter(1, selected, agent.Claude, false, tt.lp.width, tt.lp)
 			w := lipgloss.Width(result)
 			if w > tt.lp.width {
 				t.Errorf("footer width %d exceeds max %d: %q", w, tt.lp.width, result)

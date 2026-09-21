@@ -9,13 +9,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethdeckard/atria/internal/config"
-	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
 	devicetermbackend "github.com/sethdeckard/atria/internal/terminal/deviceterm"
 	"github.com/sethdeckard/atria/internal/terminal/iterm"
 	"github.com/sethdeckard/atria/internal/terminal/kitty"
 	"github.com/sethdeckard/atria/internal/terminal/tmux"
 	weztermbackend "github.com/sethdeckard/atria/internal/terminal/wezterm"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 func checkBackend(backend terminal.Backend) tea.Cmd {
@@ -32,7 +32,7 @@ func refreshSessions(backend terminal.Backend) tea.Cmd {
 	}
 }
 
-func launchAgent(backend terminal.Backend, projectDir string, agentType model.AgentType, source string) tea.Cmd {
+func launchAgent(backend terminal.Backend, projectDir string, agentType agent.Type, source string) tea.Cmd {
 	// Resolve source eagerly so a concurrent primary change can't misclassify.
 	if source == "" {
 		source = "pty"
@@ -74,19 +74,19 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType model.Ag
 	}
 }
 
-func sendPrompt(backend terminal.Backend, sessionID, text string, projectDir string, agentType model.AgentType) tea.Cmd {
+func sendPrompt(backend terminal.Backend, sessionID, text string, projectDir string, agentType agent.Type) tea.Cmd {
 	return func() tea.Msg {
 		prompt := text
 		// Copilot's input interprets Enter as newline, not submit.
 		// Replace newlines with spaces to avoid triggering / command menu.
-		if agentType == model.AgentCopilot {
+		if agentType == agent.Copilot {
 			prompt = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(prompt)
 			prompt = strings.TrimSpace(prompt)
 		}
 		// Copilot drops Enter when bulk text is sent to a short
 		// terminal. Send character-by-character to match how focus
 		// mode forwards keystrokes individually.
-		if agentType == model.AgentCopilot {
+		if agentType == agent.Copilot {
 			for _, r := range prompt {
 				if err := backend.SendText(sessionID, string(r)); err != nil {
 					return PromptSentMsg{ProjectDir: projectDir, Err: err}
@@ -547,7 +547,7 @@ func removeString(ss []string, s string) []string {
 func discoverAgent(backend terminal.Backend, sess terminal.Session, watchDirs []string, projectDirs []string) tea.Cmd {
 	return func() tea.Msg {
 		dir := terminal.DiscoverCWD(backend, sess, watchDirs, projectDirs)
-		agentType := terminal.DetectAgent(sess.Name)
+		agentType := agent.Detect(sess.Name)
 		debugSkip := ""
 		if agentType == "" {
 			if dir == "" {
@@ -557,7 +557,7 @@ func discoverAgent(backend terminal.Backend, sess terminal.Session, watchDirs []
 				if err != nil {
 					debugSkip = "screen read failed: " + err.Error()
 				} else {
-					agentType = terminal.InferAgentFromScreen(content)
+					agentType = agent.InferFromScreen(content)
 					if agentType == "" {
 						debugSkip = "unknown title and screen"
 					}

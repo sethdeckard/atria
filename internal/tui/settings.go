@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
-	"github.com/sethdeckard/atria/internal/model"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 // MatchesPrimarySource reports whether a backend status entry corresponds
@@ -42,7 +42,7 @@ type settingsItem struct {
 	key      string // config field identifier for save
 }
 
-func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.AgentType) []settingsItem {
+func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []agent.Type) []settingsItem {
 	var items []settingsItem
 
 	// Section: Backends
@@ -75,14 +75,14 @@ func buildSettingsItems(info StatusInfo, cfg *config.Config, agents []model.Agen
 	items = append(items, settingsItem{section: "config", label: "config", itemType: "header"})
 
 	// Default agent
-	var agentType model.AgentType
+	var agentType agent.Type
 	switch {
 	case cfg.DefaultAgent != "":
-		agentType = model.AgentType(cfg.DefaultAgent)
+		agentType = agent.Type(cfg.DefaultAgent)
 	case len(agents) > 0:
 		agentType = agents[0]
 	default:
-		agentType = model.AgentClaude
+		agentType = agent.Claude
 	}
 	items = append(items, settingsItem{
 		section: "config", label: "  default agent", itemType: "choice",

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 func TestAddRemoveProject(t *testing.T) {
@@ -122,8 +124,8 @@ func TestSetGetSession(t *testing.T) {
 	sess := &AgentSession{
 		ProjectDir: "/proj/x",
 		SessionID:  "s1",
-		Type:       AgentCodex,
-		Status:     StatusIdle,
+		Type:       agent.Codex,
+		Status:     agent.StatusIdle,
 	}
 	s.SetSession(sess)
 
@@ -136,8 +138,8 @@ func TestSetGetSession(t *testing.T) {
 	sess2 := &AgentSession{
 		ProjectDir: "/proj/x",
 		SessionID:  "s2",
-		Type:       AgentCodex,
-		Status:     StatusWorking,
+		Type:       agent.Codex,
+		Status:     agent.StatusWorking,
 	}
 	s.SetSession(sess2)
 	if len(s.Sessions) != 2 {
@@ -152,8 +154,8 @@ func TestSetGetSession(t *testing.T) {
 	sess2updated := &AgentSession{
 		ProjectDir: "/proj/x",
 		SessionID:  "s2",
-		Type:       AgentCodex,
-		Status:     StatusIdle,
+		Type:       agent.Codex,
+		Status:     agent.StatusIdle,
 	}
 	s.SetSession(sess2updated)
 	if len(s.Sessions) != 2 {

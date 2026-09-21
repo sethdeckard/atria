@@ -1,40 +1,43 @@
-package terminal
+package agent
 
 import (
 	"strings"
-
-	"github.com/sethdeckard/atria/internal/model"
 )
 
-// DetectAgent returns the agent type from a session name, or "" if not an agent.
-// Claude: name starts with ✳ (U+2733) or contains "claude" (case-insensitive)
-// Copilot: name starts with 🤖 (U+1F916) or contains "copilot" (case-insensitive)
-// Codex: name contains "codex" (case-insensitive)
-func DetectAgent(name string) model.AgentType {
+// Detect returns the agent type a session title names, or "" when the title
+// isn't an agent's. Matching is case-insensitive on the product name, with
+// two glyph shortcuts: Claude Code titles start with one of ✳ ✻ ✶ ✽ ✢ and
+// Copilot titles start with 🤖. Claude Code drops its glyph while idle, so a
+// "" result on a session you already track is not evidence the agent exited;
+// see HasScreen for that.
+func Detect(name string) Type {
 	lower := strings.ToLower(name)
 
 	if hasClaudePrefix(name) || strings.Contains(lower, "claude") {
-		return model.AgentClaude
+		return Claude
 	}
 
 	if strings.Contains(lower, "opencode") {
-		return model.AgentOpenCode
+		return OpenCode
 	}
 
 	if strings.HasPrefix(name, "\U0001F916") || strings.Contains(lower, "copilot") {
-		return model.AgentCopilot
+		return Copilot
 	}
 
 	if strings.Contains(lower, "codex") {
-		return model.AgentCodex
+		return Codex
 	}
 
 	return ""
 }
 
-// ExtractActivity extracts activity description from a dynamic session name.
-// E.g., "✳ Editing src/game.go (sourcekit-lsp)" -> "Editing src/game.go"
-// Returns the name without the ✳ prefix and without the parenthesized suffix.
+// ExtractActivity returns the activity text an agent put in its session title,
+// or "" when the title is only a product name. It strips the agent glyph, the
+// "OC | " and "🤖 " prefixes, and a trailing parenthesized suffix:
+// "✳ Editing src/game.go (sourcekit-lsp)" becomes "Editing src/game.go".
+// Activity is informational; Claude Code updates its title while idle, so a
+// change here says nothing about status.
 func ExtractActivity(name string) string {
 	s := name
 

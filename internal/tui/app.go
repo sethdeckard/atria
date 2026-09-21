@@ -17,6 +17,7 @@ import (
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 // monitorPatterns are the regex patterns for monitor output.
@@ -150,8 +151,8 @@ type Model struct {
 	attentionSessions map[string]time.Time // session IDs needing attention, with timestamp
 
 	// Agent type
-	availableAgents []model.AgentType
-	defaultAgent    model.AgentType
+	availableAgents []agent.Type
+	defaultAgent    agent.Type
 
 	// Settings
 	statusInfo      StatusInfo
@@ -218,11 +219,11 @@ func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs 
 	ba.SetHeight(3)
 	ba.CharLimit = 0
 
-	available := detectAvailableAgents()
+	available := agent.Installed()
 
 	// Resolve default agent from config, falling back to first available.
-	var defaultAgent model.AgentType
-	candidate := model.AgentType(defaultAgentCfg)
+	var defaultAgent agent.Type
+	candidate := agent.Type(defaultAgentCfg)
 	for _, a := range available {
 		if a == candidate {
 			defaultAgent = candidate
@@ -233,7 +234,7 @@ func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs 
 		if len(available) > 0 {
 			defaultAgent = available[0]
 		} else {
-			defaultAgent = model.AgentClaude
+			defaultAgent = agent.Claude
 		}
 	}
 
@@ -241,7 +242,7 @@ func NewModelWithConfig(backend terminal.Backend, store *model.Store, watchDirs 
 	// default to idle since we don't know their state after restart.
 	for _, s := range store.Sessions {
 		if s.Status == "" {
-			s.Status = model.StatusIdle
+			s.Status = agent.StatusIdle
 		}
 	}
 
@@ -301,7 +302,7 @@ func (m Model) selectedQuickResponseRow() (*projectRow, bool) {
 		return nil, false
 	}
 	row := &m.rows[m.cursor]
-	if row.session == nil || row.session.Status != model.StatusNeedsInput {
+	if row.session == nil || row.session.Status != agent.StatusNeedsInput {
 		return nil, false
 	}
 	return row, true
@@ -641,13 +642,13 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 	borderStyle := dimStyle
 	if session != nil {
 		switch session.Status {
-		case model.StatusWorking:
+		case agent.StatusWorking:
 			borderStyle = statusWorkingStyle
-		case model.StatusIdle:
+		case agent.StatusIdle:
 			borderStyle = statusIdleStyle
-		case model.StatusNeedsInput:
+		case agent.StatusNeedsInput:
 			borderStyle = statusNeedsInputStyle
-		case model.StatusError:
+		case agent.StatusError:
 			borderStyle = statusErrorStyle
 		}
 	}
@@ -758,7 +759,7 @@ func renderStreamPanel(session *model.AgentSession, projectName, projectDir stri
 
 	// Bottom border
 	bottomBorder := "└" + strings.Repeat("─", boxWidth-2) + "┘"
-	if session != nil && session.Status == model.StatusNeedsInput {
+	if session != nil && session.Status == agent.StatusNeedsInput {
 		hintText := " ctrl+r:respond "
 		if quickResponseArmed {
 			hintText = " y:accept  esc:reject  1-9:choose "
@@ -2067,7 +2068,7 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	// override status since Claude updates its title even while idle.
 	for _, sess := range msg.Sessions {
 		if as := m.store.SessionByID(sess.ID); as != nil {
-			activity := terminal.ExtractActivity(sess.Name)
+			activity := agent.ExtractActivity(sess.Name)
 			if activity != as.Activity {
 				as.Activity = activity
 				if activity != "" {
@@ -2076,9 +2077,9 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 			}
 			// Re-type if the session name now indicates a different agent.
 			// This handles pane reuse (e.g. Claude exits, Codex starts in same pane).
-			// Only update when DetectAgent returns a valid agent type — a non-agent
+			// Only update when agent.Detect returns a valid agent type. A non-agent
 			// name (e.g. "zsh") is handled by orphan removal, not re-typing.
-			if detected := terminal.DetectAgent(sess.Name); detected != "" && detected != as.Type {
+			if detected := agent.Detect(sess.Name); detected != "" && detected != as.Type {
 				as.Type = detected
 			}
 			// Populate source from composite backend.
@@ -2113,7 +2114,7 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	//   from its title while idle but its screen still shows ❯.
 	// - UnmatchedReads alone is insufficient: idle patterns from agent
 	//   scrollback (e.g. Codex's › still visible) keep resetting it.
-	// - HasAgentScreen restricts pattern matching to the bottom region,
+	// - agent.HasScreen restricts pattern matching to the bottom region,
 	//   so scrollback from exited agents doesn't prevent orphan cleanup.
 	liveNames := make(map[string]string)
 	liveJobs := make(map[string]string)
@@ -2128,8 +2129,8 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		}
 		job := liveJobs[s.SessionID]
 		shellFallback := s.Source == "iterm" && isShellJob(job)
-		if s.Status == model.StatusIdle && s.ScreenChecked &&
-			((terminal.DetectAgent(name) == "" && !terminal.HasAgentScreen(s.LastScreen, s.Type)) || shellFallback) {
+		if s.Status == agent.StatusIdle && s.ScreenChecked &&
+			((agent.Detect(name) == "" && !agent.HasScreen(s.LastScreen, s.Type)) || shellFallback) {
 			s.OrphanTicks++
 		} else {
 			s.OrphanTicks = 0
@@ -2211,7 +2212,7 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 		SessionID:  msg.SessionID,
 		Type:       msg.AgentType,
 		Source:     msg.Source,
-		Status:     model.StatusWorking,
+		Status:     agent.StatusWorking,
 	}
 	m.store.SetSession(as)
 	if m.debugLog != nil {
@@ -2257,7 +2258,7 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 		ProjectDir: msg.ProjectDir,
 		SessionID:  msg.SessionID,
 		Type:       msg.AgentType,
-		Status:     model.StatusWorking,
+		Status:     agent.StatusWorking,
 		Source:     msg.Source,
 	}
 	m.store.SetSession(as)
@@ -2329,7 +2330,7 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 	m.rebuildRows()
 
 	// Bell + attention highlight when status changes to needs_input
-	if msg.Status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
+	if msg.Status == agent.StatusNeedsInput && prevStatus != agent.StatusNeedsInput {
 		if m.attentionSessions == nil {
 			m.attentionSessions = make(map[string]time.Time)
 		}
@@ -2341,7 +2342,7 @@ func (m Model) handleStatusUpdated(msg StatusUpdatedMsg) (Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 	// Clear attention when status moves away from needs_input
-	if prevStatus == model.StatusNeedsInput && msg.Status != model.StatusNeedsInput && msg.Status != "" {
+	if prevStatus == agent.StatusNeedsInput && msg.Status != agent.StatusNeedsInput && msg.Status != "" {
 		as.Attention = ""
 		m.statusText = ""
 		delete(m.attentionSessions, as.SessionID)
@@ -2405,7 +2406,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	if msg.StyledFetched {
 		as.LastScreenStyled = strings.ReplaceAll(msg.StyledContent, "\x00", " ")
 	}
-	status, matchLine := terminal.ClassifyScreen(content, as.Type)
+	status, matchLine := agent.ClassifyScreen(content, as.Type)
 
 	if m.debugLog != nil {
 		proj := filepath.Base(msg.ProjectDir)
@@ -2431,16 +2432,16 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		// Screen changed but no pattern match while in needs_input →
 		// the agent moved on, transition to working
 		switch {
-		case screenChanged && as.Status == model.StatusNeedsInput:
-			status = model.StatusWorking
-		case as.Status == model.StatusWorking && !screenChanged && as.UnmatchedReads >= 3:
+		case screenChanged && as.Status == agent.StatusNeedsInput:
+			status = agent.StatusWorking
+		case as.Status == agent.StatusWorking && !screenChanged && as.UnmatchedReads >= 3:
 			// Multiple consecutive stable reads with no agent patterns —
 			// the agent likely exited and the pane shows a shell.
-			status = model.StatusIdle
-		case !screenChanged && as.Status == model.StatusWorking && isAllBlank(content) && as.UnmatchedReads >= 2:
+			status = agent.StatusIdle
+		case !screenChanged && as.Status == agent.StatusWorking && isAllBlank(content) && as.UnmatchedReads >= 2:
 			// Multiple consecutive blank screen reads while "working" —
 			// backend can't read this session. No evidence the agent is working.
-			status = model.StatusIdle
+			status = agent.StatusIdle
 		default:
 			return m, nil
 		}
@@ -2458,12 +2459,12 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	prevStatus := as.Status
 	as.Status = status
 	as.LastActivity = time.Now()
-	if status == model.StatusNeedsInput {
+	if status == agent.StatusNeedsInput {
 		as.Attention = matchLine
 	}
 
 	// Add to chat if viewing this session
-	if m.view == viewChat && m.chatSessionID == msg.SessionID && status == model.StatusNeedsInput && as.Attention != "" {
+	if m.view == viewChat && m.chatSessionID == msg.SessionID && status == agent.StatusNeedsInput && as.Attention != "" {
 		m.chat.addEntry(chatEntry{
 			Timestamp: time.Now(),
 			Direction: "received",
@@ -2480,7 +2481,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	}
 
 	// Bell on needs_input transition
-	if status == model.StatusNeedsInput && prevStatus != model.StatusNeedsInput {
+	if status == agent.StatusNeedsInput && prevStatus != agent.StatusNeedsInput {
 		if m.attentionSessions == nil {
 			m.attentionSessions = make(map[string]time.Time)
 		}
@@ -2491,7 +2492,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 	}
-	if prevStatus == model.StatusNeedsInput && status != model.StatusNeedsInput {
+	if prevStatus == agent.StatusNeedsInput && status != agent.StatusNeedsInput {
 		as.Attention = ""
 		m.statusText = ""
 		delete(m.attentionSessions, msg.SessionID)
@@ -2571,7 +2572,7 @@ func (m Model) handleVisibleRefresh(msg VisibleRefreshMsg) (Model, tea.Cmd) {
 
 func backgroundPollInterval(s *model.AgentSession) time.Duration {
 	switch s.Status {
-	case model.StatusWorking, model.StatusNeedsInput, model.StatusError:
+	case agent.StatusWorking, agent.StatusNeedsInput, agent.StatusError:
 		return backgroundActiveInterval
 	default:
 		return backgroundIdleInterval
@@ -2647,7 +2648,7 @@ func (m Model) Cleanup() {
 
 func (m Model) hasActiveAnimations() bool {
 	for _, s := range m.store.Sessions {
-		if s.Status == model.StatusWorking {
+		if s.Status == agent.StatusWorking {
 			return true
 		}
 	}

@@ -5,8 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 // termView is the embedded terminal view component for the PTY backend.
@@ -15,8 +15,8 @@ type termView struct {
 	backend       terminal.Backend
 	content       string
 	styledContent string // content with SGR color escapes preserved
-	status        model.AgentStatus
-	agentType     model.AgentType
+	status        agent.Status
+	agentType     agent.Type
 	spinnerFrame  int
 	width         int
 	height        int
@@ -46,13 +46,13 @@ func (tv termView) headerBar() string {
 	var icon string
 	var style lipgloss.Style
 	switch tv.status {
-	case model.StatusWorking:
+	case agent.StatusWorking:
 		icon = spinnerFrames[tv.spinnerFrame%len(spinnerFrames)]
 		style = statusWorkingStyle
-	case model.StatusNeedsInput:
+	case agent.StatusNeedsInput:
 		icon = "⚠"
 		style = statusNeedsInputStyle
-	case model.StatusError:
+	case agent.StatusError:
 		icon = "✗"
 		style = statusErrorStyle
 	default:

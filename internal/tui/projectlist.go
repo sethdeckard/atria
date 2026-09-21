@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/model"
+	"github.com/sethdeckard/atria/libatria/agent"
 )
 
 type sortColumn int
@@ -97,13 +98,13 @@ func statusPriority(s *model.AgentSession) int {
 		return 4
 	}
 	switch s.Status {
-	case model.StatusNeedsInput:
+	case agent.StatusNeedsInput:
 		return 0
-	case model.StatusWorking:
+	case agent.StatusWorking:
 		return 1
-	case model.StatusError:
+	case agent.StatusError:
 		return 2
-	case model.StatusIdle:
+	case agent.StatusIdle:
 		return 3
 	default:
 		return 1
@@ -190,7 +191,7 @@ func envLabel(source string) string {
 	return source
 }
 
-func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent model.AgentType, availableAgents []model.AgentType, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool, canSetup bool, streamOpen bool, lp layoutPolicy) string {
+func renderProjectList(rows []projectRow, cursor int, width int, spinnerFrame int, attentionSessions map[string]time.Time, defaultAgent agent.Type, availableAgents []agent.Type, maxRows int, scrollOffset int, sortCol sortColumn, sortDesc bool, canSetup bool, streamOpen bool, lp layoutPolicy) string {
 	var sb strings.Builder
 
 	narrow := lp.mode != layoutWide
@@ -392,17 +393,17 @@ func padToWidth(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
-var agentTypeInfo = map[model.AgentType]struct {
+var agentTypeInfo = map[agent.Type]struct {
 	label string
 	style lipgloss.Style
 }{
-	model.AgentClaude:   {"Claude", agentClaudeStyle},
-	model.AgentCodex:    {"Codex", agentCodexStyle},
-	model.AgentOpenCode: {"OpenCode", agentOpenCodeStyle},
-	model.AgentCopilot:  {"Copilot", agentCopilotStyle},
+	agent.Claude:   {"Claude", agentClaudeStyle},
+	agent.Codex:    {"Codex", agentCodexStyle},
+	agent.OpenCode: {"OpenCode", agentOpenCodeStyle},
+	agent.Copilot:  {"Copilot", agentCopilotStyle},
 }
 
-func agentTypeLabel(t model.AgentType) string {
+func agentTypeLabel(t agent.Type) string {
 	if info, ok := agentTypeInfo[t]; ok {
 		return info.label
 	}
@@ -410,7 +411,7 @@ func agentTypeLabel(t model.AgentType) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-func agentTypeStyle(t model.AgentType) lipgloss.Style {
+func agentTypeStyle(t agent.Type) lipgloss.Style {
 	if info, ok := agentTypeInfo[t]; ok {
 		return info.style
 	}
@@ -685,13 +686,13 @@ func formatNarrowSelectedRow(r projectRow, lp layoutPolicy, spinnerFrame int) st
 
 func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Style) {
 	switch s.Status {
-	case model.StatusNeedsInput:
+	case agent.StatusNeedsInput:
 		text := "\u26a0 " + s.Attention
 		if text == "\u26a0 " {
 			text = "\u26a0 needs input"
 		}
 		return text, statusNeedsInputStyle
-	case model.StatusWorking:
+	case agent.StatusWorking:
 		spin := spinnerFrames[spinnerFrame%len(spinnerFrames)]
 		text := spin + " "
 		if s.Activity != "" {
@@ -700,13 +701,13 @@ func formatStatus(s *model.AgentSession, spinnerFrame int) (string, lipgloss.Sty
 			text += "working..."
 		}
 		return text, statusWorkingStyle
-	case model.StatusIdle:
+	case agent.StatusIdle:
 		text := "\u25cf idle"
 		if s.Activity != "" {
 			text = "\u25cf " + s.Activity
 		}
 		return text, statusIdleStyle
-	case model.StatusError:
+	case agent.StatusError:
 		text := "\u2717 error"
 		if s.Attention != "" {
 			text = "\u2717 " + s.Attention
@@ -735,7 +736,7 @@ func relativeTime(t time.Time) string {
 	}
 }
 
-func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAgents []model.AgentType, canSetup bool, lp layoutPolicy) string {
+func renderEmptyState(defaultAgent agent.Type, canToggle bool, availableAgents []agent.Type, canSetup bool, lp layoutPolicy) string {
 	var sb strings.Builder
 
 	if lp.showLogo() {
@@ -769,7 +770,7 @@ func renderEmptyState(defaultAgent model.AgentType, canToggle bool, availableAge
 	return sb.String()
 }
 
-func renderFooter(rowCount int, selected *projectRow, defaultAgent model.AgentType, streamOpen bool, width int, lp layoutPolicy) string {
+func renderFooter(rowCount int, selected *projectRow, defaultAgent agent.Type, streamOpen bool, width int, lp layoutPolicy) string {
 	var footer string
 
 	switch lp.mode {
