@@ -16,8 +16,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
-	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // monitorPatterns are the regex patterns for monitor output.

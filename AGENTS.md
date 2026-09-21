@@ -11,7 +11,7 @@ Atria is a Go TUI tool for managing multiple AI coding agents (Claude Code, Code
 - Idiomatic Go: follow Effective Go patterns, standard naming conventions
 - Format all code with `gofmt` / `goimports`
 - Error handling: return errors, don't panic. Wrap errors with context using `fmt.Errorf("context: %w", err)`
-- No `log.Fatal` in library code (internal packages). Only `main.go` may exit the process
+- No `log.Fatal` outside `main.go`, in `internal/` or `libatria/`. Only `main.go` may exit the process
 
 ## Commit Messages
 
@@ -25,24 +25,8 @@ Atria is a Go TUI tool for managing multiple AI coding agents (Claude Code, Code
 main.go                          # Entry point
 internal/
   config/config.go               # TOML config parsing
-  model/types.go                 # Domain types (Project, AgentSession, etc.)
+  model/types.go                 # App types (Project, AgentSession)
   model/store.go                 # In-memory store + JSON persistence
-  terminal/backend.go            # Backend interface
-  terminal/detect.go             # Agent detection from session name
-  terminal/monitor.go            # Log reading + status classification
-  terminal/composite.go          # Composite backend (PTY + integrations)
-  terminal/cache.go              # Cached session list with TTL
-  terminal/cwd.go                # CWD discovery strategies (shared)
-  terminal/kitty/client.go       # Kitty backend (kitten @ CLI via socket)
-  terminal/wezterm/client.go     # WezTerm backend (wezterm cli)
-  terminal/deviceterm/client.go  # DeviceTerm backend (deviceterm CLI, Automation tab)
-  terminal/iterm/proto/api.proto  # iTerm2 protobuf spec (trimmed)
-  terminal/iterm/proto/api.pb.go  # Generated protobuf Go code
-  terminal/iterm/conn.go         # iTerm2 WebSocket connection manager
-  terminal/iterm/client.go       # iTerm2 backend (native protobuf API)
-  terminal/tmux/client.go        # tmux backend
-  terminal/pty/client.go         # PTY backend (built-in multiplexer)
-  terminal/pty/session.go        # PTY session (process + vt10x emulator)
   tui/app.go                     # Root Bubble Tea model
   tui/messages.go                # tea.Msg types
   tui/commands.go                # tea.Cmd factories
@@ -54,6 +38,28 @@ internal/
   tui/termview.go                # Embedded terminal view (PTY backend)
   tui/paths.go                   # Path display utilities (contractHome)
   tui/gitinfo.go                 # Git worktree detection
+libatria/                        # Public library; see docs/libatria/API.md
+  agent/agent.go                 # Type, Status, Types, constants
+  agent/detect.go                # Agent detection from session title
+  agent/classify.go              # Status classification from screen text
+  agent/patterns.go              # Per-agent regex registry
+  agent/installed.go             # Which agent binaries are on PATH
+  terminal/backend.go            # Backend interface
+  terminal/composite.go          # Composite backend (primary + integrations)
+  terminal/cache.go              # Cached session list with TTL
+  terminal/cwd.go                # CWD discovery strategies (shared)
+  terminal/tty.go                # TTY lookup by PID
+  terminal/screentrim.go         # Screen tail trimming
+  terminal/kitty/client.go       # Kitty backend (kitten @ CLI via socket)
+  terminal/wezterm/client.go     # WezTerm backend (wezterm cli)
+  terminal/deviceterm/client.go  # DeviceTerm backend (deviceterm CLI, Automation tab)
+  terminal/iterm/proto/api.proto # iTerm2 protobuf spec (trimmed)
+  terminal/iterm/proto/api.pb.go # Generated protobuf Go code
+  terminal/iterm/conn.go         # iTerm2 WebSocket connection manager
+  terminal/iterm/client.go       # iTerm2 backend (native protobuf API)
+  terminal/tmux/client.go        # tmux backend
+  terminal/pty/client.go         # PTY backend (built-in multiplexer)
+  terminal/pty/session.go        # PTY session (process + vt10x emulator)
 ```
 
 ## Commands
@@ -297,7 +303,7 @@ Status is determined by reading the bottom 25 lines of each agent's terminal ses
 
 ### Per-Agent Pattern Architecture
 
-Patterns are organized per-agent via the `AgentPatterns` struct and `agentPatternRegistry` map in `monitor.go`. Each agent type has its own `NeedsInput`, `Working`, `WorkingExclude`, and `Idle` regex slices. Shared patterns (bell, `Error:`, completed, shell prompt) apply as fallbacks for all agents. This isolates agents so one agent's patterns cannot false-positive on another's screen output. Classification order: shared bell → agent needs_input → shared error → agent working (with exclusions) → shared idle → agent idle.
+Patterns are organized per-agent via the `Patterns` struct and `registry` map in `libatria/agent/patterns.go`; classification lives in `libatria/agent/classify.go`. Each agent type has its own `NeedsInput`, `Working`, `WorkingExclude`, and `Idle` regex slices. Shared patterns (bell, `Error:`, completed, shell prompt) apply as fallbacks for all agents. This isolates agents so one agent's patterns cannot false-positive on another's screen output. Classification order: shared bell → agent needs_input → shared error → agent working (with exclusions) → shared idle → agent idle.
 
 ### Bottom-Region Anchoring
 

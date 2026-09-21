@@ -2,7 +2,7 @@
 // Source: github.com/gnachman/iTerm2/blob/master/proto/api.proto
 
 syntax = "proto2";
-option go_package = "github.com/sethdeckard/atria/internal/terminal/iterm/proto";
+option go_package = "github.com/sethdeckard/atria/libatria/terminal/iterm/proto";
 package iterm2;
 
 message ClientOriginatedMessage {

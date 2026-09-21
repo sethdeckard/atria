@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
-	pb "github.com/sethdeckard/atria/internal/terminal/iterm/proto"
+	pb "github.com/sethdeckard/atria/libatria/terminal/iterm/proto"
 	"google.golang.org/protobuf/proto"
 )
 

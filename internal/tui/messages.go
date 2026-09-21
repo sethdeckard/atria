@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // SessionsRefreshedMsg is sent when the session list has been refreshed.

@@ -9,8 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
-	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 const setupStepCount = 3

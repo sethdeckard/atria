@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // Environment variables DeviceTerm sets in every terminal session.

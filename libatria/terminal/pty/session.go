@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/hinshun/vt10x"
-	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 const bellChar = "\x07"

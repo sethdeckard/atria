@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/hinshun/vt10x"
-	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // Compile-time check that the PTY backend supports styled reads.

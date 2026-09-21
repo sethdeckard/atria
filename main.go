@@ -11,14 +11,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
-	"github.com/sethdeckard/atria/internal/terminal"
-	devicetermbackend "github.com/sethdeckard/atria/internal/terminal/deviceterm"
-	"github.com/sethdeckard/atria/internal/terminal/iterm"
-	"github.com/sethdeckard/atria/internal/terminal/kitty"
-	ptybackend "github.com/sethdeckard/atria/internal/terminal/pty"
-	"github.com/sethdeckard/atria/internal/terminal/tmux"
-	weztermbackend "github.com/sethdeckard/atria/internal/terminal/wezterm"
 	"github.com/sethdeckard/atria/internal/tui"
+	"github.com/sethdeckard/atria/libatria/terminal"
+	devicetermbackend "github.com/sethdeckard/atria/libatria/terminal/deviceterm"
+	"github.com/sethdeckard/atria/libatria/terminal/iterm"
+	"github.com/sethdeckard/atria/libatria/terminal/kitty"
+	ptybackend "github.com/sethdeckard/atria/libatria/terminal/pty"
+	"github.com/sethdeckard/atria/libatria/terminal/tmux"
+	weztermbackend "github.com/sethdeckard/atria/libatria/terminal/wezterm"
 )
 
 var (

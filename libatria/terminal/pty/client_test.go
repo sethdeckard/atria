@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // waitFor polls cond every 50ms until it returns true or timeout elapses.

@@ -5,8 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // termView is the embedded terminal view component for the PTY backend.

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	pb "github.com/sethdeckard/atria/internal/terminal/iterm/proto"
+	pb "github.com/sethdeckard/atria/libatria/terminal/iterm/proto"
 	"google.golang.org/protobuf/proto"
 )
 

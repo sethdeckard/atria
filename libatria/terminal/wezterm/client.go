@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // Client implements terminal.Backend using the wezterm CLI.

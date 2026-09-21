@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/sethdeckard/atria/internal/terminal"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // stubBackend satisfies terminal.Backend for derivePrimary and remap tests.

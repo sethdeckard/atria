@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/sethdeckard/atria/internal/terminal"
 	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 // Client implements terminal.Backend using the tmux CLI.
