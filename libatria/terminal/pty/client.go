@@ -199,7 +199,7 @@ func (c *Client) GetVar(sessionID, varName string) (string, error) {
 		if s.cmd.Process == nil {
 			return "", fmt.Errorf("process not started")
 		}
-		return cwdFromPID(s.cmd.Process.Pid)
+		return terminal.ProcessCWD(s.cmd.Process.Pid)
 	default:
 		return "", fmt.Errorf("unsupported variable: %s", varName)
 	}
@@ -311,25 +311,4 @@ func (c *Client) getSession(id string) (*session, error) {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
 	return s, nil
-}
-
-// cwdFromPID discovers the current working directory for a given PID.
-func cwdFromPID(pid int) (string, error) {
-	// Try /proc first (Linux)
-	procPath := fmt.Sprintf("/proc/%d/cwd", pid)
-	if target, err := os.Readlink(procPath); err == nil {
-		return target, nil
-	}
-
-	// Fall back to lsof (macOS)
-	out, err := exec.Command("lsof", "-a", "-d", "cwd", "-p", strconv.Itoa(pid), "-Fn").Output()
-	if err != nil {
-		return "", fmt.Errorf("cwd lookup failed for pid %d: %w", pid, err)
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "n") {
-			return line[1:], nil
-		}
-	}
-	return "", fmt.Errorf("cwd not found for pid %d", pid)
 }

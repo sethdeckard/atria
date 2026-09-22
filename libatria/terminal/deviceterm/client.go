@@ -2,6 +2,7 @@ package deviceterm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sethdeckard/atria/libatria/terminal"
 )
@@ -49,6 +51,10 @@ type Options struct {
 	// ProgramName is how the Automation-tab reason text refers to the
 	// caller, as in "run atria there". Empty means DefaultProgramName.
 	ProgramName string
+	// CommandTimeout bounds each deviceterm invocation; zero means
+	// terminal.DefaultCommandTimeout. A hung CLI is reported as
+	// terminal.ErrUnavailable.
+	CommandTimeout time.Duration
 }
 
 // Client implements terminal.Backend using the deviceterm CLI.
@@ -57,15 +63,16 @@ type Options struct {
 // each CLI call by walking its parent chain back to that tab, so every call is
 // spawned as a direct child process and the environment is inherited intact.
 type Client struct {
-	devicetermPath string
-	programName    string
-	selfSession    string // $DEVICETERM_SESSION, read in Available
+	programName string
+	timeout     time.Duration
 
 	// runFn replaces the subprocess call in tests. Nil means exec.
 	runFn func(args ...string) ([]byte, error)
 
-	mu  sync.Mutex
-	cwd map[string]string // pane id -> terminal.cwd from the last ListSessions
+	mu             sync.RWMutex
+	devicetermPath string            // resolved by Available when found under the shim dir
+	selfSession    string            // $DEVICETERM_SESSION, read in Available
+	cwd            map[string]string // pane id -> terminal.cwd from the last ListSessions
 }
 
 // NewClient creates a DeviceTerm Client from opts.
@@ -78,7 +85,12 @@ func NewClient(opts Options) *Client {
 	if name == "" {
 		name = DefaultProgramName
 	}
-	return &Client{devicetermPath: path, programName: name, cwd: map[string]string{}}
+	return &Client{
+		devicetermPath: path,
+		programName:    name,
+		timeout:        terminal.TimeoutOr(opts.CommandTimeout),
+		cwd:            map[string]string{},
+	}
 }
 
 // CLIError is a typed failure decoded from the CLI's JSON error envelope.
@@ -123,23 +135,49 @@ func isUngranted(code string) bool {
 // otherwise an error built from stderr.
 func (c *Client) run(args ...string) ([]byte, error) {
 	if c.runFn != nil {
-		return c.runFn(args...)
+		out, err := c.runFn(args...)
+		return out, wrapTransport(err)
 	}
-	cmd := exec.Command(c.devicetermPath, args...)
+	c.mu.RLock()
+	path := c.devicetermPath
+	c.mu.RUnlock()
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.WaitDelay = terminal.PipeGrace
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		op := "deviceterm " + verb(args)
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, terminal.Timeout(op, c.timeout)
+		}
 		if code, msg, ok := parseErrorEnvelope(stdout.Bytes()); ok {
-			return nil, &CLIError{Code: code, Message: msg}
+			return nil, wrapTransport(&CLIError{Code: code, Message: msg})
+		}
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			// Startup failures and a pipe wait that outlived PipeGrace.
+			return nil, terminal.Unavailable(op, err)
 		}
 		detail := strings.TrimSpace(stderr.String())
 		if detail == "" {
 			detail = err.Error()
 		}
-		return nil, fmt.Errorf("deviceterm %s failed: %s", verb(args), detail)
+		return nil, fmt.Errorf("%s failed: %s", op, detail)
 	}
 	return stdout.Bytes(), nil
+}
+
+// wrapTransport marks a transport.* CLIError as terminal.ErrUnavailable: the
+// daemon could not be reached. errors.As still recovers the *CLIError.
+func wrapTransport(err error) error {
+	var ce *CLIError
+	if errors.As(err, &ce) && strings.HasPrefix(ce.Code, "transport.") {
+		return terminal.Unavailable("deviceterm", ce)
+	}
+	return err
 }
 
 // verb returns up to two leading non-flag words of an argument list for
@@ -211,10 +249,22 @@ func (c *Client) checkGrant() error {
 		report, err = parseSessionReport(out)
 	}
 	if reason := c.grantState(report, err); reason != "" {
-		return errors.New(reason)
+		return &reasonError{reason: reason, cause: err}
 	}
 	return nil
 }
+
+// reasonError carries the short settings-facing reason as its message while
+// unwrapping to the underlying failure, so errors.Is(err,
+// terminal.ErrUnavailable) holds for transport failures without changing the
+// text a caller displays.
+type reasonError struct {
+	reason string
+	cause  error
+}
+
+func (e *reasonError) Error() string { return e.reason }
+func (e *reasonError) Unwrap() error { return e.cause }
 
 // Available checks that the deviceterm CLI is present, that Atria runs inside
 // DeviceTerm, and that the caller holds an automation grant. Atria requires
@@ -232,13 +282,15 @@ func (c *Client) Available() error {
 	if err != nil {
 		return fmt.Errorf("deviceterm not found in PATH")
 	}
-	c.devicetermPath = path
 
 	session := os.Getenv(envSession)
 	if session == "" {
 		return fmt.Errorf("not running inside DeviceTerm")
 	}
+	c.mu.Lock()
+	c.devicetermPath = path
 	c.selfSession = session
+	c.mu.Unlock()
 
 	return c.checkGrant()
 }
@@ -307,7 +359,10 @@ func sessionsFromPanes(panes []workspacePane) ([]terminal.Session, map[string]st
 // Any failure fails the whole refresh: a partial list would make Atria drop
 // the missing sessions as dead.
 func (c *Client) ListSessions() ([]terminal.Session, error) {
-	if c.selfSession != "" {
+	c.mu.RLock()
+	granted := c.selfSession != ""
+	c.mu.RUnlock()
+	if granted {
 		if err := c.checkGrant(); err != nil {
 			return nil, err
 		}

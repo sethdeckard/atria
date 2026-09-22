@@ -1,10 +1,13 @@
 package tmux
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/sethdeckard/atria/libatria/agent"
 	"github.com/sethdeckard/atria/libatria/terminal"
@@ -15,6 +18,7 @@ type Client struct {
 	tmuxPath        string
 	launchSession   string
 	fallbackSession string
+	timeout         time.Duration
 }
 
 // DefaultFallbackSession names the detached session NewSession creates when
@@ -34,6 +38,10 @@ type Options struct {
 	// empty and the caller isn't inside tmux. Empty means
 	// DefaultFallbackSession. Users attach to it with tmux attach -t <name>.
 	FallbackSession string
+	// CommandTimeout bounds each tmux invocation; zero means
+	// terminal.DefaultCommandTimeout. A hung tmux is reported as
+	// terminal.ErrUnavailable.
+	CommandTimeout time.Duration
 }
 
 // NewClient creates a tmux Client from opts.
@@ -46,29 +54,56 @@ func NewClient(opts Options) *Client {
 	if fallback == "" {
 		fallback = DefaultFallbackSession
 	}
-	return &Client{tmuxPath: path, launchSession: opts.LaunchSession, fallbackSession: fallback}
-}
-
-// run executes tmux with the given arguments and returns stdout.
-func (c *Client) run(args ...string) ([]byte, error) {
-	cmd := exec.Command(c.tmuxPath, args...)
-	out, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("tmux %v failed: %s", args, string(exitErr.Stderr))
-		}
-		return nil, fmt.Errorf("tmux %v failed: %w", args, err)
+	return &Client{
+		tmuxPath:        path,
+		launchSession:   opts.LaunchSession,
+		fallbackSession: fallback,
+		timeout:         terminal.TimeoutOr(opts.CommandTimeout),
 	}
-	return out, nil
 }
 
-// Available checks if tmux is installed.
+// run executes tmux with the given arguments under the command timeout and
+// returns stdout. A timeout, a failure to start tmux, or tmux reporting that
+// its server is unreachable is wrapped as terminal.ErrUnavailable; other
+// nonzero exits carry tmux's stderr.
+func (c *Client) run(args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, c.tmuxPath, args...)
+	cmd.WaitDelay = terminal.PipeGrace
+	out, err := cmd.Output()
+	if err == nil {
+		return out, nil
+	}
+	op := "tmux " + verb(args)
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return nil, terminal.Timeout(op, c.timeout)
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		msg := strings.TrimSpace(string(exitErr.Stderr))
+		if isConnectMessage(msg) {
+			return nil, terminal.Unavailable(op, errors.New(msg))
+		}
+		return nil, fmt.Errorf("%s failed: %s", op, msg)
+	}
+	return nil, terminal.Unavailable(op, err)
+}
+
+// verb returns the tmux subcommand for error messages.
+func verb(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
+// Available checks that tmux is on PATH. It does not require a running
+// server: ListSessions reports an empty list when there is none.
 func (c *Client) Available() error {
-	path, err := exec.LookPath(c.tmuxPath)
-	if err != nil {
+	if _, err := exec.LookPath(c.tmuxPath); err != nil {
 		return fmt.Errorf("tmux not found in PATH")
 	}
-	c.tmuxPath = path
 	return nil
 }
 
@@ -86,10 +121,28 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 	return parsePaneList(string(out)), nil
 }
 
+// isNoServerError reports whether err establishes that no tmux server exists.
+// ListSessions turns that into an empty list because a server that exited
+// took every session with it. A connection failure that doesn't prove
+// absence (permission denied, connection refused) stays an error, so a caller
+// keeps its tracked sessions instead of dropping them.
 func isNoServerError(err error) bool {
-	msg := err.Error()
+	return err != nil && isServerAbsentMessage(err.Error())
+}
+
+// isServerAbsentMessage matches tmux's wording for a server that isn't there:
+// "no server running on <socket>" (3.x), "failed to connect to server" (2.x),
+// and "error connecting to <socket> (No such file or directory)".
+func isServerAbsentMessage(msg string) bool {
 	return strings.Contains(msg, "no server running") ||
-		strings.Contains(msg, "failed to connect to server")
+		strings.Contains(msg, "failed to connect to server") ||
+		(strings.Contains(msg, "error connecting to") && strings.Contains(msg, "No such file or directory"))
+}
+
+// isConnectMessage matches any tmux failure to reach its server, including
+// the absent-server wordings and permission or refusal errors on the socket.
+func isConnectMessage(msg string) bool {
+	return isServerAbsentMessage(msg) || strings.Contains(msg, "error connecting to")
 }
 
 func isSessionNotFoundError(err error) bool {

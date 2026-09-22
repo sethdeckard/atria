@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -44,34 +43,19 @@ func cwdFromGetVar(backend Backend, session Session, watchDirs []string) string 
 	return ""
 }
 
-// cwdFromLsof attempts to discover the CWD by inspecting processes running on the session's TTY.
-// It runs ps to find PIDs, then lsof to find their CWDs, returning the first that is under a watch dir.
+// cwdFromLsof discovers the CWD from the processes on the session's TTY,
+// returning the first working directory under a watch dir.
 func cwdFromLsof(tty string, watchDirs []string) string {
 	if tty == "" {
 		return ""
 	}
-	// Strip /dev/ prefix for ps -t
-	ttyShort := strings.TrimPrefix(tty, "/dev/")
-
-	psOut, err := exec.Command("ps", "-t", ttyShort, "-o", "pid=").Output()
+	procs, err := ProcessesOnTTY(tty)
 	if err != nil {
 		return ""
 	}
-
-	pids := strings.Fields(strings.TrimSpace(string(psOut)))
-	for _, pid := range pids {
-		lsofOut, err := exec.Command("lsof", "-a", "-d", "cwd", "-p", pid, "-F", "n").Output()
-		if err != nil {
-			continue
-		}
-		// lsof -F n output has lines like "p<pid>" and "n<path>"
-		for _, line := range strings.Split(string(lsofOut), "\n") {
-			if strings.HasPrefix(line, "n") {
-				dir := line[1:]
-				if UnderAnyDir(dir, watchDirs) {
-					return dir
-				}
-			}
+	for _, p := range procs {
+		if p.Cwd != "" && UnderAnyDir(p.Cwd, watchDirs) {
+			return p.Cwd
 		}
 	}
 	return ""

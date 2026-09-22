@@ -355,11 +355,11 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			probeErr = tm.Available()
 			backend = tm
 		case "kitty":
-			kt := kitty.NewClient(cfg.KittenPath)
+			kt := kitty.NewClient(kitty.Options{Path: cfg.KittenPath})
 			probeErr = kt.Available()
 			backend = kt
 		case "wezterm":
-			wt := weztermbackend.NewClient(cfg.WezTermPath)
+			wt := weztermbackend.NewClient(weztermbackend.Options{Path: cfg.WezTermPath})
 			probeErr = wt.Available()
 			backend = wt
 		case "deviceterm":

@@ -1,6 +1,7 @@
 package iterm
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,8 +12,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/sethdeckard/atria/libatria/terminal"
 	pb "github.com/sethdeckard/atria/libatria/terminal/iterm/proto"
 	"google.golang.org/protobuf/proto"
 )
@@ -25,8 +28,13 @@ type conn struct {
 	socketPath string
 	noPrompt   bool   // suppress interactive AppleScript auth
 	clientName string // name iTerm2 sees; empty falls back to DefaultClientName
+	timeout    time.Duration
 	cookie     string
 	key        string
+}
+
+func (c *conn) deadline() time.Duration {
+	return terminal.TimeoutOr(c.timeout)
 }
 
 // name returns the client name iTerm2 should see.
@@ -122,7 +130,7 @@ func (c *conn) connect() error {
 	}
 
 	if _, err := os.Stat(sockPath); err != nil {
-		return fmt.Errorf("iTerm2 socket not found — is iTerm2 running?")
+		return terminal.Unavailable("iTerm2 socket not found (is iTerm2 running?)", err)
 	}
 
 	c.captureAuthFromEnv()
@@ -137,7 +145,7 @@ func (c *conn) connect() error {
 
 	// If not a 401, no point trying auth.
 	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
-		return fmt.Errorf("WebSocket dial failed: %w", err)
+		return terminal.Unavailable("WebSocket dial", err)
 	}
 
 	// 401: auth required. Skip AppleScript when noPrompt is set (e.g.,
@@ -162,7 +170,7 @@ func (c *conn) connect() error {
 	if err != nil {
 		c.cookie = ""
 		c.key = ""
-		return fmt.Errorf("WebSocket dial failed after auth: %w", err)
+		return terminal.Unavailable("WebSocket dial after auth", err)
 	}
 
 	c.ws = ws
@@ -183,18 +191,31 @@ func (c *conn) roundTrip(req *pb.ClientOriginatedMessage) (*pb.ServerOriginatedM
 	defer c.mu.Unlock()
 
 	if c.ws == nil {
-		return nil, fmt.Errorf("not connected")
+		return nil, terminal.Unavailable("iTerm2", errors.New("not connected"))
 	}
 
+	// One absolute deadline covers the request-response pair, so the whole
+	// round trip is bounded by CommandTimeout and a hung iTerm2 can't wedge
+	// the caller's poll loop.
+	limit := c.deadline()
+	deadline := time.Now().Add(limit)
+	if err := c.ws.SetWriteDeadline(deadline); err != nil {
+		c.close()
+		return nil, terminal.Unavailable("iTerm2 write", err)
+	}
 	if err := c.ws.WriteMessage(websocket.BinaryMessage, data); err != nil {
 		c.close()
-		return nil, fmt.Errorf("write: %w", err)
+		return nil, wrapSocketErr("iTerm2 write", err, limit)
 	}
 
+	if err := c.ws.SetReadDeadline(deadline); err != nil {
+		c.close()
+		return nil, terminal.Unavailable("iTerm2 read", err)
+	}
 	_, respData, err := c.ws.ReadMessage()
 	if err != nil {
 		c.close()
-		return nil, fmt.Errorf("read: %w", err)
+		return nil, wrapSocketErr("iTerm2 read", err, limit)
 	}
 
 	resp := &pb.ServerOriginatedMessage{}
@@ -234,4 +255,14 @@ func (c *conn) Close() {
 func (c *conn) reconnect() error {
 	c.Close()
 	return c.connect()
+}
+
+// wrapSocketErr reports a socket failure as terminal.ErrUnavailable, marking a
+// deadline expiry so it also satisfies context.DeadlineExceeded.
+func wrapSocketErr(op string, err error, limit time.Duration) error {
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return terminal.Timeout(op, limit)
+	}
+	return terminal.Unavailable(op, err)
 }

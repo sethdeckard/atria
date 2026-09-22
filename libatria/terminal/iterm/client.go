@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/sethdeckard/atria/libatria/terminal"
 	pb "github.com/sethdeckard/atria/libatria/terminal/iterm/proto"
@@ -44,6 +45,12 @@ type Options struct {
 	// request and the x-iterm2-advisory-name header. iTerm2 shows it in its
 	// automation dialog and remembers the grant under it.
 	ClientName string
+	// CommandTimeout bounds each round trip on the socket, one deadline
+	// covering the write and the read; zero means
+	// terminal.DefaultCommandTimeout. A timeout closes the connection and is
+	// reported as terminal.ErrUnavailable; the next call reconnects. The
+	// initial handshake and the AppleScript credential dialog are not bounded.
+	CommandTimeout time.Duration
 }
 
 // Client implements terminal.Backend using iTerm2's native protobuf-over-WebSocket API.
@@ -52,6 +59,7 @@ type Client struct {
 	socketPath string // override for testing; empty uses default
 	noPrompt   bool   // suppress interactive AppleScript auth
 	clientName string
+	timeout    time.Duration
 }
 
 type lineInfo struct {
@@ -67,13 +75,18 @@ func NewClient(opts Options) *Client {
 	if name == "" {
 		name = DefaultClientName
 	}
-	return &Client{socketPath: opts.SocketPath, noPrompt: opts.NoPrompt, clientName: name}
+	return &Client{
+		socketPath: opts.SocketPath,
+		noPrompt:   opts.NoPrompt,
+		clientName: name,
+		timeout:    terminal.TimeoutOr(opts.CommandTimeout),
+	}
 }
 
 // ensureConn lazily connects on first use.
 func (c *Client) ensureConn() error {
 	if c.conn == nil {
-		c.conn = &conn{socketPath: c.socketPath, noPrompt: c.noPrompt, clientName: c.clientName}
+		c.conn = &conn{socketPath: c.socketPath, noPrompt: c.noPrompt, clientName: c.clientName, timeout: c.timeout}
 	}
 	if c.conn.ws == nil {
 		return c.conn.connect()

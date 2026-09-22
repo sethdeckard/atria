@@ -1,18 +1,26 @@
 package wezterm
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 func TestNewClientDefaults(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	if c.weztermPath != "wezterm" {
 		t.Errorf("expected weztermPath %q, got %q", "wezterm", c.weztermPath)
 	}
 }
 
 func TestNewClientCustomPath(t *testing.T) {
-	c := NewClient("/usr/local/bin/wezterm")
+	c := NewClient(Options{Path: "/usr/local/bin/wezterm"})
 	if c.weztermPath != "/usr/local/bin/wezterm" {
 		t.Errorf("expected weztermPath %q, got %q", "/usr/local/bin/wezterm", c.weztermPath)
 	}
@@ -156,7 +164,7 @@ func TestTrimToLastN(t *testing.T) {
 }
 
 func TestMonitorOutputUnsupported(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	pid, err := c.MonitorOutput("1", "/tmp/log", "pattern")
 	if err == nil {
 		t.Fatal("expected error from MonitorOutput")
@@ -167,9 +175,53 @@ func TestMonitorOutputUnsupported(t *testing.T) {
 }
 
 func TestGetVarUnsupported(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	_, err := c.GetVar("1", "title")
 	if err == nil {
 		t.Fatal("expected error for unsupported variable")
+	}
+}
+
+func writeFakeWezterm(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "wezterm")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nset -eu\n"+body), 0o755); err != nil {
+		t.Fatalf("write fake wezterm: %v", err)
+	}
+	return path
+}
+
+func TestRunWrapsConnectFailureAndTimeout(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "wezterm.log")
+	wez := writeFakeWezterm(t, `
+echo "$@" >> "`+logPath+`"
+case "$2" in
+  list) echo "failed to connect to /tmp/wezterm/gui-sock: No such file or directory" >&2; exit 1 ;;
+  get-text) sleep 3 ;;
+  activate-pane) echo "pane 9 not found" >&2; exit 1 ;;
+  send-text) cat >> "`+logPath+`" ;;
+esac
+exit 0
+`)
+	c := NewClient(Options{Path: wez, CommandTimeout: time.Second})
+	if _, err := c.ListSessions(); !errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("connect failure = %v, want ErrUnavailable", err)
+	}
+	start := time.Now()
+	if _, err := c.ReadScreen("1", 10); !errors.Is(err, terminal.ErrUnavailable) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timeout = %v, want ErrUnavailable and DeadlineExceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("timeout took %s; the pipe wait was not bounded", elapsed)
+	}
+	if err := c.FocusSession("9"); err == nil || errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("per-pane error = %v, want a plain error", err)
+	}
+	if err := c.SendText("1", "hello"); err != nil {
+		t.Fatalf("SendText: %v", err)
+	}
+	logData, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(logData), "send-text --pane-id 1 --no-paste") || !strings.Contains(string(logData), "hello") {
+		t.Fatalf("send-text should pass text on stdin, log:\n%s", logData)
 	}
 }

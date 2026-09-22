@@ -1,9 +1,15 @@
 package deviceterm
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 func TestNewClientDefaults(t *testing.T) {
@@ -557,5 +563,43 @@ func TestReasonsNameTheProgram(t *testing.T) {
 	}
 	if got := NewClient(Options{}).automationTabReason(); !strings.Contains(got, "run this program there") {
 		t.Fatalf("default reason = %q", got)
+	}
+}
+
+func TestTransportErrorsAreUnavailable(t *testing.T) {
+	c, _ := newFakeClient(t, map[string]func() ([]byte, error){
+		sessionKey: typed("transport.unavailable"),
+	})
+	_, err := c.ListSessions()
+	if !errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("transport error = %v, want ErrUnavailable", err)
+	}
+	var ce *CLIError
+	if !errors.As(err, &ce) || ce.Code != "transport.unavailable" {
+		t.Fatalf("typed error must still be recoverable, got %v", err)
+	}
+
+	// A grant problem is not unavailability.
+	c, _ = newFakeClient(t, map[string]func() ([]byte, error){
+		sessionKey: typed("session.unauthorized"),
+	})
+	if _, err := c.ListSessions(); err == nil || errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("unauthorized = %v, want a plain grant error", err)
+	}
+}
+
+func TestRunTimesOutAsUnavailable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deviceterm")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nsleep 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := NewClient(Options{Path: path, CommandTimeout: time.Second})
+	start := time.Now()
+	_, err := c.ListSessions() // no selfSession: goes straight to pane list
+	if !errors.Is(err, terminal.ErrUnavailable) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timeout = %v, want ErrUnavailable and DeadlineExceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("timeout took %s; the pipe wait was not bounded", elapsed)
 	}
 }

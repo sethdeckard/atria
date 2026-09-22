@@ -1,18 +1,17 @@
 package terminal
 
 import (
-	"os/exec"
 	"strconv"
 	"strings"
 )
 
-// TTYForPID returns the controlling TTY for a process by running ps.
-// Returns empty string on any failure.
+// TTYForPID returns the controlling TTY ("/dev/ttys003") of a process by
+// running ps, or "" when the process has none or the lookup fails.
 func TTYForPID(pid int) string {
 	if pid <= 0 {
 		return ""
 	}
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "tty=").Output()
+	out, err := runCommand("ps", "-p", strconv.Itoa(pid), "-o", "tty=")
 	if err != nil {
 		return ""
 	}

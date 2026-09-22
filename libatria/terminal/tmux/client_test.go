@@ -1,10 +1,14 @@
 package tmux
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/sethdeckard/atria/libatria/terminal"
 )
@@ -455,5 +459,107 @@ exit 0
 		"send-keys -t %3 Enter\n"
 	if string(logData) != want {
 		t.Fatalf("tmux calls:\n%s\nwant:\n%s", logData, want)
+	}
+}
+
+func TestRunWrapsNoServerAndTimeoutAsUnavailable(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := writeFakeTmux(t, `
+echo "$@" >> "`+logPath+`"
+if [ "$1" = "send-keys" ]; then
+	echo "no server running on /tmp/tmux-501/default" >&2
+	exit 1
+fi
+if [ "$1" = "list-panes" ]; then
+	echo "no server running on /tmp/tmux-501/default" >&2
+	exit 1
+fi
+if [ "$1" = "display-message" ]; then
+	echo "can't find session: nope" >&2
+	exit 1
+fi
+if [ "$1" = "capture-pane" ]; then
+	sleep 3
+fi
+exit 0
+`)
+	c := NewClient(Options{Path: tmuxPath, CommandTimeout: time.Second})
+
+	// Server gone: per-session calls are ErrUnavailable, listing is empty.
+	err := c.SendText("%1", "hi")
+	if !errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("SendText with no server = %v, want ErrUnavailable", err)
+	}
+	sessions, err := c.ListSessions()
+	if err != nil || len(sessions) != 0 {
+		t.Fatalf("ListSessions with no server = %v, %v; want empty, nil", sessions, err)
+	}
+
+	// An ordinary tmux error is not unavailability.
+	_, err = c.run("display-message", "-p", "x")
+	if err == nil || errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("ordinary tmux error = %v, want a plain error", err)
+	}
+
+	// A hung tmux hits the timeout and reports both sentinels, and the pipe
+	// grace keeps the caller from waiting on the script's sleeping child.
+	start := time.Now()
+	_, err = c.ReadScreen("%1", 10)
+	if !errors.Is(err, terminal.ErrUnavailable) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timed-out read = %v, want ErrUnavailable and DeadlineExceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("timed-out read took %s; the pipe wait was not bounded", elapsed)
+	}
+}
+
+func TestListSessionsConcurrentUse(t *testing.T) {
+	tmuxPath := writeFakeTmux(t, `
+if [ "$1" = "list-panes" ]; then
+	printf '%%1\tcodex\tmain\t/dev/ttys001\n'
+fi
+exit 0
+`)
+	c := NewClient(Options{Path: tmuxPath})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := c.ListSessions(); err != nil {
+				t.Errorf("ListSessions: %v", err)
+			}
+			if err := c.Available(); err != nil {
+				t.Errorf("Available: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestListSessionsKeepsConnectionErrors(t *testing.T) {
+	tmuxPath := writeFakeTmux(t, `
+if [ "$1" = "list-panes" ]; then
+	echo "error connecting to /tmp/tmux-501/default (Permission denied)" >&2
+	exit 1
+fi
+exit 0
+`)
+	c := NewClient(Options{Path: tmuxPath})
+	_, err := c.ListSessions()
+	if !errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("permission failure = %v, want ErrUnavailable, not an empty list", err)
+	}
+
+	absent := writeFakeTmux(t, `
+if [ "$1" = "list-panes" ]; then
+	echo "error connecting to /tmp/tmux-501/default (No such file or directory)" >&2
+	exit 1
+fi
+exit 0
+`)
+	sessions, err := NewClient(Options{Path: absent}).ListSessions()
+	if err != nil || len(sessions) != 0 {
+		t.Fatalf("absent socket = %v, %v; want empty, nil", sessions, err)
 	}
 }

@@ -1,10 +1,12 @@
 package iterm
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/sethdeckard/atria/libatria/terminal"
 	pb "github.com/sethdeckard/atria/libatria/terminal/iterm/proto"
 	"google.golang.org/protobuf/proto"
 )
@@ -28,6 +30,9 @@ func TestAvailableErrorBadSocket(t *testing.T) {
 	err := c.Available()
 	if err == nil {
 		t.Fatal("expected error when socket does not exist")
+	}
+	if !errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("missing socket = %v, want ErrUnavailable", err)
 	}
 }
 

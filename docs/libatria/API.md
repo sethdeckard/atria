@@ -194,7 +194,7 @@ func ProcessCWD(pid int) (string, error)
 var ErrUnavailable = errors.New("terminal unavailable")
 ```
 
-Every client wraps connection-level failure so `errors.Is(err, terminal.ErrUnavailable)` holds: the iTerm2 socket failing to dial or closing, tmux reporting no server or failing to connect, kitty and WezTerm socket errors, DeviceTerm `transport.*` errors, and any command timeout. A composite `ListSessions` reports an integration failure through `FailedSources` and returns the error only when the primary fails.
+Every client wraps connection-level failure so `errors.Is(err, terminal.ErrUnavailable)` holds: the iTerm2 socket failing to dial or closing, tmux failing to reach its server (permission denied, connection refused, a timeout), kitty and WezTerm socket errors, DeviceTerm `transport.*` errors, and any command timeout. When no tmux server is running, `ListSessions` returns an empty list (a server that exited took every session with it, and treating that as an outage would leave phantom rows until it came back); per-session operations against it return `ErrUnavailable`. A composite `ListSessions` reports an integration failure through `FailedSources` and returns the error only when the primary fails.
 
 Recovery doesn't need a restart. The iTerm2 client already reconnects on the next call after a drop, and the CLI clients spawn a fresh process per call. `libatria.Stack.Reprobe` covers integrations that failed their initial probe.
 

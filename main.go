@@ -113,7 +113,7 @@ func main() {
 			backendStatuses = append(backendStatuses, bs)
 		case "kitty":
 			bs := tui.BackendStatus{Name: "kitty", Enabled: true}
-			kt := kitty.NewClient(cfg.KittenPath)
+			kt := kitty.NewClient(kitty.Options{Path: cfg.KittenPath})
 			if err := kt.Available(); err != nil {
 				bs.Reason = err.Error()
 				backendStatuses = append(backendStatuses, bs)
@@ -129,7 +129,7 @@ func main() {
 			backendStatuses = append(backendStatuses, bs)
 		case "wezterm":
 			bs := tui.BackendStatus{Name: "wezterm", Enabled: true}
-			wt := weztermbackend.NewClient(cfg.WezTermPath)
+			wt := weztermbackend.NewClient(weztermbackend.Options{Path: cfg.WezTermPath})
 			if err := wt.Available(); err != nil {
 				bs.Reason = err.Error()
 				backendStatuses = append(backendStatuses, bs)

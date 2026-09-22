@@ -1,19 +1,27 @@
 package kitty
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 func TestNewClientDefaults(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	if c.kittenPath != "kitten" {
 		t.Errorf("expected kittenPath %q, got %q", "kitten", c.kittenPath)
 	}
 }
 
 func TestNewClientCustomPath(t *testing.T) {
-	c := NewClient("/usr/local/bin/kitten")
+	c := NewClient(Options{Path: "/usr/local/bin/kitten"})
 	if c.kittenPath != "/usr/local/bin/kitten" {
 		t.Errorf("expected kittenPath %q, got %q", "/usr/local/bin/kitten", c.kittenPath)
 	}
@@ -136,7 +144,7 @@ func TestParseLSOutputInvalidJSON(t *testing.T) {
 }
 
 func TestMonitorOutputUnsupported(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	pid, err := c.MonitorOutput("42", "/tmp/log", "pattern")
 	if err == nil {
 		t.Fatal("expected error from MonitorOutput")
@@ -214,4 +222,61 @@ func TestLookupWindowVar(t *testing.T) {
 			}
 		})
 	}
+}
+
+func writeFakeKitten(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "kitten")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nset -eu\n"+body), 0o755); err != nil {
+		t.Fatalf("write fake kitten: %v", err)
+	}
+	return path
+}
+
+func TestRunWrapsConnectFailureAndTimeout(t *testing.T) {
+	kitten := writeFakeKitten(t, `
+case "$4" in
+  ls) echo "Failed to connect to unix:/tmp/kitty-1: Connection refused" >&2; exit 1 ;;
+  get-text) sleep 3 ;;
+  focus-window) echo "No matching windows" >&2; exit 1 ;;
+esac
+exit 0
+`)
+	c := NewClient(Options{Path: kitten, CommandTimeout: time.Second})
+	if _, err := c.ListSessions(); !errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("connect failure = %v, want ErrUnavailable", err)
+	}
+	start := time.Now()
+	if _, err := c.ReadScreen("1", 10); !errors.Is(err, terminal.ErrUnavailable) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timeout = %v, want ErrUnavailable and DeadlineExceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("timeout took %s; the pipe wait was not bounded", elapsed)
+	}
+	if err := c.FocusSession("1"); err == nil || errors.Is(err, terminal.ErrUnavailable) {
+		t.Fatalf("remote-control error = %v, want a plain error", err)
+	}
+}
+
+func TestListSessionsUsesInjectedTTYLookupConcurrently(t *testing.T) {
+	kitten := writeFakeKitten(t, `
+if [ "$4" = "ls" ]; then
+  echo '[{"tabs":[{"windows":[{"id":7,"title":"claude","pid":4242,"cwd":"/p"}]}]}]'
+fi
+exit 0
+`)
+	c := NewClient(Options{Path: kitten})
+	c.ttyForPID = func(pid int) string { return "/dev/ttys" + strconv.Itoa(pid) }
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sessions, err := c.ListSessions()
+			if err != nil || len(sessions) != 1 || sessions[0].TTY != "/dev/ttys4242" {
+				t.Errorf("ListSessions = %+v, %v", sessions, err)
+			}
+		}()
+	}
+	wg.Wait()
 }
