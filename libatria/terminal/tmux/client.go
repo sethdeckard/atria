@@ -205,6 +205,19 @@ func (c *Client) NewSession() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// literalArg prepares text for send-keys -l. tmux splits its argv into
+// commands before send-keys sees it: an argument that is exactly ";" is a
+// separator, and a trailing ";" on any argument is stripped and ends the
+// command. Either way the semicolon is lost. The documented escape is "\;",
+// which the parser turns back into a literal semicolon; a semicolon anywhere
+// else in the text is left alone.
+func literalArg(text string) string {
+	if strings.HasSuffix(text, ";") {
+		return text[:len(text)-1] + `\;`
+	}
+	return text
+}
+
 // SendText sends literal text to a tmux pane. Carriage return and newline
 // are sent as the Enter key instead of literal characters.
 func (c *Client) SendText(sessionID, text string) error {
@@ -212,7 +225,7 @@ func (c *Client) SendText(sessionID, text string) error {
 		_, err := c.run("send-keys", "-t", sessionID, "Enter")
 		return err
 	}
-	_, err := c.run("send-keys", "-t", sessionID, "-l", text)
+	_, err := c.run("send-keys", "-t", sessionID, "-l", literalArg(text))
 	return err
 }
 
@@ -244,20 +257,13 @@ func (c *Client) SendKey(sessionID string, key terminal.Key) error {
 	if seq == "" {
 		return fmt.Errorf("unknown key %q", string(key))
 	}
-	if seq == ";" {
-		// tmux splits its argv into commands on a bare or trailing ";"
-		// before send-keys sees it, so a plain semicolon is silently
-		// dropped. The documented escape is "\;", which the parser turns
-		// back into a literal semicolon.
-		seq = `\;`
-	}
-	_, err := c.run("send-keys", "-t", sessionID, "-l", seq)
+	_, err := c.run("send-keys", "-t", sessionID, "-l", literalArg(seq))
 	return err
 }
 
 // RunCommand sends a command string followed by Enter to a tmux pane.
 func (c *Client) RunCommand(sessionID, cmd string) error {
-	if _, err := c.run("send-keys", "-t", sessionID, "-l", cmd); err != nil {
+	if _, err := c.run("send-keys", "-t", sessionID, "-l", literalArg(cmd)); err != nil {
 		return err
 	}
 	_, err := c.run("send-keys", "-t", sessionID, "Enter")

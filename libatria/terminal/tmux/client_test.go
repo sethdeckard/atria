@@ -427,3 +427,33 @@ exit 0
 		t.Fatalf("default fallback should be %q", DefaultFallbackSession)
 	}
 }
+
+func TestSendTextEscapesTrailingSemicolon(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := writeFakeTmux(t, `
+echo "$@" >> "`+logPath+`"
+exit 0
+`)
+	c := NewClient(Options{Path: tmuxPath})
+	for _, text := range []string{";", "run make;", "a; b", "plain"} {
+		if err := c.SendText("%3", text); err != nil {
+			t.Fatalf("SendText(%q): %v", text, err)
+		}
+	}
+	if err := c.RunCommand("%3", "cd /p && claude;"); err != nil {
+		t.Fatalf("RunCommand: %v", err)
+	}
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	want := "send-keys -t %3 -l \\;\n" +
+		"send-keys -t %3 -l run make\\;\n" +
+		"send-keys -t %3 -l a; b\n" +
+		"send-keys -t %3 -l plain\n" +
+		"send-keys -t %3 -l cd /p && claude\\;\n" +
+		"send-keys -t %3 Enter\n"
+	if string(logData) != want {
+		t.Fatalf("tmux calls:\n%s\nwant:\n%s", logData, want)
+	}
+}
