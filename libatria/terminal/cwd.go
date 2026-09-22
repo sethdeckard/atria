@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -95,9 +94,8 @@ func cwdFromNameMatch(name string, projectDirs []string) string {
 }
 
 // UnderAnyDir reports whether path is one of dirs or lies beneath one of them,
-// comparing absolute paths. An empty dirs matches nothing. A dir of "/"
-// currently matches only "/" itself: descendant matching fails because the
-// prefix it builds is "//".
+// comparing absolute paths. An empty dirs matches nothing; a dir of "/"
+// matches every absolute path.
 func UnderAnyDir(path string, dirs []string) bool {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -108,7 +106,16 @@ func UnderAnyDir(path string, dirs []string) bool {
 		if err != nil {
 			continue
 		}
-		if strings.HasPrefix(absPath, fmt.Sprintf("%s/", absWD)) || absPath == absWD {
+		if absPath == absWD {
+			return true
+		}
+		// filepath.Abs cleans trailing separators away except for the root,
+		// so only "/" already ends in one.
+		prefix := absWD
+		if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+			prefix += string(filepath.Separator)
+		}
+		if strings.HasPrefix(absPath, prefix) {
 			return true
 		}
 	}

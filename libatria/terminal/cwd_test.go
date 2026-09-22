@@ -125,7 +125,7 @@ func TestCwdFromGetVarError(t *testing.T) {
 	}
 }
 
-func TestIsUnderWatchDir(t *testing.T) {
+func TestUnderAnyDir(t *testing.T) {
 	tests := []struct {
 		name      string
 		path      string
@@ -160,6 +160,30 @@ func TestIsUnderWatchDir(t *testing.T) {
 			name:      "partial name collision",
 			path:      "/home/user/projects-other/myapp",
 			watchDirs: []string{"/home/user/projects"},
+			want:      false,
+		},
+		{
+			name:      "root matches any absolute path",
+			path:      "/tmp/something",
+			watchDirs: []string{"/"},
+			want:      true,
+		},
+		{
+			name:      "root matches itself",
+			path:      "/",
+			watchDirs: []string{"/"},
+			want:      true,
+		},
+		{
+			name:      "trailing separator on dir is tolerated",
+			path:      "/home/user/projects/myapp",
+			watchDirs: []string{"/home/user/projects/"},
+			want:      true,
+		},
+		{
+			name:      "empty dirs matches nothing",
+			path:      "/home/user/projects/myapp",
+			watchDirs: nil,
 			want:      false,
 		},
 	}
