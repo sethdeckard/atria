@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,9 +23,18 @@ type conn struct {
 	mu         sync.Mutex // serialize writes + reads (request-response pairs)
 	nextID     atomic.Int64
 	socketPath string
-	noPrompt   bool // suppress interactive AppleScript auth
+	noPrompt   bool   // suppress interactive AppleScript auth
+	clientName string // name iTerm2 sees; empty falls back to DefaultClientName
 	cookie     string
 	key        string
+}
+
+// name returns the client name iTerm2 should see.
+func (c *conn) name() string {
+	if c.clientName == "" {
+		return DefaultClientName
+	}
+	return c.clientName
 }
 
 // defaultSocketPath returns the standard iTerm2 API socket path.
@@ -36,12 +46,12 @@ func defaultSocketPath() string {
 	return filepath.Join(home, "Library", "Application Support", "iTerm2", "private", "socket")
 }
 
-// requestCookieAndKey requests a cookie and key from iTerm2 via AppleScript.
-// Returns cookie, key, or an error.
-func requestCookieAndKey() (string, string, error) {
+// requestCookieAndKey requests a cookie and key from iTerm2 via AppleScript,
+// identifying the caller as appName. Returns cookie, key, or an error.
+func requestCookieAndKey(appName string) (string, string, error) {
 	cmd := exec.Command("/usr/bin/osascript", "-")
 	cmd.Stdin = strings.NewReader(
-		`tell application "iTerm2" to request cookie and key for app named "atria"`)
+		`tell application "iTerm2" to request cookie and key for app named ` + strconv.Quote(appName))
 	out, err := cmd.Output()
 	if err != nil {
 		return "", "", fmt.Errorf("AppleScript auth failed: %w", err)
@@ -71,8 +81,8 @@ func (c *conn) captureAuthFromEnv() {
 func (c *conn) buildHeaders() http.Header {
 	headers := http.Header{
 		"Origin":                   {"ws://localhost/"},
-		"x-iterm2-library-version": {"go-atria 1.0"},
-		"x-iterm2-advisory-name":   {"atria"},
+		"x-iterm2-library-version": {"go-" + c.name() + " 1.0"},
+		"x-iterm2-advisory-name":   {c.name()},
 		"x-iterm2-disable-auth-ui": {"true"},
 	}
 	if c.cookie != "" {
@@ -139,7 +149,7 @@ func (c *conn) connect() error {
 	// Clear stale credentials and request fresh ones via AppleScript.
 	c.cookie = ""
 	c.key = ""
-	cookie, key, authErr := requestCookieAndKey()
+	cookie, key, authErr := requestCookieAndKey(c.name())
 	if authErr != nil {
 		return fmt.Errorf("iTerm2 auth: %w", authErr)
 	}

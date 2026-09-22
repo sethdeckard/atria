@@ -12,17 +12,41 @@ import (
 
 // Client implements terminal.Backend using the tmux CLI.
 type Client struct {
-	tmuxPath      string
-	launchSession string
+	tmuxPath        string
+	launchSession   string
+	fallbackSession string
 }
 
-// NewClient creates a new tmux Client. Empty tmuxPath defaults to "tmux".
-// Empty launchSession means "use the current tmux session when inside tmux".
-func NewClient(tmuxPath, launchSession string) *Client {
-	if tmuxPath == "" {
-		tmuxPath = "tmux"
+// DefaultFallbackSession names the detached session NewSession creates when
+// not inside tmux and Options.FallbackSession is empty.
+const DefaultFallbackSession = "libatria"
+
+// Options configures a Client. The zero value uses the tmux on PATH, launches
+// into the current session when inside tmux, and otherwise into a detached
+// session named DefaultFallbackSession.
+type Options struct {
+	// Path is the tmux binary; empty means "tmux" resolved on PATH.
+	Path string
+	// LaunchSession, when set, is where NewSession opens windows regardless
+	// of the environment.
+	LaunchSession string
+	// FallbackSession is the detached session used when LaunchSession is
+	// empty and the caller isn't inside tmux. Empty means
+	// DefaultFallbackSession. Users attach to it with tmux attach -t <name>.
+	FallbackSession string
+}
+
+// NewClient creates a tmux Client from opts.
+func NewClient(opts Options) *Client {
+	path := opts.Path
+	if path == "" {
+		path = "tmux"
 	}
-	return &Client{tmuxPath: tmuxPath, launchSession: launchSession}
+	fallback := opts.FallbackSession
+	if fallback == "" {
+		fallback = DefaultFallbackSession
+	}
+	return &Client{tmuxPath: path, launchSession: opts.LaunchSession, fallbackSession: fallback}
 }
 
 // run executes tmux with the given arguments and returns stdout.
@@ -90,7 +114,7 @@ func (c *Client) targetSession() (string, error) {
 			return session, nil
 		}
 	}
-	return "atria", nil
+	return c.fallbackSession, nil
 }
 
 func sessionTarget(session string) string {
@@ -192,6 +216,45 @@ func (c *Client) SendText(sessionID, text string) error {
 	return err
 }
 
+// tmuxKeyNames maps named keys to tmux send-keys key names. Printable runes
+// are sent literally instead.
+var tmuxKeyNames = map[terminal.Key]string{
+	terminal.KeyEnter:     "Enter",
+	terminal.KeyEscape:    "Escape",
+	terminal.KeyTab:       "Tab",
+	terminal.KeyBackTab:   "BTab",
+	terminal.KeyBackspace: "BSpace",
+	terminal.KeyUp:        "Up",
+	terminal.KeyDown:      "Down",
+	terminal.KeyLeft:      "Left",
+	terminal.KeyRight:     "Right",
+	terminal.KeyCtrlC:     "C-c",
+	terminal.KeyCtrlD:     "C-d",
+	terminal.KeySpace:     "Space",
+}
+
+// SendKey sends a named key with tmux's own key names, because send-keys -l
+// is not reliable for control bytes. Printable runes go through -l as text.
+func (c *Client) SendKey(sessionID string, key terminal.Key) error {
+	if name, ok := tmuxKeyNames[key]; ok {
+		_, err := c.run("send-keys", "-t", sessionID, name)
+		return err
+	}
+	seq := key.Sequence()
+	if seq == "" {
+		return fmt.Errorf("unknown key %q", string(key))
+	}
+	if seq == ";" {
+		// tmux splits its argv into commands on a bare or trailing ";"
+		// before send-keys sees it, so a plain semicolon is silently
+		// dropped. The documented escape is "\;", which the parser turns
+		// back into a literal semicolon.
+		seq = `\;`
+	}
+	_, err := c.run("send-keys", "-t", sessionID, "-l", seq)
+	return err
+}
+
 // RunCommand sends a command string followed by Enter to a tmux pane.
 func (c *Client) RunCommand(sessionID, cmd string) error {
 	if _, err := c.run("send-keys", "-t", sessionID, "-l", cmd); err != nil {
@@ -270,3 +333,10 @@ func (c *Client) GetVar(sessionID, varName string) (string, error) {
 func (c *Client) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
 	return 0, fmt.Errorf("tmux backend does not support output monitoring")
 }
+
+// Compile-time checks for the interfaces the tmux backend implements.
+var (
+	_ terminal.Backend      = (*Client)(nil)
+	_ terminal.StyledReader = (*Client)(nil)
+	_ terminal.KeySender    = (*Client)(nil)
+)

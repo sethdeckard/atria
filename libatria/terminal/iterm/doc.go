@@ -7,8 +7,8 @@
 // connection and are removed from this process's environment once read so
 // child processes don't inherit them. The client first connects with any
 // credentials it has; if the handshake returns 401, it requests credentials
-// through an AppleScript dialog unless SetNoPrompt(true) was called. Suppress
-// the dialog whenever the caller is a TUI or has no user at the keyboard.
+// through an AppleScript dialog unless Options.NoPrompt is set. Set it
+// whenever the caller is a TUI or has no user at the keyboard.
 // With prompting disabled and no valid credentials, connecting requires
 // iTerm2's automation auth to be disabled by creating
 // ~/.config/iterm2/disable-automation-auth.

@@ -2,6 +2,7 @@ package pty
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -238,8 +239,11 @@ func (c *Client) Resize(cols, rows int) {
 	}
 }
 
-// Close cleans up all sessions (both live and exited).
-func (c *Client) Close() {
+// Close cleans up all sessions (both live and exited): each PTY is closed and
+// its process sent SIGTERM, escalating to SIGKILL if the session's reader has
+// not finished within two seconds. Cleanup is best-effort and always returns
+// nil; a process that ignores both signals is not reported.
+func (c *Client) Close() error {
 	c.mu.Lock()
 	sessions := make([]*session, 0, len(c.sessions))
 	for _, s := range c.sessions {
@@ -250,7 +254,29 @@ func (c *Client) Close() {
 	for _, s := range sessions {
 		cleanupSession(s)
 	}
+	return nil
 }
+
+// ConsumeBell reports whether the session rang its bell since the last plain
+// ReadScreen or ConsumeBell, and clears the flag. It implements
+// terminal.BellSource for callers that read only the styled screen. An unknown
+// session reports false.
+func (c *Client) ConsumeBell(sessionID string) bool {
+	s, err := c.getSession(sessionID)
+	if err != nil {
+		return false
+	}
+	return s.takeBell()
+}
+
+// Compile-time checks for the optional interfaces the PTY backend implements.
+var (
+	_ terminal.Backend      = (*Client)(nil)
+	_ terminal.StyledReader = (*Client)(nil)
+	_ terminal.Resizer      = (*Client)(nil)
+	_ terminal.BellSource   = (*Client)(nil)
+	_ io.Closer             = (*Client)(nil)
+)
 
 // cleanupSession is best-effort and idempotent — safe to call on
 // already-exited or previously-cleaned sessions. Errors from

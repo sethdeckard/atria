@@ -139,15 +139,20 @@ func countBells(data []byte, inOSC *bool, escPending *bool) int {
 	return bells
 }
 
+// takeBell reports whether a bell is pending and clears the flag.
+func (s *session) takeBell() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	bell := s.bellPending
+	s.bellPending = false
+	return bell
+}
+
 // readScreen returns the last N lines from the vt10x screen buffer.
 // If a bell is pending, it prepends \x07 so HasBell() in the monitor works.
 func (s *session) readScreen(lines int) string {
 	content := s.termString()
-
-	s.mu.Lock()
-	bell := s.bellPending
-	s.bellPending = false
-	s.mu.Unlock()
+	bell := s.takeBell()
 
 	// Split into lines and take the last N
 	allLines := strings.Split(content, "\n")

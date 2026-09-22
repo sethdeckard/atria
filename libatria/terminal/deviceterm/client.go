@@ -20,13 +20,36 @@ const (
 	envShimDir = "DEVICETERM_SHIM_DIR" // per-session bin dir holding the deviceterm CLI
 )
 
-// Reasons shown in settings when the backend is enabled but not active.
-// They render verbatim via backendStatusLabel, so keep them short.
+// DefaultProgramName is how the reason text refers to the caller when
+// Options.ProgramName is empty.
+const DefaultProgramName = "this program"
+
+// Reasons returned from Available when the backend is enabled but not active.
+// Callers show them verbatim, so they stay short. The two that name the
+// caller are built by automationTabReason and unrecognizedReason.
 const (
-	automationTabReason = "open an Automation tab (Shell ▸ Open Automation Tab, ⇧⌘T) and run atria there"
-	unrecognizedReason  = "not recognized as a DeviceTerm session; run atria directly in an Automation tab, not under tmux"
-	tooOldReason        = "requires DeviceTerm 0.11.0 or later"
+	automationTabReasonFmt = "open an Automation tab (Shell ▸ Open Automation Tab, ⇧⌘T) and run %s there"
+	unrecognizedReasonFmt  = "not recognized as a DeviceTerm session; run %s directly in an Automation tab, not under tmux"
+	tooOldReason           = "requires DeviceTerm 0.11.0 or later"
 )
+
+func (c *Client) automationTabReason() string {
+	return fmt.Sprintf(automationTabReasonFmt, c.programName)
+}
+
+func (c *Client) unrecognizedReason() string {
+	return fmt.Sprintf(unrecognizedReasonFmt, c.programName)
+}
+
+// Options configures a Client. The zero value finds deviceterm on PATH (then
+// under $DEVICETERM_SHIM_DIR) and refers to the caller as DefaultProgramName.
+type Options struct {
+	// Path is the deviceterm binary; empty means "deviceterm".
+	Path string
+	// ProgramName is how the Automation-tab reason text refers to the
+	// caller, as in "run atria there". Empty means DefaultProgramName.
+	ProgramName string
+}
 
 // Client implements terminal.Backend using the deviceterm CLI.
 //
@@ -35,6 +58,7 @@ const (
 // spawned as a direct child process and the environment is inherited intact.
 type Client struct {
 	devicetermPath string
+	programName    string
 	selfSession    string // $DEVICETERM_SESSION, read in Available
 
 	// runFn replaces the subprocess call in tests. Nil means exec.
@@ -44,12 +68,17 @@ type Client struct {
 	cwd map[string]string // pane id -> terminal.cwd from the last ListSessions
 }
 
-// NewClient creates a new DeviceTerm Client. Empty devicetermPath defaults to "deviceterm".
-func NewClient(devicetermPath string) *Client {
-	if devicetermPath == "" {
-		devicetermPath = "deviceterm"
+// NewClient creates a DeviceTerm Client from opts.
+func NewClient(opts Options) *Client {
+	path := opts.Path
+	if path == "" {
+		path = "deviceterm"
 	}
-	return &Client{devicetermPath: devicetermPath, cwd: map[string]string{}}
+	name := opts.ProgramName
+	if name == "" {
+		name = DefaultProgramName
+	}
+	return &Client{devicetermPath: path, programName: name, cwd: map[string]string{}}
 }
 
 // CLIError is a typed failure decoded from the CLI's JSON error envelope.
@@ -149,7 +178,7 @@ func parseSessionReport(data []byte) (sessionReport, error) {
 // outside any DeviceTerm tab (or with the process ancestry broken, as under
 // tmux), where id is omitted; and daemon unreachable, a typed error. A CLI
 // older than 0.11.0 has no session verb and fails with a usage error.
-func grantState(report sessionReport, err error) string {
+func (c *Client) grantState(report sessionReport, err error) string {
 	if err != nil {
 		var ce *CLIError
 		if errors.As(err, &ce) {
@@ -157,7 +186,7 @@ func grantState(report sessionReport, err error) string {
 			case ce.Code == "cli.invalidUsage":
 				return tooOldReason
 			case isUngranted(ce.Code):
-				return automationTabReason
+				return c.automationTabReason()
 			}
 			return "DeviceTerm unreachable: " + ce.Code
 		}
@@ -167,9 +196,9 @@ func grantState(report sessionReport, err error) string {
 		return ""
 	}
 	if report.ID == "" {
-		return unrecognizedReason
+		return c.unrecognizedReason()
 	}
-	return automationTabReason
+	return c.automationTabReason()
 }
 
 // checkGrant asks the daemon whether this session holds an automation grant.
@@ -181,7 +210,7 @@ func (c *Client) checkGrant() error {
 	if err == nil {
 		report, err = parseSessionReport(out)
 	}
-	if reason := grantState(report, err); reason != "" {
+	if reason := c.grantState(report, err); reason != "" {
 		return errors.New(reason)
 	}
 	return nil

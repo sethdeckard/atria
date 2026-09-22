@@ -53,3 +53,57 @@ type StyledReader interface {
 	// SGR escape sequences (colors, bold, italic, underline, reverse) intact.
 	ReadScreenStyled(sessionID string, lines int) (string, error)
 }
+
+// Optional interfaces. A Backend may implement any of these; callers
+// type-assert and degrade when the assertion fails. CompositeBackend
+// implements the routing and reporting interfaces (all but Invalidator);
+// CachedBackend forwards them and adds Invalidator, so a caller holding either
+// can assert once and stop worrying about which backend owns a session.
+//
+// Closing is expressed with io.Closer rather than a local interface.
+
+// Resizer is implemented by backends whose sessions have a size the caller
+// controls. The PTY backend implements it; terminal applications size their
+// own panes.
+type Resizer interface {
+	Resize(cols, rows int)
+}
+
+// SourceLauncher is implemented by aggregating backends that can launch on a
+// specific member, identified by its source label ("pty", "tmux", ...).
+type SourceLauncher interface {
+	NewSessionOn(source string) (string, error)
+}
+
+// Invalidator is implemented by caching backends. Call it after a mutation
+// (a launch, a removed integration) so the next ListSessions refetches.
+type Invalidator interface {
+	Invalidate()
+}
+
+// FailureReporter is implemented by aggregating backends that can say which
+// integration sources failed during the most recent ListSessions call that
+// itself returned without error (a primary failure returns early and leaves
+// the previous report in place). A caller that tracks sessions should keep
+// those belonging to a failed source rather than treat their absence as an
+// exit.
+type FailureReporter interface {
+	FailedSources() []string
+}
+
+// PrimaryReporter is implemented by aggregating backends and names the source
+// whose sessions are listed unprefixed and that NewSession launches on.
+type PrimaryReporter interface {
+	PrimarySource() string
+}
+
+// BellSource is implemented by backends that track the terminal bell
+// themselves. ConsumeBell reports whether the session rang its bell since the
+// last time anyone asked and clears the flag. The PTY backend's plain
+// ReadScreen already consumes the flag and prefixes "\x07" to its output; its
+// styled read leaves the flag alone because a BEL in display output would
+// ring the viewer's own terminal. ConsumeBell exists for callers that read
+// only the styled screen and still need the bell.
+type BellSource interface {
+	ConsumeBell(sessionID string) bool
+}

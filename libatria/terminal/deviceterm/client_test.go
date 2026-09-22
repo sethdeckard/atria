@@ -7,14 +7,14 @@ import (
 )
 
 func TestNewClientDefaults(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	if c.devicetermPath != "deviceterm" {
 		t.Errorf("devicetermPath = %q, want %q", c.devicetermPath, "deviceterm")
 	}
 }
 
 func TestNewClientCustomPath(t *testing.T) {
-	c := NewClient("/opt/bin/deviceterm")
+	c := NewClient(Options{Path: "/opt/bin/deviceterm"})
 	if c.devicetermPath != "/opt/bin/deviceterm" {
 		t.Errorf("devicetermPath = %q, want %q", c.devicetermPath, "/opt/bin/deviceterm")
 	}
@@ -65,18 +65,18 @@ func TestGrantState(t *testing.T) {
 		want   string
 	}{
 		{"granted", sessionReport{ID: "s1", Role: "automation", AutomationGrant: true}, nil, ""},
-		{"ungranted in tab", sessionReport{ID: "s1", Role: "agent"}, nil, automationTabReason},
-		{"automation role without grant is still ungranted", sessionReport{ID: "s1", Role: "automation"}, nil, automationTabReason},
-		{"out of tab", sessionReport{}, nil, unrecognizedReason},
+		{"ungranted in tab", sessionReport{ID: "s1", Role: "agent"}, nil, defaultAutomationTabReason},
+		{"automation role without grant is still ungranted", sessionReport{ID: "s1", Role: "automation"}, nil, defaultAutomationTabReason},
+		{"out of tab", sessionReport{}, nil, defaultUnrecognizedReason},
 		{"daemon unreachable", sessionReport{}, &CLIError{Code: "transport.unavailable", Message: "no daemon"}, "DeviceTerm unreachable: transport.unavailable"},
 		{"daemon timeout", sessionReport{}, &CLIError{Code: "transport.timeout"}, "DeviceTerm unreachable: transport.timeout"},
 		{"pre-0.11.0 CLI has no session verb", sessionReport{}, &CLIError{Code: "cli.invalidUsage", Message: "unknown verb"}, tooOldReason},
-		{"typed unauthorized maps to the Automation-tab reason", sessionReport{}, &CLIError{Code: "session.unauthorized"}, automationTabReason},
+		{"typed unauthorized maps to the Automation-tab reason", sessionReport{}, &CLIError{Code: "session.unauthorized"}, defaultAutomationTabReason},
 		{"untyped error surfaces as is", sessionReport{}, errors.New("deviceterm session show failed: boom"), "deviceterm session show failed: boom"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := grantState(tt.report, tt.err); got != tt.want {
+			if got := NewClient(Options{}).grantState(tt.report, tt.err); got != tt.want {
 				t.Errorf("grantState() = %q, want %q", got, tt.want)
 			}
 		})
@@ -329,7 +329,7 @@ const (
 
 func newFakeClient(t *testing.T, responses map[string]func() ([]byte, error)) (*Client, *fakeRun) {
 	f := &fakeRun{t: t, responses: responses}
-	c := NewClient("")
+	c := NewClient(Options{})
 	c.selfSession = "self"
 	c.runFn = f.run
 	return c, f
@@ -364,8 +364,8 @@ func TestListSessionsFailsWhenGrantLost(t *testing.T) {
 		session    func() ([]byte, error)
 		wantReason string
 	}{
-		{"grant revoked", ok(ungranted), automationTabReason},
-		{"ancestry broken", ok(outOfTab), unrecognizedReason},
+		{"grant revoked", ok(ungranted), defaultAutomationTabReason},
+		{"ancestry broken", ok(outOfTab), defaultUnrecognizedReason},
 		{"daemon unreachable", typed("transport.unavailable"), "DeviceTerm unreachable: transport.unavailable"},
 		{"old CLI", typed("cli.invalidUsage"), tooOldReason},
 	}
@@ -442,8 +442,8 @@ func TestCheckGrantClassifiesStates(t *testing.T) {
 		want    string // "" means granted
 	}{
 		{"granted", ok(granted), ""},
-		{"ungranted", ok(ungranted), automationTabReason},
-		{"out of tab", ok(outOfTab), unrecognizedReason},
+		{"ungranted", ok(ungranted), defaultAutomationTabReason},
+		{"out of tab", ok(outOfTab), defaultUnrecognizedReason},
 		{"unreachable", typed("transport.unavailable"), "DeviceTerm unreachable: transport.unavailable"},
 		{"malformed report", ok(`{"automationGrant":`), "parse deviceterm session show: unexpected end of JSON input"},
 	}
@@ -507,7 +507,7 @@ func TestVerb(t *testing.T) {
 }
 
 func TestGetVarPath(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	c.cwd = map[string]string{"p1": "/Users/test/projects/atria", "p2": ""}
 
 	got, err := c.GetVar("p1", "path")
@@ -525,19 +525,37 @@ func TestGetVarPath(t *testing.T) {
 }
 
 func TestGetVarUnsupported(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	if _, err := c.GetVar("p1", "title"); err == nil {
 		t.Error("expected error for unsupported variable")
 	}
 }
 
 func TestMonitorOutputUnsupported(t *testing.T) {
-	c := NewClient("")
+	c := NewClient(Options{})
 	pid, err := c.MonitorOutput("p1", "/tmp/log", "pattern")
 	if err == nil {
 		t.Error("expected error for unsupported MonitorOutput")
 	}
 	if pid != 0 {
 		t.Errorf("pid = %d, want 0", pid)
+	}
+}
+
+var (
+	defaultAutomationTabReason = NewClient(Options{}).automationTabReason()
+	defaultUnrecognizedReason  = NewClient(Options{}).unrecognizedReason()
+)
+
+func TestReasonsNameTheProgram(t *testing.T) {
+	c := NewClient(Options{ProgramName: "atria"})
+	if got := c.automationTabReason(); got != "open an Automation tab (Shell ▸ Open Automation Tab, ⇧⌘T) and run atria there" {
+		t.Fatalf("automationTabReason = %q", got)
+	}
+	if got := c.unrecognizedReason(); !strings.Contains(got, "run atria directly") {
+		t.Fatalf("unrecognizedReason = %q", got)
+	}
+	if got := NewClient(Options{}).automationTabReason(); !strings.Contains(got, "run this program there") {
+		t.Fatalf("default reason = %q", got)
 	}
 }

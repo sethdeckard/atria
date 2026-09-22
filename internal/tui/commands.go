@@ -45,9 +45,7 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType agent.Ty
 	return func() tea.Msg {
 		var sessionID string
 		var err error
-		if ns, ok := backend.(interface {
-			NewSessionOn(string) (string, error)
-		}); ok {
+		if ns, ok := backend.(terminal.SourceLauncher); ok {
 			sessionID, err = ns.NewSessionOn(source)
 		} else {
 			sessionID, err = backend.NewSession()
@@ -347,12 +345,13 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 
 		switch name {
 		case "iterm2":
-			it := iterm.NewClient()
-			it.SetNoPrompt(true) // suppress AppleScript dialogs during TUI
+			// Never prompt from inside the TUI: an AppleScript dialog over the
+			// alt screen is what NoPrompt exists to prevent.
+			it := iterm.NewClient(iterm.Options{NoPrompt: true, ClientName: "atria"})
 			probeErr = it.Available()
 			backend = it
 		case "tmux":
-			tm := tmux.NewClient(cfg.TmuxPath, cfg.TmuxSession)
+			tm := tmux.NewClient(tmux.Options{Path: cfg.TmuxPath, LaunchSession: cfg.TmuxSession, FallbackSession: "atria"})
 			probeErr = tm.Available()
 			backend = tm
 		case "kitty":
@@ -364,7 +363,7 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			probeErr = wt.Available()
 			backend = wt
 		case "deviceterm":
-			dt := devicetermbackend.NewClient(cfg.DeviceTermPath)
+			dt := devicetermbackend.NewClient(devicetermbackend.Options{Path: cfg.DeviceTermPath, ProgramName: "atria"})
 			probeErr = dt.Available()
 			backend = dt
 		}

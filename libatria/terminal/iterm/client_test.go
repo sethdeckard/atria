@@ -1,6 +1,8 @@
 package iterm
 
 import (
+	"net/http"
+	"strings"
 	"testing"
 
 	pb "github.com/sethdeckard/atria/libatria/terminal/iterm/proto"
@@ -8,21 +10,21 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	c := NewClient()
+	c := NewClient(Options{})
 	if c.socketPath != "" {
 		t.Errorf("expected empty socketPath, got %q", c.socketPath)
 	}
 }
 
 func TestNewClientWithSocket(t *testing.T) {
-	c := NewClient("/tmp/test-socket")
+	c := NewClient(Options{SocketPath: "/tmp/test-socket"})
 	if c.socketPath != "/tmp/test-socket" {
 		t.Errorf("expected socketPath %q, got %q", "/tmp/test-socket", c.socketPath)
 	}
 }
 
 func TestAvailableErrorBadSocket(t *testing.T) {
-	c := NewClient("/nonexistent/socket/path")
+	c := NewClient(Options{SocketPath: "/nonexistent/socket/path"})
 	err := c.Available()
 	if err == nil {
 		t.Fatal("expected error when socket does not exist")
@@ -138,7 +140,7 @@ func TestProtobufRoundTrip(t *testing.T) {
 }
 
 func TestMonitorOutputNotSupported(t *testing.T) {
-	c := NewClient()
+	c := NewClient(Options{})
 	_, err := c.MonitorOutput("sess-1", "/tmp/log", "pattern")
 	if err == nil {
 		t.Fatal("expected error for unsupported MonitorOutput")
@@ -360,4 +362,39 @@ func TestUnquoteJSON(t *testing.T) {
 			t.Errorf("unquoteJSON(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
+}
+
+func TestNewClientNamesItselfToITerm(t *testing.T) {
+	c := NewClient(Options{})
+	if c.clientName != DefaultClientName {
+		t.Fatalf("default client name = %q, want %q", c.clientName, DefaultClientName)
+	}
+	c = NewClient(Options{ClientName: "atria", NoPrompt: true})
+	if c.clientName != "atria" || !c.noPrompt {
+		t.Fatalf("options not applied: %+v", c)
+	}
+	cn := &conn{clientName: "atria"}
+	h := cn.buildHeaders()
+	// The header keys are set as literal lowercase map keys (iTerm2 reads
+	// them that way), so look them up case-insensitively rather than with
+	// Get, which canonicalizes the key.
+	if got := rawHeader(h, "x-iterm2-advisory-name"); got != "atria" {
+		t.Fatalf("advisory name = %q, want atria", got)
+	}
+	if got := rawHeader(h, "x-iterm2-library-version"); got != "go-atria 1.0" {
+		t.Fatalf("library version = %q, want go-atria 1.0", got)
+	}
+	if got := rawHeader((&conn{}).buildHeaders(), "x-iterm2-advisory-name"); got != DefaultClientName {
+		t.Fatalf("default advisory name = %q, want %q", got, DefaultClientName)
+	}
+}
+
+// rawHeader finds a header by case-insensitive key without canonicalizing.
+func rawHeader(h http.Header, name string) string {
+	for k, v := range h {
+		if strings.EqualFold(k, name) && len(v) == 1 {
+			return v[0]
+		}
+	}
+	return ""
 }

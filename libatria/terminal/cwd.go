@@ -39,7 +39,7 @@ func cwdFromGetVar(backend Backend, session Session, watchDirs []string) string 
 	if cwd == "" {
 		return ""
 	}
-	if isUnderWatchDir(cwd, watchDirs) {
+	if UnderAnyDir(cwd, watchDirs) {
 		return cwd
 	}
 	return ""
@@ -69,7 +69,7 @@ func cwdFromLsof(tty string, watchDirs []string) string {
 		for _, line := range strings.Split(string(lsofOut), "\n") {
 			if strings.HasPrefix(line, "n") {
 				dir := line[1:]
-				if isUnderWatchDir(dir, watchDirs) {
+				if UnderAnyDir(dir, watchDirs) {
 					return dir
 				}
 			}
@@ -94,13 +94,16 @@ func cwdFromNameMatch(name string, projectDirs []string) string {
 	return ""
 }
 
-// isUnderWatchDir checks if the given path is under one of the watch directories.
-func isUnderWatchDir(path string, watchDirs []string) bool {
+// UnderAnyDir reports whether path is one of dirs or lies beneath one of them,
+// comparing absolute paths. An empty dirs matches nothing. A dir of "/"
+// currently matches only "/" itself: descendant matching fails because the
+// prefix it builds is "//".
+func UnderAnyDir(path string, dirs []string) bool {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
-	for _, wd := range watchDirs {
+	for _, wd := range dirs {
 		absWD, err := filepath.Abs(wd)
 		if err != nil {
 			continue

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -325,7 +326,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chat.setSize(msg.Width, msg.Height)
 		m.adjustScroll()
 		m.adjustBrowserScroll()
-		if r, ok := m.backend.(interface{ Resize(int, int) }); ok {
+		if r, ok := m.backend.(terminal.Resizer); ok {
 			r.Resize(msg.Width, msg.Height)
 		}
 		m.termView.width = msg.Width
@@ -463,7 +464,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			// Invalidate cache so next tick picks up new sessions.
-			if cb, ok := m.backend.(interface{ Invalidate() }); ok {
+			if cb, ok := m.backend.(terminal.Invalidator); ok {
 				cb.Invalidate()
 			}
 			// Rebuild settings/setup items.
@@ -1805,7 +1806,7 @@ func (m Model) handleSettingsEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		// Apply PTY dimension changes to the live backend.
 		if m.cfg.PtyCols != prevCols || m.cfg.PtyRows != prevRows {
-			if r, ok := m.ptyClient.(interface{ Resize(int, int) }); ok {
+			if r, ok := m.ptyClient.(terminal.Resizer); ok {
 				r.Resize(m.cfg.PtyCols, m.cfg.PtyRows)
 			}
 		}
@@ -1816,7 +1817,7 @@ func (m Model) handleSettingsEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			rm.cfg.PtyRows = prevRows
 			rm.cfg.TmuxSession = prevTmuxSession
 			// Revert live PTY dimensions on save failure.
-			if r, ok := rm.ptyClient.(interface{ Resize(int, int) }); ok {
+			if r, ok := rm.ptyClient.(terminal.Resizer); ok {
 				r.Resize(prevCols, prevRows)
 			}
 		})
@@ -2286,7 +2287,7 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 	cmds = append(cmds, startMonitor(m.backend, msg.SessionID, logPath,
 		monitorPatterns, msg.ProjectDir))
 	cmds = append(cmds, func() tea.Msg {
-		if cb, ok := m.backend.(interface{ Invalidate() }); ok {
+		if cb, ok := m.backend.(terminal.Invalidator); ok {
 			cb.Invalidate()
 		}
 		return nil
@@ -2641,8 +2642,8 @@ func (m Model) Cleanup() {
 			_ = syscall.Kill(pid, syscall.SIGTERM)
 		}
 	}
-	if cl, ok := m.backend.(interface{ Close() }); ok {
-		cl.Close()
+	if cl, ok := m.backend.(io.Closer); ok {
+		cl.Close() //nolint:errcheck // best-effort shutdown; nothing to do with a failure here
 	}
 }
 

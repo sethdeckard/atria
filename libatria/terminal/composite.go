@@ -1,7 +1,9 @@
 package terminal
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 )
@@ -203,6 +205,33 @@ func (c *CompositeBackend) ReadScreen(sessionID string, lines int) (string, erro
 	return b.ReadScreen(id, lines)
 }
 
+// SendKey routes to the correct backend based on session ID prefix, using the
+// owner's KeySender when it has one and the key's byte sequence otherwise.
+func (c *CompositeBackend) SendKey(sessionID string, key Key) error {
+	c.mu.RLock()
+	b, id, err := c.route(sessionID)
+	c.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	return SendKey(b, id, key)
+}
+
+// ConsumeBell routes to the owning backend's BellSource. A backend without
+// bell state reports false.
+func (c *CompositeBackend) ConsumeBell(sessionID string) bool {
+	c.mu.RLock()
+	b, id, err := c.route(sessionID)
+	c.mu.RUnlock()
+	if err != nil {
+		return false
+	}
+	if bs, ok := b.(BellSource); ok {
+		return bs.ConsumeBell(id)
+	}
+	return false
+}
+
 // ReadScreenStyled routes to the correct backend based on session ID prefix,
 // preferring its styled-read path and falling back to plain ReadScreen when the
 // owning backend does not implement StyledReader.
@@ -246,29 +275,37 @@ func (c *CompositeBackend) MonitorOutput(sessionID, logPath, patterns string) (i
 func (c *CompositeBackend) Resize(cols, rows int) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if r, ok := c.primary.(interface{ Resize(int, int) }); ok {
+	if r, ok := c.primary.(Resizer); ok {
 		r.Resize(cols, rows)
 	}
 	for _, integ := range c.integrations {
-		if r, ok := integ.Backend.(interface{ Resize(int, int) }); ok {
+		if r, ok := integ.Backend.(Resizer); ok {
 			r.Resize(cols, rows)
 		}
 	}
 }
 
-// Close forwards to all backends that support closing (primary + integrations).
-// This ensures PTY sessions are cleaned up even when PTY is an integration.
-func (c *CompositeBackend) Close() {
+// Close closes every backend that implements io.Closer (primary and
+// integrations), so PTY sessions are cleaned up even when PTY is an
+// integration. Every backend is closed regardless of earlier failures; the
+// returned error joins whatever they reported.
+func (c *CompositeBackend) Close() error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if cl, ok := c.primary.(interface{ Close() }); ok {
-		cl.Close()
-	}
-	for _, integ := range c.integrations {
-		if cl, ok := integ.Backend.(interface{ Close() }); ok {
-			cl.Close()
+	var errs []error
+	if cl, ok := c.primary.(io.Closer); ok {
+		if err := cl.Close(); err != nil {
+			errs = append(errs, err)
 		}
 	}
+	for _, integ := range c.integrations {
+		if cl, ok := integ.Backend.(io.Closer); ok {
+			if err := cl.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", integ.Source, err))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // PrimarySource returns the source label for sessions from the primary backend.
@@ -304,15 +341,16 @@ func (c *CompositeBackend) AddIntegration(integ Integration) {
 }
 
 // RemoveIntegration removes integrations matching the given prefix. Thread-safe.
-// If the removed backend implements a Close() method, it is called.
+// If the removed backend implements io.Closer, it is closed; a close error is
+// not reported because the backend is gone from the composite either way.
 func (c *CompositeBackend) RemoveIntegration(prefix string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	filtered := c.integrations[:0]
 	for _, integ := range c.integrations {
 		if integ.Prefix == prefix {
-			if closer, ok := integ.Backend.(interface{ Close() }); ok {
-				closer.Close()
+			if closer, ok := integ.Backend.(io.Closer); ok {
+				closer.Close() //nolint:errcheck // best-effort; the integration is removed regardless
 			}
 		} else {
 			filtered = append(filtered, integ)
@@ -356,5 +394,14 @@ func (c *CompositeBackend) Integrations() []Integration {
 // Compile-time check that CompositeBackend implements Backend.
 var _ Backend = (*CompositeBackend)(nil)
 
-// Compile-time check that CompositeBackend supports styled reads.
-var _ StyledReader = (*CompositeBackend)(nil)
+// Compile-time checks for the optional interfaces the composite implements.
+var (
+	_ StyledReader    = (*CompositeBackend)(nil)
+	_ Resizer         = (*CompositeBackend)(nil)
+	_ SourceLauncher  = (*CompositeBackend)(nil)
+	_ FailureReporter = (*CompositeBackend)(nil)
+	_ PrimaryReporter = (*CompositeBackend)(nil)
+	_ KeySender       = (*CompositeBackend)(nil)
+	_ BellSource      = (*CompositeBackend)(nil)
+	_ io.Closer       = (*CompositeBackend)(nil)
+)

@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"fmt"
+	"io"
 	"sync"
 	"time"
 )
@@ -15,12 +16,12 @@ type CachedBackend struct {
 	mu       sync.Mutex
 }
 
-// NewCachedBackend creates a CachedBackend wrapping inner with the given TTL in seconds.
-func NewCachedBackend(inner Backend, ttlSeconds int) *CachedBackend {
-	return &CachedBackend{
-		inner: inner,
-		ttl:   time.Duration(ttlSeconds) * time.Second,
-	}
+// NewCachedBackend wraps inner and serves ListSessions from a cache for ttl
+// after each fetch. A zero or negative ttl disables caching. Backend
+// operations delegate to inner, with fallbacks for optional interfaces inner
+// lacks; Invalidate clears this wrapper's cache.
+func NewCachedBackend(inner Backend, ttl time.Duration) *CachedBackend {
+	return &CachedBackend{inner: inner, ttl: ttl}
 }
 
 // ListSessions returns cached sessions if TTL hasn't expired, otherwise fetches fresh.
@@ -62,9 +63,7 @@ func (c *CachedBackend) NewSession() (string, error) {
 
 // NewSessionOn delegates to the inner backend's NewSessionOn if it supports it.
 func (c *CachedBackend) NewSessionOn(source string) (string, error) {
-	if ns, ok := c.inner.(interface {
-		NewSessionOn(string) (string, error)
-	}); ok {
+	if ns, ok := c.inner.(SourceLauncher); ok {
 		return ns.NewSessionOn(source)
 	}
 	return "", fmt.Errorf("inner backend does not support NewSessionOn")
@@ -99,6 +98,38 @@ func (c *CachedBackend) ReadScreenStyled(sessionID string, lines int) (string, e
 	return c.inner.ReadScreen(sessionID, lines)
 }
 
+// SendKey forwards to the inner backend's KeySender, or sends the key's byte
+// sequence when it has none.
+func (c *CachedBackend) SendKey(sessionID string, key Key) error {
+	return SendKey(c.inner, sessionID, key)
+}
+
+// ConsumeBell forwards to the inner backend's BellSource; false when it has none.
+func (c *CachedBackend) ConsumeBell(sessionID string) bool {
+	if bs, ok := c.inner.(BellSource); ok {
+		return bs.ConsumeBell(sessionID)
+	}
+	return false
+}
+
+// FailedSources forwards to the inner backend's FailureReporter; nil when it
+// has none.
+func (c *CachedBackend) FailedSources() []string {
+	if fr, ok := c.inner.(FailureReporter); ok {
+		return fr.FailedSources()
+	}
+	return nil
+}
+
+// PrimarySource forwards to the inner backend's PrimaryReporter; "" when it
+// has none.
+func (c *CachedBackend) PrimarySource() string {
+	if pr, ok := c.inner.(PrimaryReporter); ok {
+		return pr.PrimarySource()
+	}
+	return ""
+}
+
 // GetVar delegates to the inner backend.
 func (c *CachedBackend) GetVar(sessionID, varName string) (string, error) {
 	return c.inner.GetVar(sessionID, varName)
@@ -109,18 +140,19 @@ func (c *CachedBackend) MonitorOutput(sessionID, logPath, patterns string) (int,
 	return c.inner.MonitorOutput(sessionID, logPath, patterns)
 }
 
-// Resize forwards to the inner backend if it supports resizing (e.g. PTY backend).
+// Resize forwards to the inner backend's Resizer; a no-op when it has none.
 func (c *CachedBackend) Resize(cols, rows int) {
-	if r, ok := c.inner.(interface{ Resize(int, int) }); ok {
+	if r, ok := c.inner.(Resizer); ok {
 		r.Resize(cols, rows)
 	}
 }
 
-// Close forwards to the inner backend if it supports closing (e.g. PTY backend).
-func (c *CachedBackend) Close() {
-	if cl, ok := c.inner.(interface{ Close() }); ok {
-		cl.Close()
+// Close closes the inner backend when it implements io.Closer; nil otherwise.
+func (c *CachedBackend) Close() error {
+	if cl, ok := c.inner.(io.Closer); ok {
+		return cl.Close()
 	}
+	return nil
 }
 
 // Inner returns the wrapped backend.
@@ -131,5 +163,15 @@ func (c *CachedBackend) Inner() Backend {
 // Compile-time check that CachedBackend implements Backend.
 var _ Backend = (*CachedBackend)(nil)
 
-// Compile-time check that CachedBackend supports styled reads.
-var _ StyledReader = (*CachedBackend)(nil)
+// Compile-time checks for the optional interfaces the cache provides.
+var (
+	_ StyledReader    = (*CachedBackend)(nil)
+	_ Resizer         = (*CachedBackend)(nil)
+	_ SourceLauncher  = (*CachedBackend)(nil)
+	_ Invalidator     = (*CachedBackend)(nil)
+	_ FailureReporter = (*CachedBackend)(nil)
+	_ PrimaryReporter = (*CachedBackend)(nil)
+	_ KeySender       = (*CachedBackend)(nil)
+	_ BellSource      = (*CachedBackend)(nil)
+	_ io.Closer       = (*CachedBackend)(nil)
+)

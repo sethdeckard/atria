@@ -166,9 +166,9 @@ func TestIsUnderWatchDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isUnderWatchDir(tt.path, tt.watchDirs)
+			got := UnderAnyDir(tt.path, tt.watchDirs)
 			if got != tt.want {
-				t.Errorf("isUnderWatchDir(%q, %v) = %v, want %v", tt.path, tt.watchDirs, got, tt.want)
+				t.Errorf("UnderAnyDir(%q, %v) = %v, want %v", tt.path, tt.watchDirs, got, tt.want)
 			}
 		})
 	}

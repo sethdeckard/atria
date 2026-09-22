@@ -392,8 +392,9 @@ type closableBackend struct {
 	closeCalls int
 }
 
-func (c *closableBackend) Close() {
+func (c *closableBackend) Close() error {
 	c.closeCalls++
+	return nil
 }
 
 func TestComposite_RemoveIntegrationClosesBackend(t *testing.T) {
@@ -824,5 +825,86 @@ func TestComposite_MissingIntegrationReturnsError(t *testing.T) {
 	err = comp.SendText("pty-0", "hello")
 	if err != nil {
 		t.Fatalf("unexpected error for primary session: %v", err)
+	}
+}
+
+// bellBackend extends trackingBackend with bell state.
+type bellBackend struct {
+	trackingBackend
+	bell bool
+}
+
+func (b *bellBackend) ConsumeBell(string) bool {
+	had := b.bell
+	b.bell = false
+	return had
+}
+
+// failingCloser reports an error from Close.
+type failingCloser struct {
+	trackingBackend
+	err error
+}
+
+func (f *failingCloser) Close() error { return f.err }
+
+func TestComposite_SendKeyRoutesToOwner(t *testing.T) {
+	primary := &keySendingBackend{}
+	integ := &trackingBackend{}
+	comp := NewCompositeBackend(primary, "tmux", []Integration{
+		{Prefix: "pty:", Source: "pty", Backend: integ},
+	})
+
+	// Primary implements KeySender: gets the named key.
+	if err := comp.SendKey("%1", KeyEscape); err != nil {
+		t.Fatal(err)
+	}
+	if len(primary.keys) != 1 || primary.keys[0] != KeyEscape {
+		t.Fatalf("primary keys = %v", primary.keys)
+	}
+	// Integration doesn't: gets the byte sequence through SendText, unprefixed id.
+	if err := comp.SendKey("pty:pty-1", KeyCtrlC); err != nil {
+		t.Fatal(err)
+	}
+	if integ.lastSendID != "pty-1" || integ.lastSendText != "\x03" {
+		t.Fatalf("integration got %q/%q, want pty-1 and the ctrl-c byte", integ.lastSendID, integ.lastSendText)
+	}
+	if err := comp.SendKey("iterm:x", KeyEnter); err == nil {
+		t.Fatal("expected routing error for unknown prefix")
+	}
+}
+
+func TestComposite_ConsumeBellRoutesAndDefaultsFalse(t *testing.T) {
+	bellPTY := &bellBackend{bell: true}
+	plain := &trackingBackend{}
+	comp := NewCompositeBackend(plain, "tmux", []Integration{
+		{Prefix: "pty:", Source: "pty", Backend: bellPTY},
+	})
+	if !comp.ConsumeBell("pty:pty-1") {
+		t.Fatal("expected pending bell from pty integration")
+	}
+	if comp.ConsumeBell("pty:pty-1") {
+		t.Fatal("bell should have been consumed")
+	}
+	if comp.ConsumeBell("%1") {
+		t.Fatal("backend without bell state must report false")
+	}
+	if comp.ConsumeBell("nope:1") {
+		t.Fatal("unroutable id must report false")
+	}
+}
+
+func TestComposite_CloseJoinsErrorsAndClosesAll(t *testing.T) {
+	primary := &failingCloser{err: errors.New("primary boom")}
+	integ := &closableBackend{}
+	comp := NewCompositeBackend(primary, "iterm", []Integration{
+		{Prefix: "pty:", Source: "pty", Backend: integ},
+	})
+	err := comp.Close()
+	if err == nil || !strings.Contains(err.Error(), "primary boom") {
+		t.Fatalf("Close error = %v, want the primary's error", err)
+	}
+	if integ.closeCalls != 1 {
+		t.Fatalf("integration should still be closed after primary error, calls = %d", integ.closeCalls)
 	}
 }

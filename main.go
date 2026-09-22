@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethdeckard/atria/internal/config"
@@ -76,10 +77,11 @@ func main() {
 		switch name {
 		case "iterm2":
 			bs := tui.BackendStatus{Name: "iterm2", Enabled: true}
-			it := iterm.NewClient()
-			if os.Getenv("TERM_PROGRAM") != "iTerm.app" {
-				it.SetNoPrompt(true) // passive discovery only outside iTerm2
-			}
+			it := iterm.NewClient(iterm.Options{
+				// Passive discovery only outside iTerm2: no AppleScript dialog.
+				NoPrompt:   os.Getenv("TERM_PROGRAM") != "iTerm.app",
+				ClientName: "atria",
+			})
 			if err := it.Available(); err != nil {
 				bs.Reason = err.Error()
 				backendStatuses = append(backendStatuses, bs)
@@ -95,7 +97,7 @@ func main() {
 			backendStatuses = append(backendStatuses, bs)
 		case "tmux":
 			bs := tui.BackendStatus{Name: "tmux", Enabled: true}
-			tm := tmux.NewClient(cfg.TmuxPath, cfg.TmuxSession)
+			tm := tmux.NewClient(tmux.Options{Path: cfg.TmuxPath, LaunchSession: cfg.TmuxSession, FallbackSession: "atria"})
 			if err := tm.Available(); err != nil {
 				bs.Reason = err.Error()
 				backendStatuses = append(backendStatuses, bs)
@@ -143,7 +145,7 @@ func main() {
 			backendStatuses = append(backendStatuses, bs)
 		case "deviceterm":
 			bs := tui.BackendStatus{Name: "deviceterm", Enabled: true}
-			dt := devicetermbackend.NewClient(cfg.DeviceTermPath)
+			dt := devicetermbackend.NewClient(devicetermbackend.Options{Path: cfg.DeviceTermPath, ProgramName: "atria"})
 			if err := dt.Available(); err != nil {
 				bs.Reason = err.Error()
 				backendStatuses = append(backendStatuses, bs)
@@ -224,7 +226,7 @@ func main() {
 	if selfTTY := terminal.TTYForPID(os.Getpid()); selfTTY != "" {
 		backend.SetSelfTTY(selfTTY)
 	}
-	cached := terminal.NewCachedBackend(backend, cfg.CacheTTL)
+	cached := terminal.NewCachedBackend(backend, time.Duration(cfg.CacheTTL)*time.Second)
 
 	statusInfo := tui.StatusInfo{
 		Backends:   backendStatuses,

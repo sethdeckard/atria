@@ -6,7 +6,7 @@
 // default) must stay on for Claude Code's title escapes to reach pane_title.
 // NewSession opens a window in the configured launch session, otherwise in
 // the current tmux session when running inside tmux, otherwise in a detached
-// session named atria. FocusSession selects the window and, when running
+// session named by Options.FallbackSession. FocusSession selects the window and, when running
 // inside tmux, also attempts to switch the client to the owning session.
 //
 // SendText uses send-keys -l, with a carriage return or newline mapped to the

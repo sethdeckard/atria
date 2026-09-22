@@ -5,10 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 func TestNewClientDefaults(t *testing.T) {
-	c := NewClient("", "")
+	c := NewClient(Options{})
 	if c.tmuxPath != "tmux" {
 		t.Errorf("expected tmuxPath %q, got %q", "tmux", c.tmuxPath)
 	}
@@ -18,7 +20,7 @@ func TestNewClientDefaults(t *testing.T) {
 }
 
 func TestNewClientCustomValues(t *testing.T) {
-	c := NewClient("/usr/local/bin/tmux", "mysession")
+	c := NewClient(Options{Path: "/usr/local/bin/tmux", LaunchSession: "mysession"})
 	if c.tmuxPath != "/usr/local/bin/tmux" {
 		t.Errorf("expected tmuxPath %q, got %q", "/usr/local/bin/tmux", c.tmuxPath)
 	}
@@ -141,7 +143,7 @@ if [ "$1" = "list-panes" ]; then
 fi
 exit 0
 `)
-	c := NewClient(tmuxPath, "")
+	c := NewClient(Options{Path: tmuxPath, LaunchSession: ""})
 	sessions, err := c.ListSessions()
 	if err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
@@ -159,7 +161,7 @@ if [ "$1" = "list-panes" ]; then
 fi
 exit 0
 `)
-	c := NewClient(tmuxPath, "")
+	c := NewClient(Options{Path: tmuxPath, LaunchSession: ""})
 	_, err := c.ListSessions()
 	if err == nil {
 		t.Fatal("expected error from ListSessions")
@@ -182,7 +184,7 @@ if [ "$1" = "new-window" ] && [ "$3" = "=mysession:" ]; then
 fi
 exit 1
 `)
-	c := NewClient(tmuxPath, "mysession")
+	c := NewClient(Options{Path: tmuxPath, LaunchSession: "mysession"})
 	sessionID, err := c.NewSession()
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -217,7 +219,7 @@ fi
 exit 1
 `)
 	t.Setenv("TMUX", "/tmp/tmux-test")
-	c := NewClient(tmuxPath, "")
+	c := NewClient(Options{Path: tmuxPath, LaunchSession: ""})
 	sessionID, err := c.NewSession()
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -251,7 +253,7 @@ if [ "$1" = "new-session" ] && [ "$4" = "atria" ]; then
 fi
 exit 1
 `)
-	c := NewClient(tmuxPath, "")
+	c := NewClient(Options{Path: tmuxPath, FallbackSession: "atria"})
 	sessionID, err := c.NewSession()
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -288,7 +290,7 @@ fi
 exit 1
 `)
 	t.Setenv("TMUX", "/tmp/tmux-test")
-	c := NewClient(tmuxPath, "")
+	c := NewClient(Options{Path: tmuxPath, LaunchSession: ""})
 	if err := c.FocusSession("%42"); err != nil {
 		t.Fatalf("FocusSession() error = %v", err)
 	}
@@ -319,7 +321,7 @@ fi
 exit 1
 `)
 	t.Setenv("TMUX", "/tmp/tmux-test")
-	c := NewClient(tmuxPath, "")
+	c := NewClient(Options{Path: tmuxPath, LaunchSession: ""})
 	sessionID, err := c.NewSession()
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -342,7 +344,7 @@ exit 1
 func TestSendTextCarriageReturn(t *testing.T) {
 	// Verify that SendText with "\r" would use "Enter" key (not -l literal).
 	// We can't run tmux in tests, but we verify the Client is constructed correctly.
-	c := NewClient("", "")
+	c := NewClient(Options{})
 	// This will fail because tmux isn't running, but we're testing the code path.
 	err := c.SendText("%0", "\r")
 	if err == nil {
@@ -356,7 +358,7 @@ func TestSendTextCarriageReturn(t *testing.T) {
 }
 
 func TestMonitorOutputUnsupported(t *testing.T) {
-	c := NewClient("", "")
+	c := NewClient(Options{})
 	pid, err := c.MonitorOutput("%0", "/tmp/log", "pattern")
 	if err == nil {
 		t.Fatal("expected error from MonitorOutput")
@@ -367,9 +369,61 @@ func TestMonitorOutputUnsupported(t *testing.T) {
 }
 
 func TestGetVarUnsupportedVariable(t *testing.T) {
-	c := NewClient("", "")
+	c := NewClient(Options{})
 	_, err := c.GetVar("%0", "nonexistent")
 	if err == nil {
 		t.Fatal("expected error for unsupported variable")
+	}
+}
+
+func TestSendKeyUsesTmuxKeyNames(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := writeFakeTmux(t, `
+echo "$@" >> "`+logPath+`"
+exit 0
+`)
+	c := NewClient(Options{Path: tmuxPath})
+	for _, k := range []terminal.Key{terminal.KeyEnter, terminal.KeyEscape, terminal.KeyUp, terminal.KeyCtrlC, terminal.Key("1"), terminal.Key(";")} {
+		if err := c.SendKey("%3", k); err != nil {
+			t.Fatalf("SendKey(%q): %v", k, err)
+		}
+	}
+	if err := c.SendKey("%3", terminal.Key("bogus")); err == nil {
+		t.Fatal("expected error for unknown key")
+	}
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	want := "send-keys -t %3 Enter\nsend-keys -t %3 Escape\nsend-keys -t %3 Up\nsend-keys -t %3 C-c\nsend-keys -t %3 -l 1\nsend-keys -t %3 -l \\;\n"
+	if string(logData) != want {
+		t.Fatalf("tmux calls:\n%s\nwant:\n%s", logData, want)
+	}
+}
+
+func TestNewSessionUsesConfiguredFallbackSession(t *testing.T) {
+	t.Setenv("TMUX", "")
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := writeFakeTmux(t, `
+echo "$@" >> "`+logPath+`"
+if [ "$1" = "has-session" ]; then
+	echo "can't find session: custom" >&2
+	exit 1
+fi
+if [ "$1" = "new-session" ]; then
+	echo "%7"
+fi
+exit 0
+`)
+	c := NewClient(Options{Path: tmuxPath, FallbackSession: "custom"})
+	if _, err := c.NewSession(); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	logData, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(logData), "new-session -d -s custom") {
+		t.Fatalf("expected detached custom fallback, log:\n%s", logData)
+	}
+	if NewClient(Options{}).fallbackSession != DefaultFallbackSession {
+		t.Fatalf("default fallback should be %q", DefaultFallbackSession)
 	}
 }

@@ -3,6 +3,7 @@ package iterm
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/sethdeckard/atria/libatria/terminal"
@@ -25,11 +26,32 @@ func unquoteJSON(s string) string {
 
 //go:generate protoc --go_out=. --go_opt=paths=source_relative proto/api.proto
 
+// DefaultClientName is the name iTerm2 sees for this client when Options.ClientName is empty.
+const DefaultClientName = "libatria"
+
+// Options configures a Client. The zero value connects to the default socket,
+// prompts for credentials when iTerm2 asks, and identifies itself as
+// DefaultClientName.
+type Options struct {
+	// SocketPath overrides the iTerm2 API socket; empty uses
+	// ~/Library/Application Support/iTerm2/private/socket.
+	SocketPath string
+	// NoPrompt suppresses the AppleScript credential dialog. With it set, a
+	// 401 from iTerm2 is returned as an error. Set it whenever the caller is
+	// a TUI or has no user at the keyboard.
+	NoPrompt bool
+	// ClientName is the application name in the AppleScript credential
+	// request and the x-iterm2-advisory-name header. iTerm2 shows it in its
+	// automation dialog and remembers the grant under it.
+	ClientName string
+}
+
 // Client implements terminal.Backend using iTerm2's native protobuf-over-WebSocket API.
 type Client struct {
 	conn       *conn
 	socketPath string // override for testing; empty uses default
 	noPrompt   bool   // suppress interactive AppleScript auth
+	clientName string
 }
 
 type lineInfo struct {
@@ -39,26 +61,19 @@ type lineInfo struct {
 	FirstVisible *int64 `json:"first_visible"`
 }
 
-// NewClient creates a new Client. Optional socketPath overrides the default
-// iTerm2 Unix socket location.
-func NewClient(socketPath ...string) *Client {
-	c := &Client{}
-	if len(socketPath) > 0 {
-		c.socketPath = socketPath[0]
+// NewClient creates a Client. Nothing connects until the first call.
+func NewClient(opts Options) *Client {
+	name := opts.ClientName
+	if name == "" {
+		name = DefaultClientName
 	}
-	return c
-}
-
-// SetNoPrompt suppresses interactive AppleScript auth dialogs. When set,
-// the client returns an error instead of prompting if auth is required.
-func (c *Client) SetNoPrompt(v bool) {
-	c.noPrompt = v
+	return &Client{socketPath: opts.SocketPath, noPrompt: opts.NoPrompt, clientName: name}
 }
 
 // ensureConn lazily connects on first use.
 func (c *Client) ensureConn() error {
 	if c.conn == nil {
-		c.conn = &conn{socketPath: c.socketPath, noPrompt: c.noPrompt}
+		c.conn = &conn{socketPath: c.socketPath, noPrompt: c.noPrompt, clientName: c.clientName}
 	}
 	if c.conn.ws == nil {
 		return c.conn.connect()
@@ -91,12 +106,20 @@ func (c *Client) idempotentRequest(req *pb.ClientOriginatedMessage) (*pb.ServerO
 	return resp, nil
 }
 
-// Close closes the underlying WebSocket connection.
-func (c *Client) Close() {
+// Close closes the WebSocket connection. It always returns nil; the next call
+// reconnects on demand.
+func (c *Client) Close() error {
 	if c.conn != nil {
 		c.conn.Close()
 	}
+	return nil
 }
+
+// Compile-time checks for the interfaces the iTerm2 backend implements.
+var (
+	_ terminal.Backend = (*Client)(nil)
+	_ io.Closer        = (*Client)(nil)
+)
 
 // Available checks if iTerm2 is reachable by listing sessions via Unix socket.
 func (c *Client) Available() error {

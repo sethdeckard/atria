@@ -434,3 +434,39 @@ func TestFocusSessionNoop(t *testing.T) {
 		t.Errorf("FocusSession() should be no-op, got error: %v", err)
 	}
 }
+
+func TestConsumeBellReportsOnceAndLeavesStyledReadAlone(t *testing.T) {
+	c := NewClient(80, 24)
+	id, err := c.NewSession()
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	t.Cleanup(func() { c.Close() })
+	waitForShell(t, c, id)
+
+	if c.ConsumeBell(id) {
+		t.Fatal("no bell should be pending on a fresh session")
+	}
+	if err := c.SendText(id, "printf '\\a'\n"); err != nil {
+		t.Fatalf("SendText: %v", err)
+	}
+	if !waitFor(5*time.Second, func() bool { return c.ConsumeBell(id) }) {
+		t.Fatal("bell never observed after printf '\\a'")
+	}
+
+	// Consumed: a second ask reports nothing, and the styled read never
+	// touched the flag or carried the bell byte.
+	if c.ConsumeBell(id) {
+		t.Fatal("bell should be consumed by the first ConsumeBell")
+	}
+	styled, err := c.ReadScreenStyled(id, 5)
+	if err != nil {
+		t.Fatalf("ReadScreenStyled: %v", err)
+	}
+	if strings.Contains(styled, "\x07") {
+		t.Fatal("styled read must not carry the bell byte")
+	}
+	if c.ConsumeBell("missing") {
+		t.Fatal("unknown session must report false")
+	}
+}

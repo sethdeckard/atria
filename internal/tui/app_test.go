@@ -893,7 +893,7 @@ func TestDirBrowserLaunchChoiceRendering(t *testing.T) {
 	comp := terminal.NewCompositeBackend(tmuxBackend, "tmux", []terminal.Integration{
 		{Prefix: "pty:", Source: "pty", Backend: ptyBackend},
 	})
-	m.backend = terminal.NewCachedBackend(comp, 5)
+	m.backend = terminal.NewCachedBackend(comp, 5*time.Second)
 
 	v := m.viewDirBrowser()
 	if !strings.Contains(v, "(tmux)") {
@@ -985,7 +985,7 @@ func TestDirBrowserLaunchEmbedded(t *testing.T) {
 	comp := terminal.NewCompositeBackend(tmuxBackend, "tmux", []terminal.Integration{
 		{Prefix: "pty:", Source: "pty", Backend: mb},
 	})
-	cached := terminal.NewCachedBackend(comp, 5)
+	cached := terminal.NewCachedBackend(comp, 5*time.Second)
 
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backend = cached
@@ -1022,7 +1022,7 @@ func TestDirBrowserLaunchIntegration(t *testing.T) {
 	comp := terminal.NewCompositeBackend(tmuxBackend, "tmux", []terminal.Integration{
 		{Prefix: "pty:", Source: "pty", Backend: mb},
 	})
-	cached := terminal.NewCachedBackend(comp, 5)
+	cached := terminal.NewCachedBackend(comp, 5*time.Second)
 
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backend = cached
@@ -1225,7 +1225,7 @@ func TestSessionsRefreshedKeepsSessionFromFailedIntegration(t *testing.T) {
 		{Prefix: "iterm:", Source: "iterm", Backend: itermBackend},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
-	cached := terminal.NewCachedBackend(comp, 5)
+	cached := terminal.NewCachedBackend(comp, 5*time.Second)
 	m.backend = cached
 
 	// Trigger ListSessions on the composite to populate failedSources

@@ -12,11 +12,17 @@ type mockBackend struct {
 	calls        int
 	sessions     []Session
 	newSessionID string
+	sent         []string
 }
 
-func (m *mockBackend) Available() error                                       { return nil }
-func (m *mockBackend) NewSession() (string, error)                            { return m.newSessionID, nil }
-func (m *mockBackend) SendText(sessionID, text string) error                  { return nil }
+func (m *mockBackend) Available() error            { return nil }
+func (m *mockBackend) NewSession() (string, error) { return m.newSessionID, nil }
+func (m *mockBackend) SendText(sessionID, text string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sent = append(m.sent, text)
+	return nil
+}
 func (m *mockBackend) RunCommand(sessionID, cmd string) error                 { return nil }
 func (m *mockBackend) FocusSession(sessionID string) error                    { return nil }
 func (m *mockBackend) ReadScreen(sessionID string, lines int) (string, error) { return "", nil }
@@ -45,7 +51,7 @@ func TestCachedBackend_ReturnsCachedWithinTTL(t *testing.T) {
 		},
 	}
 
-	cached := NewCachedBackend(mock, 5)
+	cached := NewCachedBackend(mock, 5*time.Second)
 
 	// First call should hit the inner backend.
 	sessions1, err := cached.ListSessions()
@@ -107,7 +113,7 @@ func TestCachedBackend_NewSessionOn(t *testing.T) {
 	comp := NewCompositeBackend(primary, "tmux", []Integration{
 		{Prefix: "pty:", Source: "pty", Backend: integ},
 	})
-	cached := NewCachedBackend(comp, 5)
+	cached := NewCachedBackend(comp, 5*time.Second)
 
 	id, err := cached.NewSessionOn("pty")
 	if err != nil {
@@ -134,7 +140,7 @@ func TestCachedBackend_InvalidateForcesRefresh(t *testing.T) {
 		},
 	}
 
-	cached := NewCachedBackend(mock, 60) // Long TTL.
+	cached := NewCachedBackend(mock, time.Minute) // Long TTL.
 
 	_, err := cached.ListSessions()
 	if err != nil {
@@ -155,5 +161,42 @@ func TestCachedBackend_InvalidateForcesRefresh(t *testing.T) {
 
 	if mock.callCount() != 2 {
 		t.Errorf("expected 2 calls after invalidation, got %d", mock.callCount())
+	}
+}
+
+func TestCachedBackendForwardsOptionalInterfaces(t *testing.T) {
+	primary := &trackingBackend{}
+	comp := NewCompositeBackend(primary, "tmux", nil)
+	cached := NewCachedBackend(comp, time.Minute)
+
+	if got := cached.PrimarySource(); got != "tmux" {
+		t.Fatalf("PrimarySource = %q, want tmux", got)
+	}
+	if got := cached.FailedSources(); got != nil {
+		t.Fatalf("FailedSources = %v, want nil before any listing", got)
+	}
+	if err := cached.SendKey("%1", KeyDown); err != nil {
+		t.Fatal(err)
+	}
+	if primary.lastSendText != "\x1b[B" {
+		t.Fatalf("sent = %q, want down-arrow sequence", primary.lastSendText)
+	}
+	if cached.ConsumeBell("%1") {
+		t.Fatal("no bell state anywhere: must be false")
+	}
+	if err := cached.Close(); err != nil {
+		t.Fatalf("Close = %v", err)
+	}
+
+	// A bare backend with none of the optional interfaces degrades cleanly.
+	bare := NewCachedBackend(&mockBackend{}, time.Minute)
+	if bare.PrimarySource() != "" || bare.FailedSources() != nil || bare.ConsumeBell("x") {
+		t.Fatal("bare backend should report zero values")
+	}
+	if err := bare.Close(); err != nil {
+		t.Fatalf("bare Close = %v", err)
+	}
+	if _, err := bare.NewSessionOn("pty"); err == nil {
+		t.Fatal("NewSessionOn without SourceLauncher must error")
 	}
 }
