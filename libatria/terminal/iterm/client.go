@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sethdeckard/atria/libatria/terminal"
@@ -55,6 +56,7 @@ type Options struct {
 
 // Client implements terminal.Backend using iTerm2's native protobuf-over-WebSocket API.
 type Client struct {
+	mu         sync.Mutex // guards conn; the conn serializes its own use
 	conn       *conn
 	socketPath string // override for testing; empty uses default
 	noPrompt   bool   // suppress interactive AppleScript auth
@@ -83,38 +85,42 @@ func NewClient(opts Options) *Client {
 	}
 }
 
-// ensureConn lazily connects on first use.
-func (c *Client) ensureConn() error {
+// ensureConn returns the shared connection, connecting on demand.
+// c.mu guards connection creation; conn.connect checks and opens the
+// socket under the connection's own lock.
+func (c *Client) ensureConn() (*conn, error) {
+	c.mu.Lock()
 	if c.conn == nil {
 		c.conn = &conn{socketPath: c.socketPath, noPrompt: c.noPrompt, clientName: c.clientName, timeout: c.timeout}
 	}
-	if c.conn.ws == nil {
-		return c.conn.connect()
-	}
-	return nil
+	cn := c.conn
+	c.mu.Unlock()
+	return cn, cn.connect()
 }
 
 // request sends a request and returns the response. No automatic retry —
 // safe for all operations including non-idempotent ones.
 func (c *Client) request(req *pb.ClientOriginatedMessage) (*pb.ServerOriginatedMessage, error) {
-	if err := c.ensureConn(); err != nil {
+	cn, err := c.ensureConn()
+	if err != nil {
 		return nil, err
 	}
-	return c.conn.roundTrip(req)
+	return cn.roundTrip(req)
 }
 
 // idempotentRequest sends a request, reconnecting once on failure. Only safe
 // for idempotent operations (ListSessions, GetBuffer, GetVar, Focus, Activate).
 func (c *Client) idempotentRequest(req *pb.ClientOriginatedMessage) (*pb.ServerOriginatedMessage, error) {
-	if err := c.ensureConn(); err != nil {
+	cn, err := c.ensureConn()
+	if err != nil {
 		return nil, err
 	}
-	resp, err := c.conn.roundTrip(req)
+	resp, err := cn.roundTrip(req)
 	if err != nil {
-		if connErr := c.conn.reconnect(); connErr != nil {
+		if connErr := cn.reconnect(); connErr != nil {
 			return nil, connErr
 		}
-		return c.conn.roundTrip(req)
+		return cn.roundTrip(req)
 	}
 	return resp, nil
 }
@@ -122,8 +128,11 @@ func (c *Client) idempotentRequest(req *pb.ClientOriginatedMessage) (*pb.ServerO
 // Close closes the WebSocket connection. It always returns nil; the next call
 // reconnects on demand.
 func (c *Client) Close() error {
-	if c.conn != nil {
-		c.conn.Close()
+	c.mu.Lock()
+	cn := c.conn
+	c.mu.Unlock()
+	if cn != nil {
+		cn.Close()
 	}
 	return nil
 }
