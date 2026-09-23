@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/watch"
 )
 
 func TestAddRemoveProject(t *testing.T) {
@@ -124,8 +125,10 @@ func TestSetGetSession(t *testing.T) {
 	sess := &AgentSession{
 		ProjectDir: "/proj/x",
 		SessionID:  "s1",
-		Type:       agent.Codex,
-		Status:     agent.StatusIdle,
+		Tracker: watch.Tracker{
+			Type:   agent.Codex,
+			Status: agent.StatusIdle,
+		},
 	}
 	s.SetSession(sess)
 
@@ -138,8 +141,10 @@ func TestSetGetSession(t *testing.T) {
 	sess2 := &AgentSession{
 		ProjectDir: "/proj/x",
 		SessionID:  "s2",
-		Type:       agent.Codex,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Codex,
+			Status: agent.StatusWorking,
+		},
 	}
 	s.SetSession(sess2)
 	if len(s.Sessions) != 2 {
@@ -154,8 +159,10 @@ func TestSetGetSession(t *testing.T) {
 	sess2updated := &AgentSession{
 		ProjectDir: "/proj/x",
 		SessionID:  "s2",
-		Type:       agent.Codex,
-		Status:     agent.StatusIdle,
+		Tracker: watch.Tracker{
+			Type:   agent.Codex,
+			Status: agent.StatusIdle,
+		},
 	}
 	s.SetSession(sess2updated)
 	if len(s.Sessions) != 2 {

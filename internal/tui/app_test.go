@@ -13,6 +13,7 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/libatria/agent"
 	"github.com/sethdeckard/atria/libatria/terminal"
+	"github.com/sethdeckard/atria/libatria/watch"
 )
 
 // --- mock backend ---
@@ -193,8 +194,10 @@ func TestCursorNavigation(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: p.Dir,
 			SessionID:  "sess-" + p.Name,
-			Type:       agent.Claude,
-			Status:     agent.StatusIdle,
+			Tracker: watch.Tracker{
+				Type:   agent.Claude,
+				Status: agent.StatusIdle,
+			},
 		})
 	}
 	m := newTestModelWithStore(&mockBackend{}, store)
@@ -452,8 +455,10 @@ func TestOpenChatWithAgent(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
@@ -475,8 +480,10 @@ func TestChatEscapeReturnsToProjectList(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
@@ -516,8 +523,10 @@ func TestFocusWithAgent(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	mb := &mockBackend{}
 	m := newTestModelWithStore(mb, store)
@@ -536,7 +545,9 @@ func TestFocusBlockedWithoutBackend(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
+		Tracker: watch.Tracker{
+			Type: agent.Claude,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
@@ -1115,8 +1126,10 @@ func TestEnterOpensChat(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
@@ -1171,8 +1184,10 @@ func TestSessionsRefreshedUpdatesActivity(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1194,8 +1209,10 @@ func TestSessionsRefreshedRemovesDeadSessions(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-dead",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1213,9 +1230,11 @@ func TestSessionsRefreshedKeepsSessionFromFailedIntegration(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "iterm:sess-abc",
-		Type:       agent.Claude,
-		Source:     "iterm",
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Source: "iterm",
+			Status: agent.StatusWorking,
+		},
 	})
 
 	// Set up composite with a failing iterm integration.
@@ -1245,13 +1264,15 @@ func TestSessionsRefreshedRemovesExitedAgent(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:    "/a/myproject",
-		SessionID:     "sess-exited",
-		Type:          agent.Codex,
-		Status:        agent.StatusIdle,
-		OrphanTicks:   1,               // one tick already accumulated, next refresh triggers removal
-		LastScreen:    "user@host ~ %", // shell prompt, no agent UI
-		ScreenChecked: true,
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-exited",
+		Tracker: watch.Tracker{
+			Type:          agent.Codex,
+			Status:        agent.StatusIdle,
+			OrphanTicks:   1,               // one tick already accumulated, next refresh triggers removal
+			LastScreen:    "user@host ~ %", // shell prompt, no agent UI
+			ScreenChecked: true,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1272,12 +1293,14 @@ func TestSessionsRefreshedOrphanFullCycle(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:    "/a/myproject",
-		SessionID:     "sess-orphan",
-		Type:          agent.Codex,
-		Status:        agent.StatusIdle,
-		LastScreen:    "user@host ~ %",
-		ScreenChecked: true,
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-orphan",
+		Tracker: watch.Tracker{
+			Type:          agent.Codex,
+			Status:        agent.StatusIdle,
+			LastScreen:    "user@host ~ %",
+			ScreenChecked: true,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1311,12 +1334,14 @@ func TestSessionsRefreshedKeepsIdleAgentWithScreenUI(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:    "/a/myproject",
-		SessionID:     "sess-idle",
-		Type:          agent.Claude,
-		Status:        agent.StatusIdle,
-		ScreenChecked: true,
-		LastScreen:    "some conversation output\n\n❯ ", // Claude prompt in bottom region
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-idle",
+		Tracker: watch.Tracker{
+			Type:          agent.Claude,
+			Status:        agent.StatusIdle,
+			ScreenChecked: true,
+			LastScreen:    "some conversation output\n\n❯ ", // Claude prompt in bottom region
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1353,13 +1378,15 @@ func TestSessionsRefreshedRemovesIdleITermShellFallback(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:    "/a/myproject",
-		SessionID:     "iterm:sess-shell",
-		Type:          agent.Claude,
-		Source:        "iterm",
-		Status:        agent.StatusIdle,
-		ScreenChecked: true,
-		LastScreen:    "old Claude output\n\n❯ ",
+		ProjectDir: "/a/myproject",
+		SessionID:  "iterm:sess-shell",
+		Tracker: watch.Tracker{
+			Type:          agent.Claude,
+			Source:        "iterm",
+			Status:        agent.StatusIdle,
+			ScreenChecked: true,
+			LastScreen:    "old Claude output\n\n❯ ",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1392,8 +1419,10 @@ func TestSessionsRefreshedKeepsActiveAgentWithChangedName(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-working",
-		Type:       agent.Codex,
-		Status:     agent.StatusWorking, // still working
+		Tracker: watch.Tracker{
+			Type:   agent.Codex,
+			Status: agent.StatusWorking, // still working
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1415,8 +1444,10 @@ func TestSessionsRefreshedRetypesAgent(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-retyped",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1442,8 +1473,10 @@ func TestSessionsRefreshedRetypeKeepsTypeWhenNameUnchanged(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-stable",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1469,8 +1502,10 @@ func TestSessionsRefreshedRetypeIgnoresNonAgentName(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-noagent",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1559,7 +1594,9 @@ func TestAgentDiscoveredDuplicate(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/existing",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
+		Tracker: watch.Tracker{
+			Type: agent.Claude,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1575,6 +1612,54 @@ func TestAgentDiscoveredDuplicate(t *testing.T) {
 	}
 	if cmd != nil {
 		t.Error("expected no command for duplicate")
+	}
+}
+
+func TestSessionsRefreshedWithoutWatchDirsGatesOnProjects(t *testing.T) {
+	// With watch_dirs empty, discovery is bounded to the known projects:
+	// an agent under one is tracked, an agent elsewhere is not.
+	store := makeStore(t)
+	store.Projects = makeProjects("/known/proj")
+	backend := &mockBackend{getVarVal: "/elsewhere/proj"}
+	m := NewModel(backend, store, nil, "/tmp/monitors")
+
+	updated, cmd := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{{ID: "sess-outside", Name: "claude"}},
+	})
+	um := drainCmd(t, modelFrom(updated), cmd, 20)
+	if got := len(um.store.Sessions); got != 0 {
+		t.Fatalf("agent outside every project should be skipped, got %d sessions", got)
+	}
+	if got := len(um.store.Projects); got != 1 {
+		t.Fatalf("no project should be added, got %d", got)
+	}
+
+	backend.getVarVal = "/known/proj"
+	updated, cmd = um.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{{ID: "sess-inside", Name: "claude"}},
+	})
+	um = drainCmd(t, modelFrom(updated), cmd, 20)
+	as := um.store.SessionByID("sess-inside")
+	if as == nil || as.ProjectDir != "/known/proj" {
+		t.Fatalf("agent under a known project should be tracked, got %+v", as)
+	}
+}
+
+func TestSessionsRefreshedWithoutWatchDirsOrProjectsSkipsDiscovery(t *testing.T) {
+	store := makeStore(t)
+	backend := &mockBackend{getVarVal: "/anywhere/proj"}
+	m := NewModel(backend, store, nil, "/tmp/monitors")
+
+	updated, cmd := m.Update(SessionsRefreshedMsg{
+		Sessions: []terminal.Session{{ID: "sess-1", Name: "claude"}},
+	})
+	um := drainCmd(t, modelFrom(updated), cmd, 20)
+	if len(um.store.Sessions) != 0 || len(um.store.Projects) != 0 {
+		t.Fatalf("nothing should be discovered without watch dirs or projects: %d sessions, %d projects",
+			len(um.store.Sessions), len(um.store.Projects))
+	}
+	if len(backend.readScreenLog) != 0 {
+		t.Errorf("no discovery should run, but screens were read: %v", backend.readScreenLog)
 	}
 }
 
@@ -1635,8 +1720,10 @@ func TestStatusUpdatedMsg(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1662,14 +1749,18 @@ func TestStatusUpdatedMultipleAgentsSameDir(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-2",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1697,8 +1788,10 @@ func TestStatusUpdatedAddsToChat(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.view = viewChat
@@ -1729,7 +1822,9 @@ func TestMonitorStartedMsg(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
+		Tracker: watch.Tracker{
+			Type: agent.Claude,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1759,7 +1854,9 @@ func TestMonitorStartedFallsBackAfterRemap(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "pty:pty-0",
-		Type:       agent.Claude,
+		Tracker: watch.Tracker{
+			Type: agent.Claude,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1788,12 +1885,16 @@ func TestMonitorStartedMultipleAgentsSameDir(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
+		Tracker: watch.Tracker{
+			Type: agent.Claude,
+		},
 	})
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-2",
-		Type:       agent.Claude,
+		Tracker: watch.Tracker{
+			Type: agent.Claude,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1832,8 +1933,10 @@ func TestScreenReadUpdatesStatus(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1856,11 +1959,13 @@ func TestScreenReadIdleTransitionWithRecentActivity(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:   "/a/myproject",
-		SessionID:    "sess-1",
-		Type:         agent.Claude,
-		Status:       agent.StatusWorking,
-		LastActivity: time.Now(), // recent activity from session name
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Tracker: watch.Tracker{
+			Type:         agent.Claude,
+			Status:       agent.StatusWorking,
+			LastActivity: time.Now(), // recent activity from session name
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1881,12 +1986,14 @@ func TestScreenReadIdleUnchangedStillTransitions(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:   "/a/myproject",
-		SessionID:    "sess-1",
-		Type:         agent.Claude,
-		Status:       agent.StatusWorking,
-		LastActivity: time.Now(),
-		LastScreen:   "some output\n\u276f", // same content as incoming
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Tracker: watch.Tracker{
+			Type:         agent.Claude,
+			Status:       agent.StatusWorking,
+			LastActivity: time.Now(),
+			LastScreen:   "some output\n\u276f", // same content as incoming
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1908,12 +2015,14 @@ func TestScreenReadBlankTransitionsToIdle(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/a/myproject")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:     "/a/myproject",
-		SessionID:      "sess-1",
-		Type:           agent.Claude,
-		Status:         agent.StatusWorking,
-		LastScreen:     "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n", // previous blank
-		UnmatchedReads: 1,                                                    // one prior blank read
+		ProjectDir: "/a/myproject",
+		SessionID:  "sess-1",
+		Tracker: watch.Tracker{
+			Type:           agent.Claude,
+			Status:         agent.StatusWorking,
+			LastScreen:     "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n", // previous blank
+			UnmatchedReads: 1,                                                    // one prior blank read
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1936,9 +2045,11 @@ func TestScreenReadAgentExitedTransitionsToIdle(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Codex,
-		Status:     agent.StatusWorking,
-		LastScreen: "› some codex prompt\n",
+		Tracker: watch.Tracker{
+			Type:       agent.Codex,
+			Status:     agent.StatusWorking,
+			LastScreen: "› some codex prompt\n",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -1984,9 +2095,11 @@ func TestScreenReadChangingOutputStaysWorking(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
-		LastScreen: "initial\n",
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusWorking,
+			LastScreen: "initial\n",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -2015,9 +2128,11 @@ func TestScreenReadUnmatchedCounterResetsOnMatch(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
-		LastScreen: "✻ Reading…\n",
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusWorking,
+			LastScreen: "✻ Reading…\n",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -2065,8 +2180,10 @@ func TestScreenReadErrorIgnored(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
@@ -2087,8 +2204,10 @@ func TestDiscoveryTickProducesCommands(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/myproject",
 		SessionID:  "sess-1",
-		Type:       agent.Claude,
 		MonitorLog: "/tmp/monitors/myproject.log",
+		Tracker: watch.Tracker{
+			Type: agent.Claude,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
@@ -2114,18 +2233,22 @@ func TestStatusTickSkipsVisibleSession(t *testing.T) {
 	store := makeStore(t)
 	store.Projects = makeProjects("/proj/alpha", "/proj/beta")
 	store.SetSession(&model.AgentSession{
-		ProjectDir:     "/proj/alpha",
-		SessionID:      "sid-1",
-		Type:           agent.Claude,
-		Status:         agent.StatusWorking,
-		LastScreenRead: time.Now().Add(-2 * time.Second),
+		ProjectDir: "/proj/alpha",
+		SessionID:  "sid-1",
+		Tracker: watch.Tracker{
+			Type:     agent.Claude,
+			Status:   agent.StatusWorking,
+			LastRead: time.Now().Add(-2 * time.Second),
+		},
 	})
 	store.SetSession(&model.AgentSession{
-		ProjectDir:     "/proj/beta",
-		SessionID:      "sid-2",
-		Type:           agent.Claude,
-		Status:         agent.StatusWorking,
-		LastScreenRead: time.Now().Add(-2 * time.Second),
+		ProjectDir: "/proj/beta",
+		SessionID:  "sid-2",
+		Tracker: watch.Tracker{
+			Type:     agent.Claude,
+			Status:   agent.StatusWorking,
+			LastRead: time.Now().Add(-2 * time.Second),
+		},
 	})
 	backend := &mockBackend{}
 	m := newTestModelWithStore(backend, store)
@@ -2152,8 +2275,10 @@ func TestStreamOpenStartsVisibleRefresh(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "sid-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	backend := &mockBackend{screenByID: map[string]string{"sid-1": "live output"}}
 	m := newTestModelWithStore(backend, store)
@@ -2176,8 +2301,10 @@ func TestChatOpenStartsVisibleRefresh(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "sid-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	backend := &mockBackend{screenByID: map[string]string{"sid-1": "chat output"}}
 	m := newTestModelWithStore(backend, store)
@@ -2200,14 +2327,18 @@ func TestStreamCursorMoveRetargetsVisibleRefresh(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "sid-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/beta",
 		SessionID:  "sid-2",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusWorking,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
@@ -2280,8 +2411,10 @@ func TestViewProjectListWithAgents(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: p.Dir,
 			SessionID:  "sess-" + p.Name,
-			Type:       agent.Claude,
-			Status:     agent.StatusIdle,
+			Tracker: watch.Tracker{
+				Type:   agent.Claude,
+				Status: agent.StatusIdle,
+			},
 		})
 	}
 	m := newTestModelWithStore(&mockBackend{}, store)
@@ -2335,10 +2468,10 @@ func TestViewHelp(t *testing.T) {
 func TestSortRows(t *testing.T) {
 	t.Run("by status ascending", func(t *testing.T) {
 		rows := []projectRow{
-			{project: &model.Project{Name: "delta"}, session: &model.AgentSession{Status: agent.StatusIdle}, displayName: "delta"},
-			{project: &model.Project{Name: "alpha"}, session: &model.AgentSession{Status: agent.StatusIdle}, displayName: "alpha"},
-			{project: &model.Project{Name: "beta"}, session: &model.AgentSession{Status: agent.StatusNeedsInput}, displayName: "beta"},
-			{project: &model.Project{Name: "gamma"}, session: &model.AgentSession{Status: agent.StatusWorking}, displayName: "gamma"},
+			{project: &model.Project{Name: "delta"}, session: &model.AgentSession{Tracker: watch.Tracker{Status: agent.StatusIdle}}, displayName: "delta"},
+			{project: &model.Project{Name: "alpha"}, session: &model.AgentSession{Tracker: watch.Tracker{Status: agent.StatusIdle}}, displayName: "alpha"},
+			{project: &model.Project{Name: "beta"}, session: &model.AgentSession{Tracker: watch.Tracker{Status: agent.StatusNeedsInput}}, displayName: "beta"},
+			{project: &model.Project{Name: "gamma"}, session: &model.AgentSession{Tracker: watch.Tracker{Status: agent.StatusWorking}}, displayName: "gamma"},
 		}
 		sortRows(rows, sortByStatus, false)
 
@@ -2384,9 +2517,9 @@ func TestSortRows(t *testing.T) {
 
 	t.Run("by type", func(t *testing.T) {
 		rows := []projectRow{
-			{project: &model.Project{Name: "a"}, session: &model.AgentSession{Type: agent.Codex}, displayName: "a"},
-			{project: &model.Project{Name: "b"}, session: &model.AgentSession{Type: agent.Claude}, displayName: "b"},
-			{project: &model.Project{Name: "c"}, session: &model.AgentSession{Type: agent.Claude}, displayName: "c"},
+			{project: &model.Project{Name: "a"}, session: &model.AgentSession{Tracker: watch.Tracker{Type: agent.Codex}}, displayName: "a"},
+			{project: &model.Project{Name: "b"}, session: &model.AgentSession{Tracker: watch.Tracker{Type: agent.Claude}}, displayName: "b"},
+			{project: &model.Project{Name: "c"}, session: &model.AgentSession{Tracker: watch.Tracker{Type: agent.Claude}}, displayName: "c"},
 		}
 		sortRows(rows, sortByHarness, false)
 
@@ -2401,8 +2534,8 @@ func TestSortRows(t *testing.T) {
 	t.Run("by updated", func(t *testing.T) {
 		now := time.Now()
 		rows := []projectRow{
-			{project: &model.Project{Name: "old"}, session: &model.AgentSession{LastActivity: now.Add(-5 * time.Minute)}, displayName: "old"},
-			{project: &model.Project{Name: "new"}, session: &model.AgentSession{LastActivity: now}, displayName: "new"},
+			{project: &model.Project{Name: "old"}, session: &model.AgentSession{Tracker: watch.Tracker{LastActivity: now.Add(-5 * time.Minute)}}, displayName: "old"},
+			{project: &model.Project{Name: "new"}, session: &model.AgentSession{Tracker: watch.Tracker{LastActivity: now}}, displayName: "new"},
 		}
 		sortRows(rows, sortByUpdated, false)
 
@@ -2421,9 +2554,9 @@ func TestDuplicateDisplayNames(t *testing.T) {
 			{Name: "other", Dir: "/home/other"},
 		},
 		Sessions: []*model.AgentSession{
-			{ProjectDir: "/go/myapp", SessionID: "s1", Type: agent.Claude, Status: agent.StatusIdle},
-			{ProjectDir: "/rb/myapp", SessionID: "s2", Type: agent.Claude, Status: agent.StatusIdle},
-			{ProjectDir: "/home/other", SessionID: "s3", Type: agent.Claude, Status: agent.StatusIdle},
+			{ProjectDir: "/go/myapp", SessionID: "s1", Tracker: watch.Tracker{Type: agent.Claude, Status: agent.StatusIdle}},
+			{ProjectDir: "/rb/myapp", SessionID: "s2", Tracker: watch.Tracker{Type: agent.Claude, Status: agent.StatusIdle}},
+			{ProjectDir: "/home/other", SessionID: "s3", Tracker: watch.Tracker{Type: agent.Claude, Status: agent.StatusIdle}},
 		},
 	}
 	rows := buildRows(storeAdapter{store})
@@ -2451,8 +2584,8 @@ func TestDuplicateDisplayNames(t *testing.T) {
 			{Name: "myapp", Dir: "/work/myapp"},
 		},
 		Sessions: []*model.AgentSession{
-			{ProjectDir: "/work/myapp", SessionID: "s1", Type: agent.Claude, Status: agent.StatusIdle},
-			{ProjectDir: "/work/myapp", SessionID: "s2", Type: agent.Codex, Status: agent.StatusIdle},
+			{ProjectDir: "/work/myapp", SessionID: "s1", Tracker: watch.Tracker{Type: agent.Claude, Status: agent.StatusIdle}},
+			{ProjectDir: "/work/myapp", SessionID: "s2", Tracker: watch.Tracker{Type: agent.Codex, Status: agent.StatusIdle}},
 		},
 	}
 	rows2 := buildRows(storeAdapter{store2})
@@ -2474,8 +2607,10 @@ func TestSortKeyCyclesColumn(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/proj",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 120
@@ -2529,11 +2664,11 @@ func TestStatusPriority(t *testing.T) {
 		expected int
 	}{
 		{nil, 4},
-		{&model.AgentSession{Status: agent.StatusNeedsInput}, 0},
-		{&model.AgentSession{Status: agent.StatusWorking}, 1},
-		{&model.AgentSession{Status: agent.StatusError}, 2},
-		{&model.AgentSession{Status: agent.StatusIdle}, 3},
-		{&model.AgentSession{Status: ""}, 1}, // default
+		{&model.AgentSession{Tracker: watch.Tracker{Status: agent.StatusNeedsInput}}, 0},
+		{&model.AgentSession{Tracker: watch.Tracker{Status: agent.StatusWorking}}, 1},
+		{&model.AgentSession{Tracker: watch.Tracker{Status: agent.StatusError}}, 2},
+		{&model.AgentSession{Tracker: watch.Tracker{Status: agent.StatusIdle}}, 3},
+		{&model.AgentSession{Tracker: watch.Tracker{Status: ""}}, 1}, // default
 	}
 	for _, tc := range tests {
 		got := statusPriority(tc.session)
@@ -2561,9 +2696,11 @@ func TestFormatStatus(t *testing.T) {
 	}
 	for _, tc := range tests {
 		session := &model.AgentSession{
-			Status:    tc.status,
-			Activity:  tc.activity,
-			Attention: tc.attention,
+			Tracker: watch.Tracker{
+				Status:    tc.status,
+				Activity:  tc.activity,
+				Attention: tc.attention,
+			},
 		}
 		text, _ := formatStatus(session, 0)
 		if !strings.Contains(text, tc.contains) {
@@ -2610,25 +2747,6 @@ func TestMatchProjectDir(t *testing.T) {
 	}
 }
 
-func TestShellEscape(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"simple", "'simple'"},
-		{"has space", "'has space'"},
-		{"it's", "'it'\"'\"'s'"},
-		{"", "''"},
-		{"a'b'c", "'a'\"'\"'b'\"'\"'c'"},
-	}
-	for _, tc := range tests {
-		got := shellEscape(tc.input)
-		if got != tc.expected {
-			t.Errorf("shellEscape(%q) = %q, want %q", tc.input, got, tc.expected)
-		}
-	}
-}
-
 func TestScrollOffset(t *testing.T) {
 	store := makeStore(t)
 	// Create enough projects to exceed a small terminal
@@ -2638,8 +2756,10 @@ func TestScrollOffset(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: p.Dir,
 			SessionID:  "sess-" + p.Name,
-			Type:       agent.Claude,
-			Status:     agent.StatusIdle,
+			Tracker: watch.Tracker{
+				Type:   agent.Claude,
+				Status: agent.StatusIdle,
+			},
 		})
 	}
 	m := newTestModelWithStore(&mockBackend{}, store)
@@ -2727,8 +2847,10 @@ func TestMaxVisibleRowsShrinksWithStream(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: dir,
 			SessionID:  fmt.Sprintf("s%d", i),
-			Type:       agent.Claude,
-			Status:     agent.StatusIdle,
+			Tracker: watch.Tracker{
+				Type:   agent.Claude,
+				Status: agent.StatusIdle,
+			},
 		})
 	}
 	m := newTestModelWithStore(&mockBackend{}, store)
@@ -2759,8 +2881,10 @@ func TestProjectListLayoutUsesMinimumPanelForLongLists(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: dir,
 			SessionID:  fmt.Sprintf("s%d", i),
-			Type:       agent.Claude,
-			Status:     agent.StatusIdle,
+			Tracker: watch.Tracker{
+				Type:   agent.Claude,
+				Status: agent.StatusIdle,
+			},
 		})
 	}
 
@@ -2787,8 +2911,10 @@ func TestProjectListLayoutExpandsPanelForShortLists(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: dir,
 			SessionID:  fmt.Sprintf("s%d", i),
-			Type:       agent.Claude,
-			Status:     agent.StatusIdle,
+			Tracker: watch.Tracker{
+				Type:   agent.Claude,
+				Status: agent.StatusIdle,
+			},
 		})
 	}
 
@@ -2815,9 +2941,11 @@ func TestProjectListLayoutHandlesShortTerminal(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
-		LastScreen: "hello",
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusIdle,
+			LastScreen: "hello",
+		},
 	})
 
 	m := newTestModelWithStore(&mockBackend{}, store)
@@ -2842,9 +2970,11 @@ func TestStreamPanelShowsSelectedScreen(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
-		LastScreen: "Reading file...\n\n❯\n",
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusWorking,
+			LastScreen: "Reading file...\n\n❯\n",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
@@ -2871,9 +3001,11 @@ func TestStreamPanelNoOutput(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
-		LastScreen: "",
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusIdle,
+			LastScreen: "",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
@@ -2892,16 +3024,20 @@ func TestStreamPanelUpdatesWithCursor(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
-		LastScreen: "alpha screen content",
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusWorking,
+			LastScreen: "alpha screen content",
+		},
 	})
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/beta",
 		SessionID:  "s2",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
-		LastScreen: "beta screen content",
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusIdle,
+			LastScreen: "beta screen content",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
@@ -2927,8 +3063,10 @@ func TestFooterShowsStreamHint(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
@@ -2952,9 +3090,11 @@ func TestStreamPanelTruncatesLongLines(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
-		LastScreen: longLine,
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusWorking,
+			LastScreen: longLine,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 80
@@ -2976,9 +3116,11 @@ func TestStreamPanelHeaderTruncatesLongName(t *testing.T) {
 	session := &model.AgentSession{
 		ProjectDir: "/proj/" + longName,
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusWorking,
-		LastScreen: "some content",
+		Tracker: watch.Tracker{
+			Type:       agent.Claude,
+			Status:     agent.StatusWorking,
+			LastScreen: "some content",
+		},
 	}
 	width := 40
 	panel := renderStreamPanel(session, longName, "/proj/"+longName, width, 8, false)
@@ -2995,9 +3137,11 @@ func TestStreamPanelKeepsSafetyMarginWithWideGlyphs(t *testing.T) {
 	session := &model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Copilot,
-		Status:     agent.StatusIdle,
-		LastScreen: strings.Repeat("💡", 20) + " status line",
+		Tracker: watch.Tracker{
+			Type:       agent.Copilot,
+			Status:     agent.StatusIdle,
+			LastScreen: strings.Repeat("💡", 20) + " status line",
+		},
 	}
 
 	panel := renderStreamPanel(session, "alpha", "/proj/alpha", 40, 8, false)
@@ -3008,10 +3152,12 @@ func TestStreamPanelSanitizesLayoutHostileContent(t *testing.T) {
 	session := &model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusNeedsInput,
-		LastScreen: "\x1b[33mEnter\tto\tselect\x1b[0m\r" +
-			"↑/↓ to navigate\rEsc to cancel\x00",
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusNeedsInput,
+			LastScreen: "\x1b[33mEnter\tto\tselect\x1b[0m\r" +
+				"↑/↓ to navigate\rEsc to cancel\x00",
+		},
 	}
 
 	panel := renderStreamPanel(session, "alpha", "/proj/alpha", 70, 8, false)
@@ -3026,12 +3172,14 @@ func TestProjectListSelectedRowKeepsSafetyMarginWhenStreamOpen(t *testing.T) {
 		{
 			project: &model.Project{Dir: "/proj/alpha", Name: "alpha"},
 			session: &model.AgentSession{
-				ProjectDir:   "/proj/alpha",
-				SessionID:    "s1",
-				Type:         agent.Copilot,
-				Status:       agent.StatusWorking,
-				Activity:     strings.Repeat("wide 💡 activity ", 6),
-				LastActivity: time.Now(),
+				ProjectDir: "/proj/alpha",
+				SessionID:  "s1",
+				Tracker: watch.Tracker{
+					Type:         agent.Copilot,
+					Status:       agent.StatusWorking,
+					Activity:     strings.Repeat("wide 💡 activity ", 6),
+					LastActivity: time.Now(),
+				},
 			},
 			displayName: "alpha-agent-with-long-name",
 		},
@@ -3065,10 +3213,12 @@ func TestStreamOpenLastSelectionKeepsAgentsHeaderVisible(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: dir,
 			SessionID:  fmt.Sprintf("s%d", i),
-			Type:       agent.Copilot,
-			Status:     agent.StatusWorking,
-			Activity:   "reviewing changes",
-			LastScreen: screen,
+			Tracker: watch.Tracker{
+				Type:       agent.Copilot,
+				Status:     agent.StatusWorking,
+				Activity:   "reviewing changes",
+				LastScreen: screen,
+			},
 		})
 	}
 
@@ -3102,13 +3252,15 @@ func TestStreamOpenLayoutHostileScreenKeepsHeaderVisible(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "s1",
-		Type:       agent.Claude,
-		Status:     agent.StatusNeedsInput,
-		Attention:  "Enter to select",
-		LastScreen: "299 +nds if strings.Contains(list, \"a n/a\") {\n" +
-			"6.\tUpdate key handling\n" +
-			"\x1b[33mEnter to select\x1b[0m\r" +
-			"↑/↓ to navigate\rEsc to cancel",
+		Tracker: watch.Tracker{
+			Type:      agent.Claude,
+			Status:    agent.StatusNeedsInput,
+			Attention: "Enter to select",
+			LastScreen: "299 +nds if strings.Contains(list, \"a n/a\") {\n" +
+				"6.\tUpdate key handling\n" +
+				"\x1b[33mEnter to select\x1b[0m\r" +
+				"↑/↓ to navigate\rEsc to cancel",
+		},
 	})
 
 	m := newTestModelWithStore(&mockBackend{}, store)
@@ -3136,9 +3288,11 @@ func TestShortListKeepsSingleSpacerAbovePanel(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: dir,
 			SessionID:  fmt.Sprintf("s%d", i),
-			Type:       agent.Claude,
-			Status:     agent.StatusIdle,
-			LastScreen: "steady output",
+			Tracker: watch.Tracker{
+				Type:       agent.Claude,
+				Status:     agent.StatusIdle,
+				LastScreen: "steady output",
+			},
 		})
 	}
 
@@ -3428,9 +3582,11 @@ func TestIntegrationToggledMsgRemapsIDs(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		SessionID:  "old-1",
 		ProjectDir: "/proj",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
-		Source:     "pty",
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+			Source: "pty",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.cfg = &config.Config{}
@@ -3588,25 +3744,31 @@ func TestEnvColumnShownWithIntegration(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/alpha",
 		SessionID:  "tmux:sess-alpha",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
-		Source:     "tmux",
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+			Source: "tmux",
+		},
 	})
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/beta",
 		SessionID:  "pty-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
-		Source:     "pty",
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+			Source: "pty",
+		},
 	})
 	// Add a session with empty Source to verify it shows blank (not "embedded")
 	store.Projects = append(store.Projects, &model.Project{Dir: "/a/gamma", Name: "gamma"})
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/a/gamma",
 		SessionID:  "unknown-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
-		Source:     "",
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+			Source: "",
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.width = 120
@@ -3642,9 +3804,11 @@ func TestEnvColumnHiddenPtyOnly(t *testing.T) {
 		store.SetSession(&model.AgentSession{
 			ProjectDir: p.Dir,
 			SessionID:  "pty-" + p.Name,
-			Type:       agent.Claude,
-			Status:     agent.StatusIdle,
-			Source:     "pty",
+			Tracker: watch.Tracker{
+				Type:   agent.Claude,
+				Status: agent.StatusIdle,
+				Source: "pty",
+			},
 		})
 	}
 	m := newTestModelWithStore(&mockBackend{}, store)
@@ -3706,8 +3870,10 @@ func setupQuickResponseModel(t *testing.T, status agent.Status, streamOpen bool)
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/test",
 		SessionID:  "sid",
-		Type:       agent.Claude,
-		Status:     status,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: status,
+		},
 	})
 	backend := &mockBackend{sessions: []terminal.Session{{ID: "sid", Name: "claude"}}}
 	m := newTestModelWithStore(backend, store)
@@ -3863,15 +4029,19 @@ func TestQuickResponseArmClearsOnUnrelatedKeyAndFallsThrough(t *testing.T) {
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/alpha",
 		SessionID:  "sid-1",
-		Type:       agent.Claude,
-		Status:     agent.StatusNeedsInput,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusNeedsInput,
+		},
 	})
 	store.AddProject("/proj/beta")
 	store.SetSession(&model.AgentSession{
 		ProjectDir: "/proj/beta",
 		SessionID:  "sid-2",
-		Type:       agent.Claude,
-		Status:     agent.StatusIdle,
+		Tracker: watch.Tracker{
+			Type:   agent.Claude,
+			Status: agent.StatusIdle,
+		},
 	})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.backendOK = true
@@ -3928,8 +4098,10 @@ func TestQuickResponseArmClearsWhenStatusLeavesNeedsInput(t *testing.T) {
 func TestStreamPanelHintNeedsInput(t *testing.T) {
 	session := &model.AgentSession{
 		SessionID: "sid",
-		Status:    agent.StatusNeedsInput,
-		Type:      agent.Claude,
+		Tracker: watch.Tracker{
+			Status: agent.StatusNeedsInput,
+			Type:   agent.Claude,
+		},
 	}
 	out := renderStreamPanel(session, "test", "/proj/test", 120, 10, false)
 	if !strings.Contains(out, "ctrl+r") {
@@ -3940,8 +4112,10 @@ func TestStreamPanelHintNeedsInput(t *testing.T) {
 func TestStreamPanelHintArmedNeedsInput(t *testing.T) {
 	session := &model.AgentSession{
 		SessionID: "sid",
-		Status:    agent.StatusNeedsInput,
-		Type:      agent.Claude,
+		Tracker: watch.Tracker{
+			Status: agent.StatusNeedsInput,
+			Type:   agent.Claude,
+		},
 	}
 	out := renderStreamPanel(session, "test", "/proj/test", 120, 10, true)
 	if !strings.Contains(out, "esc:reject") {
@@ -3952,8 +4126,10 @@ func TestStreamPanelHintArmedNeedsInput(t *testing.T) {
 func TestStreamPanelHintNarrowWidth(t *testing.T) {
 	session := &model.AgentSession{
 		SessionID: "sid",
-		Status:    agent.StatusNeedsInput,
-		Type:      agent.Claude,
+		Tracker: watch.Tracker{
+			Status: agent.StatusNeedsInput,
+			Type:   agent.Claude,
+		},
 	}
 	// Should not panic at narrow width
 	out := renderStreamPanel(session, "test", "/proj/test", 12, 10, false)
@@ -3965,8 +4141,10 @@ func TestStreamPanelHintNarrowWidth(t *testing.T) {
 func TestStreamPanelNoHintWhenIdle(t *testing.T) {
 	session := &model.AgentSession{
 		SessionID: "sid",
-		Status:    agent.StatusIdle,
-		Type:      agent.Claude,
+		Tracker: watch.Tracker{
+			Status: agent.StatusIdle,
+			Type:   agent.Claude,
+		},
 	}
 	out := renderStreamPanel(session, "test", "/proj/test", 120, 10, false)
 	if strings.Contains(out, "ctrl+r") || strings.Contains(out, "esc:reject") {
@@ -4046,8 +4224,8 @@ func TestIntegrationToggledDropsDisabledSourceBeforeRemap(t *testing.T) {
 	store := makeStore(t)
 	store.AddProject("/w/a")
 	store.AddProject("/w/b")
-	store.SetSession(&model.AgentSession{SessionID: "42", Source: "kitty", ProjectDir: "/w/a"})
-	store.SetSession(&model.AgentSession{SessionID: "wezterm:42", Source: "wezterm", ProjectDir: "/w/b"})
+	store.SetSession(&model.AgentSession{SessionID: "42", ProjectDir: "/w/a", Tracker: watch.Tracker{Source: "kitty"}})
+	store.SetSession(&model.AgentSession{SessionID: "wezterm:42", ProjectDir: "/w/b", Tracker: watch.Tracker{Source: "wezterm"}})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.rebuildRows()
 	if len(m.rows) != 2 {
@@ -4093,8 +4271,8 @@ func TestIntegrationToggledDropsDisabledSourceBeforeRemap(t *testing.T) {
 
 func TestIntegrationToggledRemapsOnlyTheNamedSource(t *testing.T) {
 	store := makeStore(t)
-	store.SetSession(&model.AgentSession{SessionID: "5", Source: "wezterm", ProjectDir: "/w/a"})
-	store.SetSession(&model.AgentSession{SessionID: "pty:pty-0", Source: "pty", ProjectDir: "/w/b"})
+	store.SetSession(&model.AgentSession{SessionID: "5", ProjectDir: "/w/a", Tracker: watch.Tracker{Source: "wezterm"}})
+	store.SetSession(&model.AgentSession{SessionID: "pty:pty-0", ProjectDir: "/w/b", Tracker: watch.Tracker{Source: "pty"}})
 	m := newTestModelWithStore(&mockBackend{}, store)
 	m.attentionSessions = map[string]time.Time{"5": time.Now()}
 	m.termSessionID = "5"
@@ -4127,8 +4305,8 @@ func TestIntegrationToggledRemapsOnlyTheNamedSource(t *testing.T) {
 
 func TestIntegrationToggledDisableWithoutRemapDropsSource(t *testing.T) {
 	store := makeStore(t)
-	store.SetSession(&model.AgentSession{SessionID: "kitty:7", Source: "kitty", ProjectDir: "/w/a"})
-	store.SetSession(&model.AgentSession{SessionID: "pty-0", Source: "pty", ProjectDir: "/w/b"})
+	store.SetSession(&model.AgentSession{SessionID: "kitty:7", ProjectDir: "/w/a", Tracker: watch.Tracker{Source: "kitty"}})
+	store.SetSession(&model.AgentSession{SessionID: "pty-0", ProjectDir: "/w/b", Tracker: watch.Tracker{Source: "pty"}})
 	m := newTestModelWithStore(&mockBackend{}, store)
 
 	updated, _ := m.Update(IntegrationToggledMsg{

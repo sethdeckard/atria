@@ -19,6 +19,7 @@ import (
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/libatria/agent"
 	"github.com/sethdeckard/atria/libatria/terminal"
+	"github.com/sethdeckard/atria/libatria/watch"
 )
 
 // monitorPatterns are the regex patterns for monitor output.
@@ -1615,12 +1616,8 @@ func (m Model) hasLaunchChoice() (string, bool) {
 	if m.settingsDirPick || m.setupDirPick {
 		return "", false
 	}
-	cb, ok := m.backend.(*terminal.CachedBackend)
-	if !ok {
-		return "", false
-	}
-	comp, ok := cb.Inner().(*terminal.CompositeBackend)
-	if !ok {
+	comp := compositeBackend(m.backend)
+	if comp == nil {
 		return "", false
 	}
 	ps := comp.PrimarySource()
@@ -1634,6 +1631,19 @@ func (m Model) hasLaunchChoice() (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// compositeBackend unwraps the composite that the settings toggle and the
+// launch-choice check still address directly (integration membership and
+// runtime mutation have no optional interface). Every other backend question
+// goes through the terminal optional interfaces.
+func compositeBackend(b terminal.Backend) *terminal.CompositeBackend {
+	cb, ok := b.(*terminal.CachedBackend)
+	if !ok {
+		return nil
+	}
+	comp, _ := cb.Inner().(*terminal.CompositeBackend)
+	return comp
 }
 
 func (m *Model) adjustBrowserScroll() {
@@ -1877,11 +1887,7 @@ func (m Model) toggleSettingsIntegration(item settingsItem) (Model, tea.Cmd) {
 	}
 	enable := !bs.Enabled
 
-	// Get the composite backend.
-	var composite *terminal.CompositeBackend
-	if cb, ok := m.backend.(*terminal.CachedBackend); ok {
-		composite, _ = cb.Inner().(*terminal.CompositeBackend)
-	}
+	composite := compositeBackend(m.backend)
 	if composite == nil {
 		m.statusText = "Cannot modify backend"
 		return m, nil
@@ -2018,10 +2024,8 @@ func (m Model) focusSelected() (Model, tea.Cmd) {
 	if source == "" {
 		if strings.Contains(r.session.SessionID, ":") {
 			source = "" // integration — will skip embedded view
-		} else if cb, ok := m.backend.(*terminal.CachedBackend); ok {
-			if comp, ok := cb.Inner().(*terminal.CompositeBackend); ok {
-				source = comp.PrimarySource()
-			}
+		} else if pr, ok := m.backend.(terminal.PrimaryReporter); ok {
+			source = pr.PrimarySource()
 		}
 	}
 	if source == "pty" {
@@ -2058,86 +2062,33 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 		return m, nil
 	}
 
-	trackedIDs := make(map[string]bool)
-	for _, s := range m.store.Sessions {
-		trackedIDs[s.SessionID] = true
-	}
-
-	// Update activity text and agent type from session names for tracked sessions.
-	// Activity is informational only (shown in all states). Screen reads
-	// are the sole authority on status — session name changes should not
-	// override status since Claude updates its title even while idle.
-	for _, sess := range msg.Sessions {
-		if as := m.store.SessionByID(sess.ID); as != nil {
-			activity := agent.ExtractActivity(sess.Name)
-			if activity != as.Activity {
-				as.Activity = activity
-				if activity != "" {
-					as.LastActivity = time.Now()
-				}
-			}
-			// Re-type if the session name now indicates a different agent.
-			// This handles pane reuse (e.g. Claude exits, Codex starts in same pane).
-			// Only update when agent.Detect returns a valid agent type. A non-agent
-			// name (e.g. "zsh") is handled by orphan removal, not re-typing.
-			if detected := agent.Detect(sess.Name); detected != "" && detected != as.Type {
-				as.Type = detected
-			}
-			// Populate source from composite backend.
-			if sess.Source != "" {
-				as.Source = sess.Source
-			}
-		}
-	}
-
-	// Auto-discover untracked agent sessions
+	// Refresh updates title metadata and orphan tracking without changing
+	// status; screen reads determine status.
+	now := time.Now()
 	var cmds []tea.Cmd
 	liveIDs := make(map[string]bool)
 	projectDirs := make([]string, len(m.store.Projects))
 	for i, p := range m.store.Projects {
 		projectDirs[i] = p.Dir
 	}
+	// Discovery is always gated. Without watch_dirs, discovery accepts
+	// directories at or beneath known projects. With neither watch
+	// directories nor projects, discovery is skipped.
+	gate := m.watchDirs
+	if len(gate) == 0 {
+		gate = projectDirs
+	}
 	for _, sess := range msg.Sessions {
 		liveIDs[sess.ID] = true
-		if trackedIDs[sess.ID] {
+		as := m.store.SessionByID(sess.ID)
+		if as == nil {
+			if len(gate) > 0 {
+				cmds = append(cmds, discoverAgent(m.backend, sess, gate, projectDirs))
+			}
 			continue
 		}
-		// Dispatch async discovery (title, CWD, then screen fallback for unknown titles).
-		cmds = append(cmds, discoverAgent(m.backend, sess, m.watchDirs, projectDirs))
-	}
-
-	// Track orphan ticks: when a session is idle, the terminal name no
-	// longer matches an agent pattern, AND the bottom screen region shows
-	// no agent UI, the agent likely exited and the pane fell back to a shell.
-	//
-	// All three conditions are needed:
-	// - Name check alone is insufficient: Claude drops ✳/agent keywords
-	//   from its title while idle but its screen still shows ❯.
-	// - UnmatchedReads alone is insufficient: idle patterns from agent
-	//   scrollback (e.g. Codex's › still visible) keep resetting it.
-	// - agent.HasScreen restricts pattern matching to the bottom region,
-	//   so scrollback from exited agents doesn't prevent orphan cleanup.
-	liveNames := make(map[string]string)
-	liveJobs := make(map[string]string)
-	for _, sess := range msg.Sessions {
-		liveNames[sess.ID] = sess.Name
-		liveJobs[sess.ID] = sess.Job
-	}
-	for _, s := range m.store.Sessions {
-		name, alive := liveNames[s.SessionID]
-		if !alive {
-			continue
-		}
-		job := liveJobs[s.SessionID]
-		shellFallback := s.Source == "iterm" && isShellJob(job)
-		if s.Status == agent.StatusIdle && s.ScreenChecked &&
-			((agent.Detect(name) == "" && !agent.HasScreen(s.LastScreen, s.Type)) || shellFallback) {
-			s.OrphanTicks++
-		} else {
-			s.OrphanTicks = 0
-		}
-		if s.OrphanTicks >= 2 {
-			liveIDs[s.SessionID] = false // mark for removal below
+		if as.Refresh(sess, now).Orphan {
+			liveIDs[sess.ID] = false // exited agent; removed below
 		}
 	}
 
@@ -2145,14 +2096,12 @@ func (m Model) handleSessionsRefreshed(msg SessionsRefreshedMsg) (Model, tea.Cmd
 	// Skip sessions whose integration source failed (transient error),
 	// since their absence from liveIDs doesn't mean they're gone.
 	var failedSet map[string]bool
-	if cb, ok := m.backend.(*terminal.CachedBackend); ok {
-		if comp, ok := cb.Inner().(*terminal.CompositeBackend); ok {
-			for _, src := range comp.FailedSources() {
-				if failedSet == nil {
-					failedSet = make(map[string]bool)
-				}
-				failedSet[src] = true
+	if fr, ok := m.backend.(terminal.FailureReporter); ok {
+		for _, src := range fr.FailedSources() {
+			if failedSet == nil {
+				failedSet = make(map[string]bool)
 			}
+			failedSet[src] = true
 		}
 	}
 
@@ -2211,9 +2160,11 @@ func (m Model) handleAgentDiscovered(msg AgentDiscoveredMsg) (Model, tea.Cmd) {
 	as := &model.AgentSession{
 		ProjectDir: msg.Dir,
 		SessionID:  msg.SessionID,
-		Type:       msg.AgentType,
-		Source:     msg.Source,
-		Status:     agent.StatusWorking,
+		Tracker: watch.Tracker{
+			Type:   msg.AgentType,
+			Source: msg.Source,
+			Status: agent.StatusWorking,
+		},
 	}
 	m.store.SetSession(as)
 	if m.debugLog != nil {
@@ -2258,9 +2209,11 @@ func (m Model) handleAgentLaunched(msg AgentLaunchedMsg) (Model, tea.Cmd) {
 	as := &model.AgentSession{
 		ProjectDir: msg.ProjectDir,
 		SessionID:  msg.SessionID,
-		Type:       msg.AgentType,
-		Status:     agent.StatusWorking,
-		Source:     msg.Source,
+		Tracker: watch.Tracker{
+			Type:   msg.AgentType,
+			Status: agent.StatusWorking,
+			Source: msg.Source,
+		},
 	}
 	m.store.SetSession(as)
 	if m.debugLog != nil {
@@ -2393,12 +2346,6 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	as.ScreenChecked = true
-	as.LastScreenRead = time.Now()
-	// Strip null bytes from screen content (some backends return \x00 for spaces)
-	content := strings.ReplaceAll(msg.Content, "\x00", " ")
-	screenChanged := content != as.LastScreen
-	as.LastScreen = content
 	// Styled content is populated only by display-driving reads. When a styled
 	// read was actually performed, adopt its result even if empty (a cleared
 	// screen) so stale color isn't shown. Background (plain-only) reads leave
@@ -2407,62 +2354,28 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	if msg.StyledFetched {
 		as.LastScreenStyled = strings.ReplaceAll(msg.StyledContent, "\x00", " ")
 	}
-	status, matchLine := agent.ClassifyScreen(content, as.Type)
+	// The tracker owns the status rules (matching, stale suppression, the
+	// moved-on and stable-unmatched fallbacks); this handler renders the
+	// outcome. content keeps the bell byte for the terminal view and the log.
+	content := strings.ReplaceAll(msg.Content, "\x00", " ")
+	tr := as.Observe(msg.Content, time.Now())
 
 	if m.debugLog != nil {
 		proj := filepath.Base(msg.ProjectDir)
 		if m.debugLogUnsafe {
 			escaped := strings.ReplaceAll(content, "\n", "\\n")
 			m.debugLog.Printf("[screen] %s sid=%s src=%s prev=%s new=%s changed=%v match=%q content=%q",
-				proj, msg.SessionID, as.Source, as.Status, status, screenChanged, matchLine, escaped)
+				proj, msg.SessionID, as.Source, tr.From, tr.Matched, tr.Changed, tr.MatchLine, escaped)
 		} else {
 			m.debugLog.Printf("[screen] %s sid=%s src=%s prev=%s new=%s changed=%v match=%q",
-				proj, msg.SessionID, as.Source, as.Status, status, screenChanged, matchLine)
+				proj, msg.SessionID, as.Source, tr.From, tr.Matched, tr.Changed, tr.MatchLine)
 		}
 	}
 
-	if status == "" {
-		// Only count stable (unchanged) unmatched reads. If content is
-		// still changing, the agent is active — just producing output
-		// that doesn't match our patterns.
-		if screenChanged {
-			as.UnmatchedReads = 0
-		} else {
-			as.UnmatchedReads++
-		}
-		// Screen changed but no pattern match while in needs_input →
-		// the agent moved on, transition to working
-		switch {
-		case screenChanged && as.Status == agent.StatusNeedsInput:
-			status = agent.StatusWorking
-		case as.Status == agent.StatusWorking && !screenChanged && as.UnmatchedReads >= 3:
-			// Multiple consecutive stable reads with no agent patterns —
-			// the agent likely exited and the pane shows a shell.
-			status = agent.StatusIdle
-		case !screenChanged && as.Status == agent.StatusWorking && isAllBlank(content) && as.UnmatchedReads >= 2:
-			// Multiple consecutive blank screen reads while "working" —
-			// backend can't read this session. No evidence the agent is working.
-			status = agent.StatusIdle
-		default:
-			return m, nil
-		}
-	} else {
-		as.UnmatchedReads = 0
-	}
-
-	// Skip stale screen reads (identical content)
-	if !screenChanged && status == as.Status {
+	if !tr.Applied {
 		return m, nil
 	}
-	// Screen reads are the sole authority on status. The bottom-region
-	// anchoring in ClassifyScreen prevents false matches from scrollback.
-
-	prevStatus := as.Status
-	as.Status = status
-	as.LastActivity = time.Now()
-	if status == agent.StatusNeedsInput {
-		as.Attention = matchLine
-	}
+	status := tr.To
 
 	// Add to chat if viewing this session
 	if m.view == viewChat && m.chatSessionID == msg.SessionID && status == agent.StatusNeedsInput && as.Attention != "" {
@@ -2482,7 +2395,7 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 	}
 
 	// Bell on needs_input transition
-	if status == agent.StatusNeedsInput && prevStatus != agent.StatusNeedsInput {
+	if tr.EnteredNeedsInput() {
 		if m.attentionSessions == nil {
 			m.attentionSessions = make(map[string]time.Time)
 		}
@@ -2493,8 +2406,8 @@ func (m Model) handleScreenRead(msg ScreenReadMsg) (Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 	}
-	if prevStatus == agent.StatusNeedsInput && status != agent.StatusNeedsInput {
-		as.Attention = ""
+	if tr.LeftNeedsInput() {
+		// The tracker already cleared Attention.
 		m.statusText = ""
 		delete(m.attentionSessions, msg.SessionID)
 		if m.quickResponseArmedFor(msg.SessionID) {
@@ -2533,8 +2446,8 @@ func (m Model) handleStatusTick() (Model, tea.Cmd) {
 			if hasVisible && s.SessionID == visibleID {
 				continue
 			}
-			interval := backgroundPollInterval(s)
-			if !s.LastScreenRead.IsZero() && now.Sub(s.LastScreenRead) < interval {
+			interval := watch.PollInterval(s.Status, backgroundActiveInterval, backgroundIdleInterval)
+			if !s.LastRead.IsZero() && now.Sub(s.LastRead) < interval {
 				continue
 			}
 			cmds = append(cmds, readScreenLines(m.backend, s.SessionID, s.ProjectDir, defaultScreenReadLines))
@@ -2569,15 +2482,6 @@ func (m Model) handleVisibleRefresh(msg VisibleRefreshMsg) (Model, tea.Cmd) {
 		cmds = append(cmds, readScreenLinesStyled(m.backend, sessionID, as.ProjectDir, lines))
 	}
 	return m, tea.Batch(cmds...)
-}
-
-func backgroundPollInterval(s *model.AgentSession) time.Duration {
-	switch s.Status {
-	case agent.StatusWorking, agent.StatusNeedsInput, agent.StatusError:
-		return backgroundActiveInterval
-	default:
-		return backgroundIdleInterval
-	}
 }
 
 func (m Model) visibleRefreshTarget() (string, int, time.Duration, bool) {
@@ -2679,20 +2583,6 @@ func (m *Model) EnableDebugLog(path string, unsafe bool) error {
 }
 
 // EnsureMonitorDir creates the monitor directory if needed.
-// isAllBlank returns true if content contains only whitespace/newlines.
-func isAllBlank(content string) bool {
-	return strings.TrimSpace(content) == ""
-}
-
-func isShellJob(job string) bool {
-	switch strings.ToLower(strings.TrimSpace(job)) {
-	case "sh", "bash", "zsh", "fish", "ksh", "dash", "tcsh", "csh":
-		return true
-	default:
-		return false
-	}
-}
-
 func EnsureMonitorDir(dir string) error {
 	return os.MkdirAll(dir, 0o700)
 }

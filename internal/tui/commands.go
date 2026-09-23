@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/sethdeckard/atria/libatria/terminal/kitty"
 	"github.com/sethdeckard/atria/libatria/terminal/tmux"
 	weztermbackend "github.com/sethdeckard/atria/libatria/terminal/wezterm"
+	"github.com/sethdeckard/atria/libatria/watch"
 )
 
 func checkBackend(backend terminal.Backend) tea.Cmd {
@@ -36,30 +36,12 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType agent.Ty
 	// Resolve source eagerly so a concurrent primary change can't misclassify.
 	if source == "" {
 		source = "pty"
-		if cb, ok := backend.(*terminal.CachedBackend); ok {
-			if comp, ok := cb.Inner().(*terminal.CompositeBackend); ok {
-				source = comp.PrimarySource()
-			}
+		if pr, ok := backend.(terminal.PrimaryReporter); ok {
+			source = pr.PrimarySource()
 		}
 	}
 	return func() tea.Msg {
-		var sessionID string
-		var err error
-		if ns, ok := backend.(terminal.SourceLauncher); ok {
-			sessionID, err = ns.NewSessionOn(source)
-		} else {
-			sessionID, err = backend.NewSession()
-		}
-		if err != nil {
-			return AgentLaunchedMsg{ProjectDir: projectDir, Err: err}
-		}
-		// Focus the new session so the terminal renders its screen buffer.
-		// Without this, iTerm2 may not populate the buffer for background tabs.
-		_ = backend.FocusSession(sessionID)
-		time.Sleep(300 * time.Millisecond)
-		cmd := string(agentType)
-		shellCmd := fmt.Sprintf("cd %s && %s", shellEscape(projectDir), cmd)
-		err = backend.RunCommand(sessionID, shellCmd)
+		sessionID, err := agent.Launch(backend, source, projectDir, string(agentType))
 		if err != nil {
 			return AgentLaunchedMsg{ProjectDir: projectDir, Err: err}
 		}
@@ -74,33 +56,7 @@ func launchAgent(backend terminal.Backend, projectDir string, agentType agent.Ty
 
 func sendPrompt(backend terminal.Backend, sessionID, text string, projectDir string, agentType agent.Type) tea.Cmd {
 	return func() tea.Msg {
-		prompt := text
-		// Copilot's input interprets Enter as newline, not submit.
-		// Replace newlines with spaces to avoid triggering / command menu.
-		if agentType == agent.Copilot {
-			prompt = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(prompt)
-			prompt = strings.TrimSpace(prompt)
-		}
-		// Copilot drops Enter when bulk text is sent to a short
-		// terminal. Send character-by-character to match how focus
-		// mode forwards keystrokes individually.
-		if agentType == agent.Copilot {
-			for _, r := range prompt {
-				if err := backend.SendText(sessionID, string(r)); err != nil {
-					return PromptSentMsg{ProjectDir: projectDir, Err: err}
-				}
-				time.Sleep(5 * time.Millisecond)
-			}
-			time.Sleep(50 * time.Millisecond)
-			err := backend.SendText(sessionID, "\r")
-			return PromptSentMsg{ProjectDir: projectDir, Err: err}
-		}
-		err := backend.SendText(sessionID, prompt)
-		if err != nil {
-			return PromptSentMsg{ProjectDir: projectDir, Err: err}
-		}
-		time.Sleep(50 * time.Millisecond)
-		err = backend.SendText(sessionID, "\r")
+		err := agent.SendPrompt(backend, sessionID, text, agentType)
 		return PromptSentMsg{ProjectDir: projectDir, Err: err}
 	}
 }
@@ -543,38 +499,28 @@ func removeString(ss []string, s string) []string {
 	return filtered
 }
 
+// discoverAgent identifies an untracked session with watch.Identify. The
+// skip reason is carried for the debug log; the handler decides on Dir and
+// AgentType alone.
 func discoverAgent(backend terminal.Backend, sess terminal.Session, watchDirs []string, projectDirs []string) tea.Cmd {
 	return func() tea.Msg {
-		dir := terminal.DiscoverCWD(backend, sess, watchDirs, projectDirs)
-		agentType := agent.Detect(sess.Name)
-		debugSkip := ""
-		if agentType == "" {
-			if dir == "" {
-				debugSkip = "unknown title and empty dir"
-			} else {
-				content, err := backend.ReadScreen(sess.ID, defaultScreenReadLines)
-				if err != nil {
-					debugSkip = "screen read failed: " + err.Error()
-				} else {
-					agentType = agent.InferFromScreen(content)
-					if agentType == "" {
-						debugSkip = "unknown title and screen"
-					}
-				}
-			}
+		id := watch.Identify(backend, sess, watch.IdentifyOptions{
+			WatchDirs:   watchDirs,
+			ProjectDirs: projectDirs,
+			ScreenLines: defaultScreenReadLines,
+		})
+		debugSkip := id.Skip.String()
+		if id.Err != nil {
+			debugSkip += ": " + id.Err.Error()
 		}
 		return AgentDiscoveredMsg{
 			SessionID: sess.ID,
-			AgentType: agentType,
+			AgentType: id.Type,
 			Source:    sess.Source,
-			Dir:       dir,
+			Dir:       id.Dir,
 			DebugSkip: debugSkip,
 		}
 	}
-}
-
-func shellEscape(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
 // sanitizeForPath replaces characters unsafe for filenames with underscores.

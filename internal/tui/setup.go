@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/libatria/agent"
-	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
 const setupStepCount = 3
@@ -632,10 +631,7 @@ func (m Model) toggleSetupIntegration(item settingsItem) (Model, tea.Cmd) {
 	}
 	enable := !bs.Enabled
 
-	var composite *terminal.CompositeBackend
-	if cb, ok := m.backend.(*terminal.CachedBackend); ok {
-		composite, _ = cb.Inner().(*terminal.CompositeBackend)
-	}
+	composite := compositeBackend(m.backend)
 	if composite == nil {
 		m.statusText = "Cannot modify backend"
 		return m, nil

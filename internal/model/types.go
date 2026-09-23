@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/watch"
 )
 
 type Project struct {
@@ -27,21 +27,14 @@ func (p *Project) DisplayName() string {
 	return strings.Join(parts[len(parts)-2:], "/")
 }
 
+// AgentSession is one tracked agent: where it lives, which terminal session
+// it is, and the watch.Tracker that holds its type, status, and screen state.
+// Sessions are not persisted (see Store).
 type AgentSession struct {
-	ProjectDir       string       `json:"project_dir"`
-	SessionID        string       `json:"session_id"`
-	Type             agent.Type   `json:"type"`
-	Status           agent.Status `json:"-"`
-	Activity         string       `json:"-"`
-	Attention        string       `json:"-"`
-	MonitorPID       int          `json:"-"`
-	MonitorLog       string       `json:"-"`
-	LastActivity     time.Time    `json:"-"`
-	ScreenChecked    bool         `json:"-"`
-	LastScreen       string       `json:"-"`
-	LastScreenStyled string       `json:"-"` // screen content with SGR color escapes (display only)
-	LastScreenRead   time.Time    `json:"-"`
-	UnmatchedReads   int          `json:"-"` // consecutive screen reads with no agent pattern
-	OrphanTicks      int          `json:"-"` // consecutive refreshes where name doesn't match agent while idle
-	Source           string       `json:"-"` // "pty", "iterm", "tmux"
+	ProjectDir string
+	SessionID  string
+	watch.Tracker
+	LastScreenStyled string // screen content with SGR color escapes (display only)
+	MonitorPID       int
+	MonitorLog       string
 }

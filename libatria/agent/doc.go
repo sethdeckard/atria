@@ -2,13 +2,15 @@
 // GitHub Copilot) from what a terminal shows and classifies what they are
 // doing.
 //
-// The package has three layers. The vocabulary is [Type] and [Status]: a
+// The package has four layers. The vocabulary is [Type] and [Status]: a
 // Type's string value is the agent's CLI binary name, and a Status is one of
 // working, idle, needs_input, or error. Detection reads a session title
 // ([Detect], [ExtractActivity]) or screen text ([InferFromScreen],
 // [HasScreen]). Classification turns screen text into a Status
 // ([ClassifyScreen], [ClassifyOutput]) using a per-agent pattern registry
-// ([PatternsFor]).
+// ([PatternsFor]). Driving starts an agent in a terminal session ([Launch],
+// [LaunchCommand]) and submits prompts to it ([SendPrompt]) with the timing
+// these raw-mode TUIs need.
 //
 // Classification reads the bottom of the screen. Active statuses
 // (needs_input, error, working) are trusted only in the last few lines above
@@ -17,6 +19,7 @@
 // its own patterns so one agent's prompt glyph cannot fire on another agent's
 // screen; a bell character, "Error:", and a shell prompt are shared fallbacks.
 //
-// Everything here is pure string processing and safe for concurrent use.
-// [Installed] is the exception: it consults PATH.
+// Detection and classification are pure string processing and safe for
+// concurrent use. [Installed] consults PATH. [Launch] waits after focusing
+// the session; [SendPrompt] spaces input writes. Both call the backend.
 package agent

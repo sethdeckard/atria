@@ -8,6 +8,7 @@ import (
 
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/watch"
 )
 
 func TestEnableDebugLogSafeModeOmitsScreenContent(t *testing.T) {
@@ -22,9 +23,11 @@ func TestEnableDebugLogSafeModeOmitsScreenContent(t *testing.T) {
 	sess := &model.AgentSession{
 		ProjectDir: "/tmp/project",
 		SessionID:  "sess-1",
-		Type:       agent.Codex,
-		Status:     agent.StatusIdle,
-		Source:     "pty",
+		Tracker: watch.Tracker{
+			Type:   agent.Codex,
+			Status: agent.StatusIdle,
+			Source: "pty",
+		},
 	}
 	m.store.SetSession(sess)
 	m.handleScreenRead(ScreenReadMsg{
@@ -66,9 +69,11 @@ func TestEnableDebugLogUnsafeModeIncludesScreenContent(t *testing.T) {
 	sess := &model.AgentSession{
 		ProjectDir: "/tmp/project",
 		SessionID:  "sess-1",
-		Type:       agent.Codex,
-		Status:     agent.StatusIdle,
-		Source:     "pty",
+		Tracker: watch.Tracker{
+			Type:   agent.Codex,
+			Status: agent.StatusIdle,
+			Source: "pty",
+		},
 	}
 	m.store.SetSession(sess)
 	m.handleScreenRead(ScreenReadMsg{

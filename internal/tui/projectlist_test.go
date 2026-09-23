@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/libatria/agent"
+	"github.com/sethdeckard/atria/libatria/watch"
 )
 
 // mockStore implements the buildRows store interface for testing.
@@ -46,8 +47,8 @@ func TestBuildRows(t *testing.T) {
 			projects: []*model.Project{{Name: "foo", Dir: "/tmp/foo"}},
 			sessions: map[string][]*model.AgentSession{
 				"/tmp/foo": {
-					{SessionID: "s1", Type: agent.Claude},
-					{SessionID: "s2", Type: agent.Codex},
+					{SessionID: "s1", Tracker: watch.Tracker{Type: agent.Claude}},
+					{SessionID: "s2", Tracker: watch.Tracker{Type: agent.Codex}},
 				},
 			},
 		}
@@ -68,9 +69,9 @@ func TestBuildRows(t *testing.T) {
 				{Name: "svc", Dir: "/c/svc"},
 			},
 			sessions: map[string][]*model.AgentSession{
-				"/a/svc": {{SessionID: "s1", Type: agent.Claude}},
-				"/b/svc": {{SessionID: "s2", Type: agent.Claude}},
-				"/c/svc": {{SessionID: "s3", Type: agent.Claude}},
+				"/a/svc": {{SessionID: "s1", Tracker: watch.Tracker{Type: agent.Claude}}},
+				"/b/svc": {{SessionID: "s2", Tracker: watch.Tracker{Type: agent.Claude}}},
+				"/c/svc": {{SessionID: "s3", Tracker: watch.Tracker{Type: agent.Claude}}},
 			},
 		}
 		rows := buildRows(s)
@@ -97,9 +98,9 @@ func TestBuildRows(t *testing.T) {
 				{Name: "svc", Dir: "/z/same/svc"},
 			},
 			sessions: map[string][]*model.AgentSession{
-				"/x/same/svc": {{SessionID: "s1", Type: agent.Claude}},
-				"/y/same/svc": {{SessionID: "s2", Type: agent.Claude}},
-				"/z/same/svc": {{SessionID: "s3", Type: agent.Claude}},
+				"/x/same/svc": {{SessionID: "s1", Tracker: watch.Tracker{Type: agent.Claude}}},
+				"/y/same/svc": {{SessionID: "s2", Tracker: watch.Tracker{Type: agent.Claude}}},
+				"/z/same/svc": {{SessionID: "s3", Tracker: watch.Tracker{Type: agent.Claude}}},
 			},
 		}
 		rows := buildRows(s)
@@ -124,8 +125,8 @@ func TestBuildRows(t *testing.T) {
 				{Name: "beta", Dir: "/b/beta"},
 			},
 			sessions: map[string][]*model.AgentSession{
-				"/a/alpha": {{SessionID: "s1", Type: agent.Claude}},
-				"/b/beta":  {{SessionID: "s2", Type: agent.Claude}},
+				"/a/alpha": {{SessionID: "s1", Tracker: watch.Tracker{Type: agent.Claude}}},
+				"/b/beta":  {{SessionID: "s2", Tracker: watch.Tracker{Type: agent.Claude}}},
 			},
 		}
 		rows := buildRows(s)
@@ -202,11 +203,13 @@ func TestFormatNarrowRow(t *testing.T) {
 	row := projectRow{
 		project: &model.Project{Name: "myproject", Dir: "/tmp/myproject"},
 		session: &model.AgentSession{
-			SessionID:    "s1",
-			Type:         agent.Claude,
-			Status:       agent.StatusIdle,
-			Activity:     "idle",
-			LastActivity: time.Now().Add(-5 * time.Minute),
+			SessionID: "s1",
+			Tracker: watch.Tracker{
+				Type:         agent.Claude,
+				Status:       agent.StatusIdle,
+				Activity:     "idle",
+				LastActivity: time.Now().Add(-5 * time.Minute),
+			},
 		},
 		displayName: "myproject",
 	}
@@ -292,11 +295,13 @@ func TestNarrowLayoutNamePriority(t *testing.T) {
 	row := projectRow{
 		project: &model.Project{Name: longName, Dir: "/tmp/" + longName},
 		session: &model.AgentSession{
-			SessionID:    "s1",
-			Type:         agent.Claude,
-			Status:       agent.StatusWorking,
-			Activity:     "thinking",
-			LastActivity: time.Now().Add(-1 * time.Minute),
+			SessionID: "s1",
+			Tracker: watch.Tracker{
+				Type:         agent.Claude,
+				Status:       agent.StatusWorking,
+				Activity:     "thinking",
+				LastActivity: time.Now().Add(-1 * time.Minute),
+			},
 		},
 		displayName: longName,
 	}
@@ -358,11 +363,13 @@ func TestFormatNarrowSelectedRow(t *testing.T) {
 	row := projectRow{
 		project: &model.Project{Name: "test", Dir: "/tmp/test"},
 		session: &model.AgentSession{
-			SessionID:    "s1",
-			Type:         agent.Claude,
-			Status:       agent.StatusWorking,
-			Activity:     "thinking",
-			LastActivity: time.Now(),
+			SessionID: "s1",
+			Tracker: watch.Tracker{
+				Type:         agent.Claude,
+				Status:       agent.StatusWorking,
+				Activity:     "thinking",
+				LastActivity: time.Now(),
+			},
 		},
 		displayName: "test",
 	}
@@ -498,11 +505,11 @@ func TestProjectListLayoutNarrowStreamShortTerminal(t *testing.T) {
 				rows: []projectRow{
 					{
 						project: &model.Project{Name: "a", Dir: "/a"},
-						session: &model.AgentSession{SessionID: "s1", Type: agent.Claude, Status: agent.StatusIdle},
+						session: &model.AgentSession{SessionID: "s1", Tracker: watch.Tracker{Type: agent.Claude, Status: agent.StatusIdle}},
 					},
 					{
 						project: &model.Project{Name: "b", Dir: "/b"},
-						session: &model.AgentSession{SessionID: "s2", Type: agent.Claude, Status: agent.StatusWorking},
+						session: &model.AgentSession{SessionID: "s2", Tracker: watch.Tracker{Type: agent.Claude, Status: agent.StatusWorking}},
 					},
 				},
 			}
@@ -537,7 +544,7 @@ func TestProjectListLayoutNarrowStreamShortTerminal(t *testing.T) {
 func TestRenderFooterNarrow(t *testing.T) {
 	selected := &projectRow{
 		project:     &model.Project{Name: "test", Dir: "/tmp/test"},
-		session:     &model.AgentSession{SessionID: "s1", Type: agent.Claude, Status: agent.StatusIdle},
+		session:     &model.AgentSession{SessionID: "s1", Tracker: watch.Tracker{Type: agent.Claude, Status: agent.StatusIdle}},
 		displayName: "test",
 	}
 
@@ -603,7 +610,7 @@ func TestEnvLabel(t *testing.T) {
 
 func TestEnvColumnWidth(t *testing.T) {
 	row := func(source string) projectRow {
-		return projectRow{session: &model.AgentSession{Source: source}}
+		return projectRow{session: &model.AgentSession{Tracker: watch.Tracker{Source: source}}}
 	}
 	tests := []struct {
 		name string
