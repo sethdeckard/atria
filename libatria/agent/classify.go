@@ -184,12 +184,24 @@ func liveAnchor(lines []string, lastNonBlank int, agentType Type) int {
 // in the bottom region, because scrollback above quotes prompt text and
 // spinners. The region starts seven lines above the live anchor (the last
 // non-blank line, or for Claude Code the last line above a trailing todo/task
-// footer) and runs to the end of the capture. Idle patterns count anywhere. Pass 25 lines or more: Codex pads its screen with blank lines
-// and its prompt can sit 20 lines from the bottom.
+// footer) and runs to the end of the capture. Idle patterns count anywhere.
+// Pass 25 lines or more: Codex pads its screen with blank lines and its
+// prompt can sit 20 lines from the bottom.
+//
+// A bell character anywhere in the capture is needs_input regardless of
+// region: a bell is an event the backend delivered with the read (the PTY
+// backend prefixes it to the first line), not text that could be quoted in
+// scrollback. The returned line is the one carrying the bell.
 func ClassifyScreen(content string, agentType Type) (Status, string) {
 	lines := strings.Split(normalizeScreenText(content), "\n")
 	bestStatus := Status("")
 	bestLine := ""
+
+	for _, line := range lines {
+		if sharedBellPattern.MatchString(line) {
+			return StatusNeedsInput, strings.TrimSpace(line)
+		}
+	}
 
 	bottomStart := bottomRegion(lines, agentType)
 

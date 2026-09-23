@@ -504,3 +504,20 @@ func TestInferFromScreen(t *testing.T) {
 		})
 	}
 }
+
+func TestClassifyScreenBellAnywhereIsNeedsInput(t *testing.T) {
+	// A bell prefixed to the first line of a screen taller than the bottom
+	// region is still needs_input: the bell is an event, not text.
+	body := strings.Repeat("some conversation output\n", 20)
+	status, line := ClassifyScreen("\x07"+body+"❯ ", Claude)
+	if status != StatusNeedsInput {
+		t.Fatalf("status = %q, want needs_input", status)
+	}
+	if !strings.Contains(line, "\x07") {
+		t.Fatalf("matched line should be the one carrying the bell, got %q", line)
+	}
+	// Without the bell the same screen is idle.
+	if status, _ := ClassifyScreen(body+"❯ ", Claude); status != StatusIdle {
+		t.Fatalf("status without bell = %q, want idle", status)
+	}
+}
