@@ -1,15 +1,19 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/sethdeckard/atria/internal/config"
+	"github.com/sethdeckard/atria/libatria"
 	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
-// stubBackend satisfies terminal.Backend for derivePrimary and remap tests.
-type stubBackend struct {
-	label string
-}
+// stubBackend is a terminal.Backend that does nothing, for tests that need
+// a backend without the StyledReader surface.
+type stubBackend struct{}
 
 func (s *stubBackend) Available() error                                       { return nil }
 func (s *stubBackend) ListSessions() ([]terminal.Session, error)              { return nil, nil }
@@ -21,251 +25,6 @@ func (s *stubBackend) ReadScreen(sessionID string, lines int) (string, error) { 
 func (s *stubBackend) GetVar(sessionID, varName string) (string, error)       { return "", nil }
 func (s *stubBackend) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
 	return 0, nil
-}
-
-func TestDerivePrimary(t *testing.T) {
-	ptyClient := &stubBackend{label: "pty"}
-	tmuxClient := &stubBackend{label: "tmux"}
-	itermClient := &stubBackend{label: "iterm"}
-	kittyClient := &stubBackend{label: "kitty"}
-
-	tests := []struct {
-		name         string
-		envVars      map[string]string
-		integrations []terminal.Integration
-		wantSource   string
-	}{
-		{
-			"tmux env set with tmux integration",
-			map[string]string{"TMUX": "/tmp/tmux-501/default,123,0"},
-			[]terminal.Integration{
-				{Prefix: "tmux:", Source: "tmux", Backend: tmuxClient},
-			},
-			"tmux",
-		},
-		{
-			"kitty env with kitty integration",
-			map[string]string{"KITTY_WINDOW_ID": "1"},
-			[]terminal.Integration{
-				{Prefix: "kitty:", Source: "kitty", Backend: kittyClient},
-			},
-			"kitty",
-		},
-		{
-			"iterm env with iterm integration",
-			map[string]string{"TERM_PROGRAM": "iTerm.app"},
-			[]terminal.Integration{
-				{Prefix: "iterm:", Source: "iterm", Backend: itermClient},
-			},
-			"iterm",
-		},
-		{
-			"multiple envs tmux wins",
-			map[string]string{"TMUX": "/tmp/tmux-501/default,123,0", "TERM_PROGRAM": "iTerm.app"},
-			[]terminal.Integration{
-				{Prefix: "tmux:", Source: "tmux", Backend: tmuxClient},
-				{Prefix: "iterm:", Source: "iterm", Backend: itermClient},
-			},
-			"tmux",
-		},
-		{
-			"no matching env falls back to pty",
-			map[string]string{},
-			[]terminal.Integration{
-				{Prefix: "tmux:", Source: "tmux", Backend: tmuxClient},
-				{Prefix: "iterm:", Source: "iterm", Backend: itermClient},
-			},
-			"pty",
-		},
-		{
-			"no integrations falls back to pty",
-			map[string]string{},
-			nil,
-			"pty",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Clear relevant env vars then set test values.
-			for _, key := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM", "WEZTERM_UNIX_SOCKET", "DEVICETERM_SESSION"} {
-				t.Setenv(key, "")
-			}
-			for k, v := range tt.envVars {
-				t.Setenv(k, v)
-			}
-
-			_, source := derivePrimary(tt.integrations, ptyClient)
-			if source != tt.wantSource {
-				t.Errorf("derivePrimary() source = %q, want %q", source, tt.wantSource)
-			}
-		})
-	}
-}
-
-func TestDemoteRemap(t *testing.T) {
-	pty := &stubBackend{label: "pty"}
-	wez := &stubBackend{label: "wezterm"}
-	dt := &stubBackend{label: "deviceterm"}
-
-	t.Run("pty gains an entry and its ids gain the prefix", func(t *testing.T) {
-		comp := terminal.NewCompositeBackend(pty, "pty", nil)
-		got := demoteRemap(comp, pty)
-		want := &SourceRemap{Source: "pty", Prefix: "pty:", ToPrefixed: true}
-		if got == nil || *got != *want {
-			t.Errorf("remap = %+v, want %+v", got, want)
-		}
-		integs := comp.Integrations()
-		if len(integs) != 1 || integs[0].Prefix != "pty:" {
-			t.Errorf("integrations = %+v, want a pty: entry", integs)
-		}
-	})
-
-	t.Run("a native primary keeps its entry and its ids gain the prefix", func(t *testing.T) {
-		comp := terminal.NewCompositeBackend(wez, "wezterm", []terminal.Integration{
-			{Prefix: "wezterm:", Source: "wezterm", Backend: wez},
-		})
-		got := demoteRemap(comp, pty)
-		want := &SourceRemap{Source: "wezterm", Prefix: "wezterm:", ToPrefixed: true}
-		if got == nil || *got != *want {
-			t.Errorf("remap = %+v, want %+v", got, want)
-		}
-		if integs := comp.Integrations(); len(integs) != 1 || integs[0].Prefix != "wezterm:" {
-			t.Errorf("integrations = %+v, want only the existing wezterm: entry", integs)
-		}
-	})
-
-	t.Run("a primary with no entry yields no remap", func(t *testing.T) {
-		comp := terminal.NewCompositeBackend(dt, "deviceterm", nil)
-		if got := demoteRemap(comp, pty); got != nil {
-			t.Errorf("remap = %+v, want nil", got)
-		}
-		if len(comp.Integrations()) != 0 {
-			t.Errorf("no entry should be added for a source without one")
-		}
-	})
-}
-
-func TestPromoteRemap(t *testing.T) {
-	pty := &stubBackend{label: "pty"}
-	wez := &stubBackend{label: "wezterm"}
-
-	t.Run("pty loses the prefix and its entry is detached", func(t *testing.T) {
-		comp := terminal.NewCompositeBackend(pty, "pty", []terminal.Integration{
-			{Prefix: "pty:", Source: "pty", Backend: pty},
-		})
-		got := promoteRemap(comp, "pty")
-		want := &SourceRemap{Source: "pty", Prefix: "pty:", ToPrefixed: false}
-		if got == nil || *got != *want {
-			t.Errorf("remap = %+v, want %+v", got, want)
-		}
-		if len(comp.Integrations()) != 0 {
-			t.Errorf("pty: entry should be detached once PTY is primary")
-		}
-	})
-
-	t.Run("a native backend loses the prefix and keeps its entry", func(t *testing.T) {
-		comp := terminal.NewCompositeBackend(wez, "wezterm", []terminal.Integration{
-			{Prefix: "wezterm:", Source: "wezterm", Backend: wez},
-		})
-		got := promoteRemap(comp, "wezterm")
-		want := &SourceRemap{Source: "wezterm", Prefix: "wezterm:", ToPrefixed: false}
-		if got == nil || *got != *want {
-			t.Errorf("remap = %+v, want %+v", got, want)
-		}
-		if integs := comp.Integrations(); len(integs) != 1 || integs[0].Prefix != "wezterm:" {
-			t.Errorf("integrations = %+v, want the wezterm: entry kept", integs)
-		}
-	})
-
-	t.Run("an unknown source yields no remap", func(t *testing.T) {
-		comp := terminal.NewCompositeBackend(pty, "pty", nil)
-		if got := promoteRemap(comp, "mystery"); got != nil {
-			t.Errorf("remap = %+v, want nil", got)
-		}
-	})
-}
-
-func TestOutranksPrimary(t *testing.T) {
-	tests := []struct {
-		name    string
-		env     map[string]string
-		enable  string
-		current string
-		want    bool
-	}{
-		// DeviceTerm outranks every other primary, in either toggle order.
-		{"deviceterm over pty", map[string]string{"DEVICETERM_SESSION": "s"}, "deviceterm", "pty", true},
-		{"deviceterm over wezterm", map[string]string{"DEVICETERM_SESSION": "s"}, "deviceterm", "wezterm", true},
-		{"deviceterm over tmux", map[string]string{"DEVICETERM_SESSION": "s"}, "deviceterm", "tmux", true},
-		{"wezterm never displaces deviceterm", map[string]string{"WEZTERM_UNIX_SOCKET": "/tmp/w"}, "wezterm", "deviceterm", false},
-		{"kitty never displaces deviceterm", map[string]string{"KITTY_WINDOW_ID": "1"}, "kitty", "deviceterm", false},
-		{"tmux never displaces deviceterm", map[string]string{"TMUX": "/tmp/t"}, "tmux", "deviceterm", false},
-		{"iterm never displaces deviceterm", map[string]string{"TERM_PROGRAM": "iTerm.app"}, "iterm2", "deviceterm", false},
-		// Other backends follow tmux > Kitty > WezTerm > iTerm > PTY precedence.
-		{"tmux over kitty", map[string]string{"TMUX": "/tmp/t"}, "tmux", "kitty", true},
-		{"kitty over wezterm", map[string]string{"KITTY_WINDOW_ID": "1"}, "kitty", "wezterm", true},
-		{"kitty not over tmux", map[string]string{"KITTY_WINDOW_ID": "1"}, "kitty", "tmux", false},
-		{"wezterm over iterm", map[string]string{"WEZTERM_UNIX_SOCKET": "/tmp/w"}, "wezterm", "iterm", true},
-		{"wezterm not over kitty", map[string]string{"WEZTERM_UNIX_SOCKET": "/tmp/w"}, "wezterm", "kitty", false},
-		{"iterm over pty", map[string]string{"TERM_PROGRAM": "iTerm.app"}, "iterm2", "pty", true},
-		{"iterm not over wezterm", map[string]string{"TERM_PROGRAM": "iTerm.app"}, "iterm2", "wezterm", false},
-		// Same backend or no environment match never promotes.
-		{"same source", map[string]string{"DEVICETERM_SESSION": "s"}, "deviceterm", "deviceterm", false},
-		{"env missing", map[string]string{}, "deviceterm", "pty", false},
-		{"unknown name", map[string]string{}, "mystery", "pty", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for _, key := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM", "WEZTERM_UNIX_SOCKET", "DEVICETERM_SESSION"} {
-				t.Setenv(key, "")
-			}
-			for k, v := range tt.env {
-				t.Setenv(k, v)
-			}
-			if got := outranksPrimary(tt.enable, tt.current); got != tt.want {
-				t.Errorf("outranksPrimary(%q, %q) = %v, want %v", tt.enable, tt.current, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestPrimaryRankMatchesStartupOrder(t *testing.T) {
-	order := []string{"deviceterm", "tmux", "kitty", "wezterm", "iterm", "pty"}
-	for i := 1; i < len(order); i++ {
-		if primaryRank(order[i-1]) <= primaryRank(order[i]) {
-			t.Errorf("%s should outrank %s", order[i-1], order[i])
-		}
-	}
-	if primaryRank("unknown") != primaryRank("pty") {
-		t.Errorf("unknown sources should rank with pty")
-	}
-}
-
-func TestIntegrationMeta(t *testing.T) {
-	tests := []struct {
-		name       string
-		wantPrefix string
-		wantSource string
-	}{
-		{"iterm2", "iterm:", "iterm"},
-		{"tmux", "tmux:", "tmux"},
-		{"kitty", "kitty:", "kitty"},
-		{"wezterm", "wezterm:", "wezterm"},
-		{"deviceterm", "deviceterm:", "deviceterm"},
-		{"unknown", "unknown:", "unknown"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			prefix, source := integrationMeta(tt.name)
-			if prefix != tt.wantPrefix {
-				t.Errorf("integrationMeta(%q) prefix = %q, want %q", tt.name, prefix, tt.wantPrefix)
-			}
-			if source != tt.wantSource {
-				t.Errorf("integrationMeta(%q) source = %q, want %q", tt.name, source, tt.wantSource)
-			}
-		})
-	}
 }
 
 func TestRemoveString(t *testing.T) {
@@ -335,5 +94,45 @@ func TestContainsString(t *testing.T) {
 				t.Errorf("containsString(%v, %q) = %v, want %v", tt.slice, tt.s, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestToggleIntegrationPassesSavedSettingsToEnable(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "tmux.log")
+	tmuxPath := filepath.Join(dir, "tmux")
+	script := "#!/bin/sh\necho \"$@\" >> \"" + logPath + "\"\ncase \"$1\" in new-window|new-session) echo '%9';; esac\nexit 0\n"
+	if err := os.WriteFile(tmuxPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// The stack opened with the session name atria started with.
+	stack, err := libatria.Open(libatria.Options{
+		TmuxPath:        tmuxPath,
+		TmuxSession:     "old",
+		Getenv:          func(k string) string { return map[string]string{"TMUX": "/tmp/t"}[k] },
+		NoSelfTTYFilter: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stack.Close()
+
+	// The user has since edited tmux_session in settings and saved.
+	cfg := &config.Config{TmuxPath: tmuxPath, TmuxSession: "fresh"}
+	msg := toggleIntegration("tmux", true, cfg, filepath.Join(dir, "config.toml"), stack)()
+	toggled, ok := msg.(IntegrationToggledMsg)
+	if !ok || toggled.Err != nil || !toggled.Status.Active {
+		t.Fatalf("toggle = %+v", msg)
+	}
+	if _, err := stack.Backend().NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	log, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(log), "new-window -t =fresh:") {
+		t.Errorf("launch should use the saved tmux_session, got:\n%s", log)
+	}
+	if len(cfg.Integrations) != 1 || cfg.Integrations[0] != "tmux" {
+		t.Errorf("config should record the toggle, got %v", cfg.Integrations)
 	}
 }

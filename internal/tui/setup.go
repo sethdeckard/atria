@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
+	"github.com/sethdeckard/atria/libatria"
 	"github.com/sethdeckard/atria/libatria/agent"
 )
 
@@ -36,7 +37,7 @@ func buildSetupIntegrationItems(info StatusInfo) []settingsItem {
 		}
 		statusLabel := backendStatusLabel(bs)
 		label := "  " + bs.Name
-		if envDetected(bs.Name) {
+		if libatria.EnvMatches(bs.Name, os.Getenv) {
 			label += "  (detected)"
 		}
 		items = append(items, settingsItem{
@@ -107,23 +108,6 @@ func buildSetupDefaultItems(cfg *config.Config, agents []agent.Type) []settingsI
 	})
 
 	return items
-}
-
-// envDetected returns true when the environment suggests this integration is available.
-func envDetected(name string) bool {
-	switch name {
-	case "tmux":
-		return os.Getenv("TMUX") != ""
-	case "iterm2":
-		return os.Getenv("TERM_PROGRAM") == "iTerm.app"
-	case "kitty":
-		return os.Getenv("KITTY_WINDOW_ID") != ""
-	case "wezterm":
-		return os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != ""
-	case "deviceterm":
-		return os.Getenv("DEVICETERM_SESSION") != ""
-	}
-	return false
 }
 
 func setupStepTitle(step int) string {
@@ -197,18 +181,18 @@ func integrationHint(name string, info StatusInfo) string {
 		if bs.Enabled && !bs.Active && bs.Reason != "" {
 			return "Requires iTerm2 with Python API enabled (Settings > General > Magic)."
 		}
-		if !bs.Enabled && !envDetected(name) {
+		if !bs.Enabled && !libatria.EnvMatches(name, os.Getenv) {
 			return "Enable inside iTerm2 to discover agent sessions."
 		}
 	case "kitty":
 		if bs.Enabled && !bs.Active && bs.Reason != "" {
 			return "Requires kitty.conf: allow_remote_control yes, listen_on unix:/tmp/kitty-{kitty_pid}"
 		}
-		if !bs.Enabled && !envDetected(name) {
+		if !bs.Enabled && !libatria.EnvMatches(name, os.Getenv) {
 			return "Enable inside Kitty to discover agent sessions."
 		}
 	case "tmux":
-		if !bs.Enabled && !envDetected(name) {
+		if !bs.Enabled && !libatria.EnvMatches(name, os.Getenv) {
 			return "Enable inside tmux to discover agent sessions."
 		}
 		if bs.Enabled && !bs.Active {
@@ -218,14 +202,14 @@ func integrationHint(name string, info StatusInfo) string {
 		if bs.Enabled && !bs.Active && bs.Reason != "" {
 			return "Requires a running WezTerm instance."
 		}
-		if !bs.Enabled && !envDetected(name) {
+		if !bs.Enabled && !libatria.EnvMatches(name, os.Getenv) {
 			return "Enable inside WezTerm to discover agent sessions."
 		}
 	case "deviceterm":
 		if bs.Enabled && !bs.Active && bs.Reason != "" {
 			return "Requires DeviceTerm 0.11.0 or later; run atria in an Automation tab (Shell ▸ Open Automation Tab, ⇧⌘T)."
 		}
-		if !bs.Enabled && !envDetected(name) {
+		if !bs.Enabled && !libatria.EnvMatches(name, os.Getenv) {
 			return "Enable inside DeviceTerm to discover agent sessions."
 		}
 	}
@@ -631,11 +615,10 @@ func (m Model) toggleSetupIntegration(item settingsItem) (Model, tea.Cmd) {
 	}
 	enable := !bs.Enabled
 
-	composite := compositeBackend(m.backend)
-	if composite == nil {
+	if m.stack == nil {
 		m.statusText = "Cannot modify backend"
 		return m, nil
 	}
 
-	return m, toggleIntegration(item.key, enable, m.cfg, m.configPath, composite, m.ptyClient)
+	return m, toggleIntegration(item.key, enable, m.cfg, m.configPath, m.stack)
 }

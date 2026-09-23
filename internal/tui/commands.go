@@ -8,13 +8,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethdeckard/atria/internal/config"
+	"github.com/sethdeckard/atria/libatria"
 	"github.com/sethdeckard/atria/libatria/agent"
 	"github.com/sethdeckard/atria/libatria/terminal"
-	devicetermbackend "github.com/sethdeckard/atria/libatria/terminal/deviceterm"
-	"github.com/sethdeckard/atria/libatria/terminal/iterm"
-	"github.com/sethdeckard/atria/libatria/terminal/kitty"
-	"github.com/sethdeckard/atria/libatria/terminal/tmux"
-	weztermbackend "github.com/sethdeckard/atria/libatria/terminal/wezterm"
 	"github.com/sethdeckard/atria/libatria/watch"
 )
 
@@ -231,32 +227,34 @@ func listDir(path string) tea.Cmd {
 	}
 }
 
-// integrationMeta maps a config name (e.g. "iterm2") to the prefix and source
-// used by the composite backend. These must match the values used at startup.
-func integrationMeta(name string) (prefix, source string) {
-	switch name {
-	case "iterm2":
-		return "iterm:", "iterm"
-	case "tmux":
-		return "tmux:", "tmux"
-	case "kitty":
-		return "kitty:", "kitty"
-	case "wezterm":
-		return "wezterm:", "wezterm"
-	case "deviceterm":
-		return "deviceterm:", "deviceterm"
-	default:
-		return name + ":", name
+// StackOptions builds the library options atria derives from its config:
+// integration list, binary paths, tmux launch session, PTY size, cache TTL,
+// and the program name the terminals see. main.go adds AllowITermPrompt
+// for the one moment (startup) when an AppleScript dialog is safe.
+func StackOptions(cfg *config.Config) libatria.Options {
+	return libatria.Options{
+		Integrations:   cfg.Integrations,
+		TmuxPath:       cfg.TmuxPath,
+		TmuxSession:    cfg.TmuxSession,
+		KittenPath:     cfg.KittenPath,
+		WezTermPath:    cfg.WezTermPath,
+		DeviceTermPath: cfg.DeviceTermPath,
+		PTYCols:        cfg.PtyCols,
+		PTYRows:        cfg.PtyRows,
+		CacheTTL:       time.Duration(cfg.CacheTTL) * time.Second,
+		ProgramName:    "atria",
 	}
 }
 
-func toggleIntegration(name string, enable bool, cfg *config.Config, configPath string, composite *terminal.CompositeBackend, ptyClient terminal.Backend) tea.Cmd {
+// toggleIntegration persists the change to config first (a save failure
+// leaves the runtime untouched), then applies it to the stack. The stack's
+// RoleChange becomes the message's SourceRemap so tracked session ids
+// follow a backend that changed role.
+func toggleIntegration(name string, enable bool, cfg *config.Config, configPath string, stack *libatria.Stack) tea.Cmd {
 	return func() tea.Msg {
-		prefix, source := integrationMeta(name)
 		status := BackendStatus{Name: name, Enabled: enable}
 
 		if !enable {
-			// Persist first — remove from config and save.
 			prevIntegrations := cfg.Integrations
 			filtered := removeString(cfg.Integrations, name)
 			if len(filtered) == 0 {
@@ -264,107 +262,49 @@ func toggleIntegration(name string, enable bool, cfg *config.Config, configPath 
 			} else {
 				cfg.Integrations = filtered
 			}
-
 			if err := cfg.Save(configPath); err != nil {
-				// Restore config on save failure.
 				cfg.Integrations = prevIntegrations
 				return IntegrationToggledMsg{Name: name, Status: status, Err: err}
 			}
-
-			// Save succeeded — apply runtime changes.
-			var remap *SourceRemap
-			composite.RemoveIntegration(prefix)
-			if composite.PrimarySource() == source {
-				// Re-derive primary from remaining integrations.
-				newPrimary, newSource := derivePrimary(composite.Integrations(), ptyClient)
-				composite.SetPrimary(newPrimary, newSource)
-				remap = promoteRemap(composite, newSource)
+			rc, err := stack.Disable(name)
+			if err != nil {
+				return IntegrationToggledMsg{Name: name, Status: status, Err: err}
 			}
-
-			return IntegrationToggledMsg{Name: name, Status: status, Remap: remap, NewPrimary: composite.PrimarySource()}
+			return IntegrationToggledMsg{Name: name, Status: status, Remap: sourceRemap(rc), NewPrimary: stack.PrimarySource()}
 		}
 
-		// Persist first — add to config and save.
 		prevIntegrations := cfg.Integrations
 		if !containsString(cfg.Integrations, name) {
 			cfg.Integrations = append(cfg.Integrations, name)
 		}
-
 		if err := cfg.Save(configPath); err != nil {
 			cfg.Integrations = prevIntegrations
 			return IntegrationToggledMsg{Name: name, Status: status, Err: err}
 		}
-
-		// Probe the backend.
-		var backend terminal.Backend
-		var probeErr error
-
-		switch name {
-		case "iterm2":
-			// Never prompt from inside the TUI: an AppleScript dialog over the
-			// alt screen is what NoPrompt exists to prevent.
-			it := iterm.NewClient(iterm.Options{NoPrompt: true, ClientName: "atria"})
-			probeErr = it.Available()
-			backend = it
-		case "tmux":
-			tm := tmux.NewClient(tmux.Options{Path: cfg.TmuxPath, LaunchSession: cfg.TmuxSession, FallbackSession: "atria"})
-			probeErr = tm.Available()
-			backend = tm
-		case "kitty":
-			kt := kitty.NewClient(kitty.Options{Path: cfg.KittenPath})
-			probeErr = kt.Available()
-			backend = kt
-		case "wezterm":
-			wt := weztermbackend.NewClient(weztermbackend.Options{Path: cfg.WezTermPath})
-			probeErr = wt.Available()
-			backend = wt
-		case "deviceterm":
-			dt := devicetermbackend.NewClient(devicetermbackend.Options{Path: cfg.DeviceTermPath, ProgramName: "atria"})
-			probeErr = dt.Available()
-			backend = dt
+		// Settings edited since startup (tmux_session, binary paths) must
+		// reach the client Enable builds.
+		stack.Configure(StackOptions(cfg))
+		st, rc, err := stack.Enable(name)
+		if err != nil {
+			return IntegrationToggledMsg{Name: name, Status: status, Err: err}
 		}
-
-		if probeErr != nil {
-			status.Reason = probeErr.Error()
-			// Config saved (toggle remembered) but no runtime changes.
+		status = BackendStatusFrom(st)
+		if !st.Available {
+			// Config saved (toggle remembered) but no runtime change, so the
+			// primary and the Launch flags stand.
 			return IntegrationToggledMsg{Name: name, Status: status}
 		}
-
-		// Save succeeded and probe OK — apply runtime changes.
-		// DeviceTerm participates only as a primary candidate; promotion
-		// happens below.
-		if name != "deviceterm" {
-			composite.AddIntegration(terminal.Integration{
-				Prefix:  prefix,
-				Source:  source,
-				Backend: backend,
-			})
-		}
-
-		// Mark active only when the environment matches.
-		if (name == "iterm2" && os.Getenv("TERM_PROGRAM") == "iTerm.app") ||
-			(name == "tmux" && os.Getenv("TMUX") != "") ||
-			(name == "kitty" && os.Getenv("KITTY_WINDOW_ID") != "") ||
-			(name == "wezterm" && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "")) {
-			status.Active = true
-		}
-
-		// Promote using the same precedence startup applies, so the launch
-		// target does not depend on the order integrations were toggled.
-		// The outgoing primary's sessions change id when it becomes an
-		// integration; the handler rewrites tracked ids from the remap.
-		var remap *SourceRemap
-		if outranksPrimary(name, composite.PrimarySource()) {
-			remap = demoteRemap(composite, ptyClient)
-			composite.SetPrimary(backend, source)
-			if name == "deviceterm" {
-				// Active only once it is the primary (never a secondary discoverer).
-				status.Active = true
-			}
-		}
-
-		return IntegrationToggledMsg{Name: name, Status: status, Remap: remap, NewPrimary: composite.PrimarySource()}
+		return IntegrationToggledMsg{Name: name, Status: status, Remap: sourceRemap(rc), NewPrimary: stack.PrimarySource()}
 	}
+}
+
+// sourceRemap converts a stack RoleChange to the handler's SourceRemap. A
+// nil change, or one where no ids moved, yields nil.
+func sourceRemap(rc *libatria.RoleChange) *SourceRemap {
+	if rc == nil || rc.Source == "" {
+		return nil
+	}
+	return &SourceRemap{Source: rc.Source, Prefix: rc.Prefix, ToPrefixed: rc.ToPrefixed}
 }
 
 func saveConfig(cfg *config.Config, path string, rollback func(m *Model)) tea.Cmd {
@@ -372,112 +312,6 @@ func saveConfig(cfg *config.Config, path string, rollback func(m *Model)) tea.Cm
 		err := cfg.Save(path)
 		return ConfigSavedMsg{Err: err, Rollback: rollback}
 	}
-}
-
-// integrationPrefix returns the prefix that serves source in the
-// integration role. PTY has no standing entry, so it is answered directly.
-func integrationPrefix(composite *terminal.CompositeBackend, source string) (string, bool) {
-	if source == "pty" {
-		return "pty:", true
-	}
-	for _, integ := range composite.Integrations() {
-		if integ.Source == source {
-			return integ.Prefix, true
-		}
-	}
-	return "", false
-}
-
-// demoteRemap prepares the current primary for demotion and describes the
-// resulting session id change; callers change the primary afterwards with
-// SetPrimary. PTY gains the integration entry it lacks; every other backend
-// keeps the entry it already has, and the composite dedups by TTY. A
-// primary with no entry (DeviceTerm) cannot be routed afterwards, so nil is
-// returned and its sessions drop on refresh.
-func demoteRemap(composite *terminal.CompositeBackend, ptyClient terminal.Backend) *SourceRemap {
-	prev := composite.PrimarySource()
-	if prev == "pty" {
-		composite.AddIntegration(terminal.Integration{
-			Prefix: "pty:", Source: "pty", Backend: ptyClient,
-		})
-	}
-	prefix, ok := integrationPrefix(composite, prev)
-	if !ok {
-		return nil
-	}
-	return &SourceRemap{Source: prev, Prefix: prefix, ToPrefixed: true}
-}
-
-// promoteRemap is the reverse: the backend named by source has just become
-// primary, so its tracked sessions lose their prefix. PTY's entry is
-// detached (its sessions are unprefixed only while it is primary, and
-// detaching rather than removing keeps the client open); other backends
-// keep their entry.
-func promoteRemap(composite *terminal.CompositeBackend, source string) *SourceRemap {
-	prefix, ok := integrationPrefix(composite, source)
-	if !ok {
-		return nil
-	}
-	if source == "pty" {
-		composite.DetachIntegration("pty:")
-	}
-	return &SourceRemap{Source: source, Prefix: prefix, ToPrefixed: false}
-}
-
-// primaryRank orders launch backends by composite source name, highest
-// first: deviceterm > tmux > kitty > wezterm > iterm > pty. It is the single
-// precedence that startup (main.go) and the settings toggle both follow.
-func primaryRank(source string) int {
-	switch source {
-	case "deviceterm":
-		return 5
-	case "tmux":
-		return 4
-	case "kitty":
-		return 3
-	case "wezterm":
-		return 2
-	case "iterm":
-		return 1
-	}
-	return 0
-}
-
-// outranksPrimary reports whether the integration named by config name has
-// a matching environment and a rank strictly above the current primary
-// source. Callers must probe availability first; this checks environment
-// and rank only. A lower backend never displaces a higher one, and a higher
-// one always takes over, regardless of toggle order.
-func outranksPrimary(name, current string) bool {
-	if !envDetected(name) {
-		return false
-	}
-	_, source := integrationMeta(name)
-	return primaryRank(source) > primaryRank(current)
-}
-
-// derivePrimary selects the best launch backend from available integrations,
-// following documented precedence: tmux > kitty > wezterm > iterm > PTY, each
-// only when its environment matches. DeviceTerm is excluded because it is
-// never a discovery integration. PTY is the fallback.
-func derivePrimary(integrations []terminal.Integration, ptyClient terminal.Backend) (terminal.Backend, string) {
-	integMap := make(map[string]terminal.Backend)
-	for _, integ := range integrations {
-		integMap[integ.Source] = integ.Backend
-	}
-	if b, ok := integMap["tmux"]; ok && os.Getenv("TMUX") != "" {
-		return b, "tmux"
-	}
-	if b, ok := integMap["kitty"]; ok && os.Getenv("KITTY_WINDOW_ID") != "" {
-		return b, "kitty"
-	}
-	if b, ok := integMap["wezterm"]; ok && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") {
-		return b, "wezterm"
-	}
-	if b, ok := integMap["iterm"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
-		return b, "iterm"
-	}
-	return ptyClient, "pty"
 }
 
 func containsString(ss []string, s string) bool {

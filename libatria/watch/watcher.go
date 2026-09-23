@@ -139,9 +139,8 @@ func (w *Watcher) Events() <-chan Event { return w.events }
 // their intervals until ctx is done. It returns ctx.Err() and closes Events.
 // Run may be called once per Watcher; create a new Watcher to watch again.
 // Cancellation is honoured between backend calls and at every send, so Run
-// returns once the calls in flight finish; those are bounded by the clients'
-// CommandTimeout, not by ctx. A second concurrent Run returns
-// ErrAlreadyRunning.
+// returns once the calls in flight finish; ctx does not interrupt a backend
+// call. A second concurrent Run returns ErrAlreadyRunning.
 func (w *Watcher) Run(ctx context.Context) error {
 	if !w.running.CompareAndSwap(false, true) {
 		return ErrAlreadyRunning

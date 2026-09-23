@@ -1,6 +1,6 @@
 # libatria API
 
-Status: proposal. Nothing under `libatria/` exists yet; this document is what the extraction will produce, and it's the thing to review before any code moves.
+Status: implemented. The code under `libatria/` is the source of truth; this document is the reference for the public surface, and [README.md](README.md) is the guide.
 
 libatria is the importable part of atria: terminal discovery, agent detection, status classification, and a watcher that follows agent sessions over time. It lives in the atria module at `github.com/sethdeckard/atria/libatria` and shares atria's version. It's built for programs like atria itself and for daemons that drive Claude and Codex sessions remotely.
 
@@ -296,6 +296,8 @@ A `Type`'s string value is the agent's CLI binary name, and `Installed` reports 
 
 `LaunchCommand("/p", agent.Claude, "--resume", "abc")` returns `cd '/p' && claude '--resume' 'abc'`. `Launch` creates a session on `source` (through `SourceLauncher` when the backend has one and `source` is non-empty, else `NewSession`), focuses it, waits `LaunchSettle`, runs `cd '<dir>' && <cmd>`, and returns the new session ID. It runs `cmd` as given, so quote your own arguments or build the string with `LaunchCommand`. The focus step matters: iTerm2 doesn't populate a background tab's buffer until it has been shown once.
 
+An empty `dir` skips the `cd` in both `LaunchCommand` and `Launch`, so pass the directory to one of them, not both.
+
 `SendPrompt` sends the text, waits `SubmitDelay`, then sends a carriage return as a separate write, because the raw-mode TUIs these agents run drop a trailing newline that arrives in the same write. Copilot gets its own path: newlines are flattened to spaces (its input treats Enter as newline, not submit), and the text goes one rune per write with `CopilotRuneDelay` between them.
 
 `FindProcess` returns the first process whose `argv[0]` basename is a known agent binary.
@@ -471,7 +473,7 @@ func (w *Watcher) Session(id string) (Snapshot, bool)
 
 `WatchDirs` is passed to `Identify` and decides its mode: with directories, only sessions under them are added; with none, directory filtering is off and every agent session the backend lists is a candidate. `Filter` runs on every listed session before anything else; `Agents` limits which types are added.
 
-Events for one session arrive in causal order, with `SessionAdded` first and `SessionRemoved` last. Sends block when the buffer is full. Nothing is dropped while `Run` is live, and a slow consumer pauses polling until it catches up. Backpressure was chosen over dropping because a lost needs_input event leaves an agent waiting until someone notices. Every send also selects on the context, so cancelling it returns from `Run` even with a full buffer and a consumer that has stopped reading. Events pending at that point are abandoned. Events are sent outside the Watcher's lock, so `Sessions()` and `Session()` never wait on a blocked send.
+Events for one session arrive in causal order, with `SessionAdded` first and `SessionRemoved` last. Sends block when the buffer is full. Nothing is dropped while `Run` is live, and a slow consumer pauses polling until it catches up. Backpressure was chosen over dropping because a lost needs_input event leaves an agent waiting until someone notices. Every send also selects on the context, so cancelling it unblocks delivery even with a full buffer and a consumer that has stopped reading, and `Run` returns once in-flight backend calls finish. A send racing with cancellation may still succeed, and events already buffered stay readable after `Run` closes the channel. Events are sent outside the Watcher's lock, so `Sessions()` and `Session()` never wait on a blocked send.
 
 `ScreenRead` events are off by default because they fire on every poll. `Parallelism` bounds concurrent `ReadScreen` and `Identify` calls; every non-PTY backend spends a subprocess or a socket round trip per read, so unbounded fan-out across many sessions is process pressure you can feel.
 
@@ -501,6 +503,7 @@ func Names() []string
 func Source(name string) string
 func Prefix(name string) string
 func Rank(source string) int
+func EnvMatches(name string, getenv func(string) string) bool
 
 type Options struct {
     Integrations []string
@@ -517,7 +520,7 @@ type Options struct {
     CommandTimeout  time.Duration // 0 → 5s
     SelfTTY         string        // "" → TTYForPID(os.Getpid())
     NoSelfTTYFilter bool
-    ProgramName     string        // "" → "libatria"
+    ProgramName     string        // "" → each client's default: "libatria" for iTerm2 and tmux, "this program" for DeviceTerm
     AllowITermPrompt bool
     Getenv          func(string) string // nil → os.Getenv
 }
@@ -546,6 +549,7 @@ func (s *Stack) PTY() *pty.Client
 func (s *Stack) PrimarySource() string
 func (s *Stack) Statuses() []Status
 func (s *Stack) Ignored() []string
+func (s *Stack) Configure(opts Options)
 func (s *Stack) Enable(name string) (Status, *RoleChange, error)
 func (s *Stack) Disable(name string) (*RoleChange, error)
 func (s *Stack) Reprobe() ([]Status, *RoleChange)
@@ -553,9 +557,9 @@ func (s *Stack) Resize(cols, rows int)
 func (s *Stack) Close() error
 ```
 
-`Names` lists the integration names in precedence order, highest first: deviceterm, tmux, kitty, wezterm, iterm2. `Source` maps a name to the composite source label (`"iterm2"` becomes `"iterm"`; the rest are unchanged), `Prefix` appends the colon, and `Rank` orders sources for primary selection with PTY at zero.
+`Names` lists the integration names in precedence order, highest first: deviceterm, tmux, kitty, wezterm, iterm2. `Source` maps a name to the composite source label (`"iterm2"` becomes `"iterm"`; the rest are unchanged), `Prefix` appends the colon, and `Rank` orders sources for primary selection with PTY at zero. `EnvMatches` is the environment half of primary selection: whether the process is inside the terminal the name integrates with. `Open` and `Enable` use it, and a settings screen can too.
 
-`Open` always builds a PTY client, probes each named integration with `Available`, and records a `Status` for every known name whether or not you asked for it. The primary is the highest-ranked available integration whose environment matches: `DEVICETERM_SESSION` for DeviceTerm, `TMUX` for tmux, `KITTY_WINDOW_ID` for kitty, `TERM_PROGRAM=WezTerm` or `WEZTERM_UNIX_SOCKET` for WezTerm, `TERM_PROGRAM=iTerm.app` for iTerm2. With no match, PTY is primary. When PTY isn't primary it's added as the `pty:` integration so its sessions stay listed.
+`Open` always builds a PTY client, probes each named integration with `Available`, and records a `Status` for every known name whether or not you asked for it. The primary is the highest-ranked available integration whose environment matches: `DEVICETERM_SESSION` for DeviceTerm, `TMUX` for tmux, `KITTY_WINDOW_ID` for kitty, `TERM_PROGRAM=WezTerm` or `WEZTERM_UNIX_SOCKET` for WezTerm, `TERM_PROGRAM=iTerm.app` for iTerm2. With no match, PTY is primary. When PTY isn't primary it's added as the `pty:` integration so its sessions stay listed. The error return is reserved; nothing in the current assembly fails, and probe failures are reported through `Statuses`.
 
 DeviceTerm is the exception to the discovery model. It's either the primary or absent, never a discovery integration, because a granted Automation tab is never inside another terminal and outside one the CLI can't capture, send, or focus. `Status.Active` for DeviceTerm is true only when it's the primary.
 
@@ -563,7 +567,9 @@ DeviceTerm is the exception to the discovery model. It's either the primary or a
 
 `Statuses` lists PTY first, then the integrations in `Names` order. `Available` means the probe passed, `Active` means the environment matched too, `Launch` marks the primary, and `Reason` carries the probe error when there is one. `Ignored` returns names in `Options.Integrations` that the library doesn't recognize; it doesn't fail `Open`.
 
-`Enable` probes and adds an integration at runtime, promoting it to primary when it outranks the current one and its environment matches. `Disable` removes one and re-derives the primary from what remains. Both return a `RoleChange` when a backend moved between the primary and integration roles, because its session IDs gain or lose their prefix and anything you hold by ID has to follow. A `nil` `RoleChange` means no IDs moved. `Enable` never triggers the iTerm2 AppleScript dialog; `AllowITermPrompt` applies to `Open` only.
+`Enable` probes and adds an integration at runtime, promoting it to primary when it outranks the current one and its environment matches. `Disable` removes one and re-derives the primary from what remains. Both return a `RoleChange` when a backend moved between the primary and integration roles, because its session IDs gain or lose their prefix and anything you hold by ID has to follow. A `RoleChange` comes back whenever the primary changed; `nil` means it didn't. `Source` is empty when no IDs moved, which happens only when the outgoing primary had no integration entry (DeviceTerm is the one backend without one). `Enable` and `Reprobe` build clients that never trigger the iTerm2 AppleScript dialog; `AllowITermPrompt` applies to the client `Open` builds, which keeps the setting and can prompt again if it reconnects and is refused. Both invalidate the session cache behind `Backend()`, so the listing after a role change already carries the new IDs.
+
+`Configure` replaces the options later `Enable` and `Reprobe` calls build clients from (binary paths, `TmuxSession`, `ProgramName`, `CommandTimeout`); clients already running are untouched. A settings screen that edits the tmux launch session calls it before re-enabling tmux.
 
 `Reprobe` retries every enabled integration whose last probe failed and adds or promotes the ones that now answer, following the same precedence as `Open`.
 
@@ -575,4 +581,4 @@ All `Stack` methods are safe for concurrent use, including while a `watch.Watche
 
 libatria ships inside the atria module and takes atria's version. While the module is v0.x, a minor release may change the libatria API, and every breaking change is listed in CHANGELOG.md under that release.
 
-`Backend`, `Session`, `agent.Type`, `agent.Status`, and `watch.Event` are the surfaces most likely to hold still. The `Options` structs will grow fields. One change is already planned for v1: `Backend` methods will take a `context.Context`, and until then calls are bounded by `CommandTimeout`. The concurrency guarantees above are part of the contract from v0.7.0. A `v1.0.0` tag freezes the API.
+`Backend`, `Session`, `agent.Type`, `agent.Status`, and `watch.Event` are the surfaces most likely to hold still. The `Options` structs will grow fields. One change is already planned for v1: `Backend` methods will take a `context.Context`, and until then `CommandTimeout` bounds each CLI invocation and iTerm2 request-response exchange. The concurrency guarantees above are part of the contract from v0.7.0. A `v1.0.0` tag freezes the API.

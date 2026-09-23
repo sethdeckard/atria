@@ -38,13 +38,21 @@ internal/
   tui/termview.go                # Embedded terminal view (PTY backend)
   tui/paths.go                   # Path display utilities (contractHome)
   tui/gitinfo.go                 # Git worktree detection
-libatria/                        # Public library; see docs/libatria/API.md
+libatria/                        # Public library; see docs/libatria/README.md and API.md
+  stack.go                       # Open, Stack: probe integrations, pick the primary, toggle at runtime
+  registry.go                    # Names, Source, Prefix, Rank, EnvMatches
   agent/agent.go                 # Type, Status, Types, constants
   agent/detect.go                # Agent detection from session title
   agent/classify.go              # Status classification from screen text
   agent/patterns.go              # Per-agent regex registry
   agent/installed.go             # Which agent binaries are on PATH
-  terminal/backend.go            # Backend interface
+  agent/process.go               # FindProcess: the agent process on a TTY
+  agent/launch.go                # ShellQuote, LaunchCommand, Launch
+  agent/send.go                  # SendPrompt (two-step send, Copilot per-rune path)
+  terminal/backend.go            # Backend interface and named optional interfaces
+  terminal/keys.go               # Named keys, SendKey
+  terminal/errors.go             # ErrUnavailable, timeouts
+  terminal/process.go            # ProcessesOnTTY, ProcessCWD
   terminal/composite.go          # Composite backend (primary + integrations)
   terminal/cache.go              # Cached session list with TTL
   terminal/cwd.go                # CWD discovery strategies (shared)
@@ -60,6 +68,10 @@ libatria/                        # Public library; see docs/libatria/API.md
   terminal/tmux/client.go        # tmux backend
   terminal/pty/client.go         # PTY backend (built-in multiplexer)
   terminal/pty/session.go        # PTY session (process + vt10x emulator)
+  watch/tracker.go               # Tracker: per-session status state machine
+  watch/identify.go              # Identify: is this session an agent, in which directory
+  watch/watcher.go               # Watcher: goroutine poller emitting events
+  watch/event.go                 # Event, Snapshot, event and removal kinds
 ```
 
 ## Commands
@@ -82,7 +94,10 @@ libatria/                        # Public library; see docs/libatria/API.md
 - TUI Model owns all state; terminal/project packages are stateless
 - Use `tea.Batch` for parallel commands, sequential when dependencies exist
 - Monitor processes are OS-level (spawned via os/exec), not goroutines
-- Only active integrations discover sessions — discovery implies focus and chat support. An integration that isn't active (environment doesn't match) must not contribute sessions to the composite.
+- Enabled integrations whose probes pass contribute sessions regardless of environment match. Environment matching decides primary selection and Active status. DeviceTerm remains primary or absent.
+- Nothing under `libatria/` imports `internal/`, bubbletea, or lipgloss, and `terminal` never imports `agent` (`agent` imports `terminal`; `terminal/tmux` imports `agent`; `watch` imports both; the root imports all). Check with `go list -deps ./libatria/... | grep -E 'atria/internal|bubbletea|lipgloss'`, which must print nothing.
+- Backend assembly and integration toggling go through `libatria.Open` and `Stack.Enable`/`Disable`. The TUI never constructs a terminal client or mutates the composite.
+- Status and discovery rules live in `libatria/watch` (`Tracker`, `Identify`). TUI handlers adapt their results; they don't reimplement them.
 
 ## Key Patterns
 
@@ -208,7 +223,7 @@ Uses the `deviceterm` CLI, spawned as a direct child process for every call. Atr
 
 **Session mapping:** Each terminal pane is a session; the pane `id` (== `terminal.sessionId`, a lowercase UUID) is the session ID. `terminal.title` is the pane's own live label (OSC title, then user-assigned name, then cwd basename), so two agents split in one tab are typed independently. `terminal.tty` populates `Session.TTY`, so the composite's `SetSelfTTY` filter drops Atria's own pane and TTY dedup works as for any other backend; it is absent only transiently before a shell attaches. Enumeration is two subprocesses per refresh (`session show`, `pane list --all`) behind the session-list cache (`cache_ttl`, 5s by default). A lost grant or any listing failure fails the whole refresh rather than returning a partial list, because Atria drops tracked sessions that go missing. `GetVar("path")` returns the `terminal.cwd` cached by the last successful `ListSessions`, without revalidating the grant; the field itself is grant-gated and best-effort, and an empty value falls through to the `lsof`-by-TTY and name-matching strategies.
 
-**Composite role — primary or absent:** DeviceTerm is registered only as a primary candidate and is **never** appended to the composite `integrations` list (no `deviceterm:` prefix exists at runtime). A granted Automation tab is never inside tmux, Kitty, WezTerm, or iTerm, and outside one DeviceTerm cannot capture, send, or focus, so it would contribute sessions it cannot service. Enabled but not granted, it contributes nothing, which satisfies the rule that discovery implies focus + chat. In `toggleIntegration`, enabling it promotes it to primary (demoting PTY to `pty:`) instead of calling `AddIntegration`; disabling it selects the highest-priority remaining backend whose environment matches, falling back to PTY. DeviceTerm rows carry TTY metadata, so a prefixed secondary role would be possible, but secondary discovery is unsupported because no use case needs it.
+**Composite role — primary or absent:** DeviceTerm is registered only as a primary candidate and is **never** appended to the composite `integrations` list (no `deviceterm:` prefix exists at runtime). A granted Automation tab is never inside tmux, Kitty, WezTerm, or iTerm, and outside one DeviceTerm cannot capture, send, or focus, so it would contribute sessions it cannot service. Enabled but not granted, it contributes nothing, because outside an Automation tab it cannot capture, send, or focus. `libatria.Stack.Enable` promotes it to primary (demoting PTY to `pty:`) instead of adding an integration entry; `Disable` selects the highest-ranked remaining backend whose environment matches, falling back to PTY. DeviceTerm rows carry TTY metadata, so a prefixed secondary role would be possible, but secondary discovery is unsupported because no use case needs it.
 
 **Limitations:**
 - `terminal.cwd` is best-effort; DeviceTerm omits it when the session's process identity is ambiguous.
@@ -240,7 +255,7 @@ Built-in terminal multiplexer — no external dependencies. Each agent runs in i
 
 **Process exit:** Reader goroutine detects EOF on PTY master → marks session as exited. `ListSessions()` filters exited sessions. Existing orphan detection handles cleanup.
 
-**Cleanup:** `Close()` closes PTY fds (unblocks readers), sends SIGTERM, waits up to 2s per session (falls back to SIGKILL).
+**Cleanup:** `Close()` closes each PTY (which unblocks the reader) and sends SIGTERM. SIGKILL follows only if the reader has not finished within 2s, so process termination is not guaranteed.
 
 **MonitorOutput:** Unsupported (no-op with error). Screen reads are the primary mechanism.
 
@@ -259,7 +274,7 @@ CachedBackend → CompositeBackend
   deviceterm.Client is never listed here: primary or absent
 ```
 
-- **Primary** backend handles `NewSession()` (launches). Derived from environment + available integrations: DeviceTerm in a granted Automation tab, tmux in tmux, Kitty in Kitty, WezTerm in WezTerm, iTerm in iTerm, PTY otherwise.
+- **Primary** backend handles `NewSession()` (launches). Chosen by `libatria.Open` from environment and available integrations, and re-derived by `Stack.Enable`/`Disable`: DeviceTerm in a granted Automation tab, tmux in tmux, Kitty in Kitty, WezTerm in WezTerm, iTerm in iTerm, PTY otherwise.
 - **Integrations** contribute to `ListSessions()` and handle `ReadScreen/SendText/FocusSession/GetVar` for their own sessions.
 - **Session ID routing**: integration sessions get prefixed (`iterm:`, `tmux:`, `kitty:`, `wezterm:`, `pty:`). The composite strips prefixes when delegating. When PTY is primary, its sessions are unprefixed (`pty-N`).
 - **Deduplication**: sessions sharing the same TTY are deduplicated (primary wins).

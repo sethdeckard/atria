@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/sethdeckard/atria/libatria"
 )
 
 func TestParseOptionsDebugUnsafeImpliesDebug(t *testing.T) {
@@ -53,5 +55,29 @@ func TestHelpTextDocumentsSafeAndUnsafeDebug(t *testing.T) {
 	}
 	if !strings.Contains(help, "may capture secrets") {
 		t.Fatal("expected help to warn about unsafe logging")
+	}
+}
+
+func TestBackendStatusesKeepsConfigOrder(t *testing.T) {
+	statuses := []libatria.Status{
+		{Name: "pty", Source: "pty", Enabled: true, Available: true, Active: true, Launch: true},
+		{Name: "deviceterm", Source: "deviceterm"},
+		{Name: "tmux", Source: "tmux", Enabled: true, Available: true, Reason: ""},
+		{Name: "kitty", Source: "kitty"},
+		{Name: "wezterm", Source: "wezterm", Enabled: true, Reason: "wezterm not found in PATH"},
+		{Name: "iterm2", Source: "iterm"},
+	}
+	got := backendStatuses([]string{"wezterm", "tmux", "mystery", "wezterm"}, statuses)
+	want := []string{"pty", "wezterm", "tmux", "iterm2", "kitty", "deviceterm"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d statuses, want %d: %+v", len(got), len(want), got)
+	}
+	for i, name := range want {
+		if got[i].Name != name {
+			t.Errorf("[%d] = %q, want %q", i, got[i].Name, name)
+		}
+	}
+	if !got[0].Launch || !got[2].Enabled || got[1].Reason == "" {
+		t.Errorf("fields should carry over: %+v", got)
 	}
 }

@@ -7,19 +7,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
 	"github.com/sethdeckard/atria/internal/tui"
-	"github.com/sethdeckard/atria/libatria/terminal"
-	devicetermbackend "github.com/sethdeckard/atria/libatria/terminal/deviceterm"
-	"github.com/sethdeckard/atria/libatria/terminal/iterm"
-	"github.com/sethdeckard/atria/libatria/terminal/kitty"
-	ptybackend "github.com/sethdeckard/atria/libatria/terminal/pty"
-	"github.com/sethdeckard/atria/libatria/terminal/tmux"
-	weztermbackend "github.com/sethdeckard/atria/libatria/terminal/wezterm"
+	"github.com/sethdeckard/atria/libatria"
 )
 
 var (
@@ -59,177 +52,21 @@ func main() {
 	if err := store.LoadProjects(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: loading projects: %v\n", err)
 	}
-	// Always create PTY as the fallback.
-	ptyClient := ptybackend.NewClient(cfg.PtyCols, cfg.PtyRows)
-
-	// Build backend status info for settings screen.
-	// All known integrations are listed; only configured ones are probed.
-	backendStatuses := []tui.BackendStatus{
-		{Name: "pty", Enabled: true, Active: true},
+	stackOpts := tui.StackOptions(cfg)
+	// Startup runs before the alt screen, so an AppleScript auth dialog
+	// inside iTerm2 is safe here and nowhere else.
+	stackOpts.AllowITermPrompt = true
+	stack, err := libatria.Open(stackOpts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "backend error: %v\n", err)
+		os.Exit(1)
 	}
-
-	// Probe configured integrations.
-	var integrations []terminal.Integration
-	availableIntegrations := make(map[string]terminal.Backend)
-	configuredSet := make(map[string]bool)
-	for _, name := range cfg.Integrations {
-		configuredSet[name] = true
-		switch name {
-		case "iterm2":
-			bs := tui.BackendStatus{Name: "iterm2", Enabled: true}
-			it := iterm.NewClient(iterm.Options{
-				// Passive discovery only outside iTerm2: no AppleScript dialog.
-				NoPrompt:   os.Getenv("TERM_PROGRAM") != "iTerm.app",
-				ClientName: "atria",
-			})
-			if err := it.Available(); err != nil {
-				bs.Reason = err.Error()
-				backendStatuses = append(backendStatuses, bs)
-				continue
-			}
-			availableIntegrations["iterm2"] = it
-			integrations = append(integrations, terminal.Integration{
-				Prefix: "iterm:", Source: "iterm", Backend: it,
-			})
-			if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
-				bs.Active = true
-			}
-			backendStatuses = append(backendStatuses, bs)
-		case "tmux":
-			bs := tui.BackendStatus{Name: "tmux", Enabled: true}
-			tm := tmux.NewClient(tmux.Options{Path: cfg.TmuxPath, LaunchSession: cfg.TmuxSession, FallbackSession: "atria"})
-			if err := tm.Available(); err != nil {
-				bs.Reason = err.Error()
-				backendStatuses = append(backendStatuses, bs)
-				continue
-			}
-			availableIntegrations["tmux"] = tm
-			integrations = append(integrations, terminal.Integration{
-				Prefix: "tmux:", Source: "tmux", Backend: tm,
-			})
-			if os.Getenv("TMUX") != "" {
-				bs.Active = true
-			}
-			backendStatuses = append(backendStatuses, bs)
-		case "kitty":
-			bs := tui.BackendStatus{Name: "kitty", Enabled: true}
-			kt := kitty.NewClient(kitty.Options{Path: cfg.KittenPath})
-			if err := kt.Available(); err != nil {
-				bs.Reason = err.Error()
-				backendStatuses = append(backendStatuses, bs)
-				continue
-			}
-			availableIntegrations["kitty"] = kt
-			integrations = append(integrations, terminal.Integration{
-				Prefix: "kitty:", Source: "kitty", Backend: kt,
-			})
-			if os.Getenv("KITTY_WINDOW_ID") != "" {
-				bs.Active = true
-			}
-			backendStatuses = append(backendStatuses, bs)
-		case "wezterm":
-			bs := tui.BackendStatus{Name: "wezterm", Enabled: true}
-			wt := weztermbackend.NewClient(weztermbackend.Options{Path: cfg.WezTermPath})
-			if err := wt.Available(); err != nil {
-				bs.Reason = err.Error()
-				backendStatuses = append(backendStatuses, bs)
-				continue
-			}
-			availableIntegrations["wezterm"] = wt
-			integrations = append(integrations, terminal.Integration{
-				Prefix: "wezterm:", Source: "wezterm", Backend: wt,
-			})
-			if os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "" {
-				bs.Active = true
-			}
-			backendStatuses = append(backendStatuses, bs)
-		case "deviceterm":
-			bs := tui.BackendStatus{Name: "deviceterm", Enabled: true}
-			dt := devicetermbackend.NewClient(devicetermbackend.Options{Path: cfg.DeviceTermPath, ProgramName: "atria"})
-			if err := dt.Available(); err != nil {
-				bs.Reason = err.Error()
-				backendStatuses = append(backendStatuses, bs)
-				continue
-			}
-			// DeviceTerm is registered only as a primary candidate, never
-			// as an integration entry. Active is set after primary selection.
-			availableIntegrations["deviceterm"] = dt
-			backendStatuses = append(backendStatuses, bs)
-		default:
-			fmt.Fprintf(os.Stderr, "unknown integration: %s\n", name)
-		}
+	for _, name := range stack.Ignored() {
+		fmt.Fprintf(os.Stderr, "unknown integration: %s\n", name)
 	}
-
-	// Add unconfigured integrations as disabled entries.
-	if !configuredSet["iterm2"] {
-		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "iterm2"})
-	}
-	if !configuredSet["tmux"] {
-		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "tmux"})
-	}
-	if !configuredSet["kitty"] {
-		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "kitty"})
-	}
-	if !configuredSet["wezterm"] {
-		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "wezterm"})
-	}
-	if !configuredSet["deviceterm"] {
-		backendStatuses = append(backendStatuses, tui.BackendStatus{Name: "deviceterm"})
-	}
-
-	// Derive launch target from environment + available integrations.
-	// DeviceTerm wins when available (its grant proves the Automation tab,
-	// which no other terminal can share), then tmux, Kitty, WezTerm, iTerm, PTY.
-	var primary terminal.Backend = ptyClient
-	primarySource := "pty"
-	if b, ok := availableIntegrations["deviceterm"]; ok && os.Getenv("DEVICETERM_SESSION") != "" {
-		primary = b
-		primarySource = "deviceterm"
-	} else if b, ok := availableIntegrations["tmux"]; ok && os.Getenv("TMUX") != "" {
-		primary = b
-		primarySource = "tmux"
-	} else if b, ok := availableIntegrations["kitty"]; ok && os.Getenv("KITTY_WINDOW_ID") != "" {
-		primary = b
-		primarySource = "kitty"
-	} else if b, ok := availableIntegrations["wezterm"]; ok && (os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_UNIX_SOCKET") != "") {
-		primary = b
-		primarySource = "wezterm"
-	} else if b, ok := availableIntegrations["iterm2"]; ok && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
-		primary = b
-		primarySource = "iterm"
-	}
-
-	// DeviceTerm is only active when it is the primary: it never discovers
-	// as a secondary integration, and active implies focus + chat.
-	for i, bs := range backendStatuses {
-		if bs.Name == "deviceterm" && bs.Enabled && bs.Reason == "" {
-			backendStatuses[i].Active = primarySource == "deviceterm"
-		}
-	}
-
-	// Mark launch targets in status info.
-	for i, bs := range backendStatuses {
-		if bs.Active && tui.MatchesPrimarySource(bs, primarySource) {
-			backendStatuses[i].Launch = true
-		}
-	}
-
-	// When primary is non-PTY, add PTY as an integration so its
-	// sessions remain discoverable and routable.
-	if primary != ptyClient {
-		integrations = append(integrations, terminal.Integration{
-			Prefix: "pty:", Source: "pty", Backend: ptyClient,
-		})
-	}
-
-	backend := terminal.NewCompositeBackend(primary, primarySource, integrations)
-	if selfTTY := terminal.TTYForPID(os.Getpid()); selfTTY != "" {
-		backend.SetSelfTTY(selfTTY)
-	}
-	cached := terminal.NewCachedBackend(backend, time.Duration(cfg.CacheTTL)*time.Second)
 
 	statusInfo := tui.StatusInfo{
-		Backends:   backendStatuses,
+		Backends:   backendStatuses(cfg.Integrations, stack.Statuses()),
 		ConfigPath: configPath,
 	}
 
@@ -238,10 +75,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := tui.NewModelWithConfig(cached, store, cfg.WatchDirs, cfg.MonitorDir, cfg.DefaultAgent, cfg.LaunchDir)
+	m := tui.NewModelWithConfig(stack.Backend(), store, cfg.WatchDirs, cfg.MonitorDir, cfg.DefaultAgent, cfg.LaunchDir)
 	m.SetStatusInfo(statusInfo)
 	m.SetConfig(cfg, configPath)
-	m.SetPTYClient(ptyClient)
+	m.SetStack(stack)
 
 	if opts.debug {
 		if err := m.EnableDebugLog(debugLogPath(cfg.DataDir), opts.debugUnsafe); err != nil {
@@ -267,6 +104,31 @@ func main() {
 	if fm, ok := finalModel.(tui.Model); ok {
 		fm.Cleanup()
 	}
+}
+
+// backendStatuses orders statuses for the settings screen: PTY, the
+// configured integrations in config order, then the remaining integrations.
+func backendStatuses(configured []string, statuses []libatria.Status) []tui.BackendStatus {
+	byName := make(map[string]libatria.Status, len(statuses))
+	for _, st := range statuses {
+		byName[st.Name] = st
+	}
+	var out []tui.BackendStatus
+	seen := make(map[string]bool)
+	add := func(name string) {
+		if st, ok := byName[name]; ok && !seen[name] {
+			seen[name] = true
+			out = append(out, tui.BackendStatusFrom(st))
+		}
+	}
+	add(libatria.PTY)
+	for _, name := range configured {
+		add(name)
+	}
+	for _, name := range []string{libatria.ITerm2, libatria.Tmux, libatria.Kitty, libatria.WezTerm, libatria.DeviceTerm} {
+		add(name)
+	}
+	return out
 }
 
 type options struct {

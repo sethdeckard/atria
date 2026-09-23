@@ -2,22 +2,14 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
+	"github.com/sethdeckard/atria/libatria"
 	"github.com/sethdeckard/atria/libatria/agent"
 )
-
-// MatchesPrimarySource reports whether a backend status entry corresponds
-// to the given composite primary source name. Handles the iterm2→iterm mapping.
-func MatchesPrimarySource(bs BackendStatus, source string) bool {
-	if bs.Name == source {
-		return true
-	}
-	// Config uses "iterm2", composite uses "iterm".
-	return bs.Name == "iterm2" && source == "iterm"
-}
 
 // BackendStatus describes the state of a backend for the settings screen.
 type BackendStatus struct {
@@ -26,6 +18,17 @@ type BackendStatus struct {
 	Active  bool   // enabled + probe OK + environment matches
 	Launch  bool   // is the launch target
 	Reason  string // why unavailable or not active
+}
+
+// BackendStatusFrom converts a stack status to the settings screen's shape.
+func BackendStatusFrom(st libatria.Status) BackendStatus {
+	return BackendStatus{
+		Name:    st.Name,
+		Enabled: st.Enabled,
+		Active:  st.Active,
+		Launch:  st.Launch,
+		Reason:  st.Reason,
+	}
 }
 
 // StatusInfo holds backend status information built during startup.
@@ -137,7 +140,7 @@ func sortedIntegrations(backends []BackendStatus) []BackendStatus {
 	sorted := make([]BackendStatus, len(backends))
 	copy(sorted, backends)
 	for i := 1; i < len(sorted); i++ {
-		if envDetected(sorted[i].Name) {
+		if libatria.EnvMatches(sorted[i].Name, os.Getenv) {
 			// Move to position 1 (after pty at 0).
 			bs := sorted[i]
 			copy(sorted[2:i+1], sorted[1:i])

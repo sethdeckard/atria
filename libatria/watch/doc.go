@@ -15,8 +15,10 @@
 // another (faster for active agents), and delivers Event values on a channel.
 // Sends block when the channel is full rather than dropping, because a lost
 // needs_input event is an agent waiting for someone who never comes; every
-// send also selects on the context, so cancelling Run always returns and any
-// events still pending are abandoned. A failed listing or a source reported
+// send also selects on the context, so cancellation unblocks event delivery
+// and Run returns after in-flight backend calls finish. A send racing with
+// cancellation may still succeed, and events already buffered stay readable
+// after Run returns and closes the channel. A failed listing or a source reported
 // by terminal.FailureReporter keeps its sessions rather than removing them,
 // and errors.Is(ev.Err, terminal.ErrUnavailable) tells a lost terminal from
 // an ordinary read failure.

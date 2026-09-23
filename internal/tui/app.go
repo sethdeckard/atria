@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sethdeckard/atria/internal/config"
 	"github.com/sethdeckard/atria/internal/model"
+	"github.com/sethdeckard/atria/libatria"
 	"github.com/sethdeckard/atria/libatria/agent"
 	"github.com/sethdeckard/atria/libatria/terminal"
 	"github.com/sethdeckard/atria/libatria/watch"
@@ -164,8 +165,8 @@ type Model struct {
 	settingsEditBuf string
 	cfg             *config.Config
 	configPath      string
-	ptyClient       terminal.Backend
-	settingsDirPick bool // true when dir browser is for settings (add watch dir)
+	stack           *libatria.Stack // backend assembly; nil in tests that inject a bare backend
+	settingsDirPick bool            // true when dir browser is for settings (add watch dir)
 
 	// Setup wizard
 	setupItems      []settingsItem
@@ -276,9 +277,10 @@ func (m *Model) SetConfig(cfg *config.Config, path string) {
 	m.configPath = path
 }
 
-// SetPTYClient sets the PTY client reference for integration toggling.
-func (m *Model) SetPTYClient(pty terminal.Backend) {
-	m.ptyClient = pty
+// SetStack gives the model the stack behind its backend, for integration
+// toggling and PTY resizing from the settings screen.
+func (m *Model) SetStack(stack *libatria.Stack) {
+	m.stack = stack
 }
 
 func (m Model) Init() tea.Cmd {
@@ -437,8 +439,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// remap so a promoted backend's bare ids cannot collide with
 			// them (ids are only unique within a backend).
 			if !msg.Status.Enabled {
-				_, source := integrationMeta(msg.Name)
-				m.dropSessionsFromSource(source)
+				m.dropSessionsFromSource(libatria.Source(msg.Name))
 			}
 			// Rewrite tracked ids for a backend that changed role. This keeps
 			// store, attention map, and chat/term references consistent.
@@ -460,8 +461,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// primary is unchanged — leave existing Launch flags alone.
 			if msg.NewPrimary != "" {
 				for i, bs := range m.statusInfo.Backends {
-					isNew := MatchesPrimarySource(bs, msg.NewPrimary)
-					m.statusInfo.Backends[i].Launch = isNew
+					m.statusInfo.Backends[i].Launch = libatria.Source(bs.Name) == msg.NewPrimary
 				}
 			}
 			// Invalidate cache so next tick picks up new sessions.
@@ -1610,40 +1610,23 @@ func (m Model) browserMaxVisible() int {
 }
 
 // hasLaunchChoice returns the primary source and true when the primary backend
-// is not PTY and PTY is available as an integration, giving the user a choice
-// between launching in the integration or the embedded terminal.
+// is not PTY, giving the user a choice between launching in the integration
+// or the embedded terminal. PTY is always listed as an integration while it
+// isn't the primary (libatria.Open and Stack.Enable keep that invariant), so
+// the primary source alone decides.
 func (m Model) hasLaunchChoice() (string, bool) {
 	if m.settingsDirPick || m.setupDirPick {
 		return "", false
 	}
-	comp := compositeBackend(m.backend)
-	if comp == nil {
+	pr, ok := m.backend.(terminal.PrimaryReporter)
+	if !ok {
 		return "", false
 	}
-	ps := comp.PrimarySource()
+	ps := pr.PrimarySource()
 	if ps == "pty" {
 		return "", false
 	}
-	// Check that PTY is available as an integration.
-	for _, integ := range comp.Integrations() {
-		if integ.Source == "pty" {
-			return ps, true
-		}
-	}
-	return "", false
-}
-
-// compositeBackend unwraps the composite that the settings toggle and the
-// launch-choice check still address directly (integration membership and
-// runtime mutation have no optional interface). Every other backend question
-// goes through the terminal optional interfaces.
-func compositeBackend(b terminal.Backend) *terminal.CompositeBackend {
-	cb, ok := b.(*terminal.CachedBackend)
-	if !ok {
-		return nil
-	}
-	comp, _ := cb.Inner().(*terminal.CompositeBackend)
-	return comp
+	return ps, true
 }
 
 func (m *Model) adjustBrowserScroll() {
@@ -1816,8 +1799,8 @@ func (m Model) handleSettingsEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		// Apply PTY dimension changes to the live backend.
 		if m.cfg.PtyCols != prevCols || m.cfg.PtyRows != prevRows {
-			if r, ok := m.ptyClient.(terminal.Resizer); ok {
-				r.Resize(m.cfg.PtyCols, m.cfg.PtyRows)
+			if m.stack != nil {
+				m.stack.Resize(m.cfg.PtyCols, m.cfg.PtyRows)
 			}
 		}
 
@@ -1827,8 +1810,8 @@ func (m Model) handleSettingsEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			rm.cfg.PtyRows = prevRows
 			rm.cfg.TmuxSession = prevTmuxSession
 			// Revert live PTY dimensions on save failure.
-			if r, ok := rm.ptyClient.(terminal.Resizer); ok {
-				r.Resize(prevCols, prevRows)
+			if rm.stack != nil {
+				rm.stack.Resize(prevCols, prevRows)
 			}
 		})
 
@@ -1887,13 +1870,12 @@ func (m Model) toggleSettingsIntegration(item settingsItem) (Model, tea.Cmd) {
 	}
 	enable := !bs.Enabled
 
-	composite := compositeBackend(m.backend)
-	if composite == nil {
+	if m.stack == nil {
 		m.statusText = "Cannot modify backend"
 		return m, nil
 	}
 
-	return m, toggleIntegration(item.key, enable, m.cfg, m.configPath, composite, m.ptyClient)
+	return m, toggleIntegration(item.key, enable, m.cfg, m.configPath, m.stack)
 }
 
 func (m Model) openSettingsDirPicker() (Model, tea.Cmd) {
