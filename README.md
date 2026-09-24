@@ -209,6 +209,12 @@ integrations = ["deviceterm"]
 
 In an ordinary DeviceTerm tab the integration shows as enabled but inactive in settings, with a hint to open an Automation tab, and discovers nothing until you do. Inside tmux running in a DeviceTerm tab it is also inactive, because the grant doesn't reach tmux panes.
 
+## Use it as a library
+
+Everything atria uses to find agents, read their screens, send input, and track status is importable as `github.com/sethdeckard/atria/libatria`: the terminal clients (iTerm2, tmux, Kitty, WezTerm, DeviceTerm, and the built-in PTY), agent detection and classification, and a watcher that emits status events. The guide is [docs/libatria/README.md](docs/libatria/README.md) and the reference is [docs/libatria/API.md](docs/libatria/API.md).
+
+It's the same module and the same version. While atria is v0.x the library API can change between minor releases; every breaking change is listed in the changelog.
+
 ## FAQ
 
 ### What problem does atria solve?

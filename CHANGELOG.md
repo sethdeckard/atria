@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.0
+
+- Add libatria: atria's terminal integrations, agent detection, status tracking, and a session watcher as a public Go library at `github.com/sethdeckard/atria/libatria`; see `docs/libatria/README.md` for the guide and `docs/libatria/API.md` for the reference. It ships in this module and follows atria's version, so the API may change between minor releases until v1.0.0, and breaking changes are listed here
+- Add named key sends to the library (`terminal.SendKey`: Enter, Escape, Tab, arrows, Ctrl-C, Ctrl-D, digits), with tmux mapping them to its own key names because `send-keys -l` is unreliable for control bytes; library only, atria's own UI is unchanged
+- Bound every tmux, Kitty, WezTerm, and DeviceTerm CLI call, and each iTerm2 round trip, with a 5s timeout so a hung terminal no longer stalls status polling; a terminal that can't be reached is reported as `terminal.ErrUnavailable`, which library callers can use to keep tracked sessions rather than drop them
+- Treat a bell anywhere on the screen as needs-input; before, a bell on a full screen could be swallowed by the bottom-region rule, and the read after a bell no longer looks like the agent moved on
+- Discovery under `watch_dirs` now trusts the agent process's own working directory: an agent started from a shell inside a watch directory but running elsewhere is skipped, and a title match to a project outside `watch_dirs` no longer admits a session
+- With no `watch_dirs`, discovery accepts agents running at or beneath a known project's directory, not only ones whose title names the project; with no projects either, nothing is discovered, as before
+- Fix tmux `SendText` dropping a trailing semicolon or a bare `;`, which tmux's own parser consumed before the pane saw the text
+- Fix `watch_dirs = ["/"]` matching nothing
+- Fix a data race on the iTerm2 client's connection and another on the PTY dimensions during launch
+- `cache_ttl = 0` now means the 5s default rather than no caching, and a name listed twice in `integrations` is probed once
+
 ## v0.6.0
 
 - Add a DeviceTerm integration (`integrations = ["deviceterm"]`): agents in DeviceTerm tabs and split panes appear on the dashboard with status, focus, chat, and native launch into a new tab; requires DeviceTerm 0.11.0 or later and atria running in a DeviceTerm Automation tab, because the CLI verbs it uses need that tab's automation grant
