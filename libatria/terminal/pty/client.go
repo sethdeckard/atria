@@ -94,9 +94,15 @@ func (c *Client) NewSession() (string, error) {
 	cmd := exec.Command(shell)
 	cmd.Env = append(filteredEnv(os.Environ()), "TERM=xterm-256color")
 
+	// Snapshot the dimensions under the lock Resize writes them under, and
+	// use the one snapshot for both the pty and the emulator so they agree.
+	c.mu.Lock()
+	cols, rows := c.cols, c.rows
+	c.mu.Unlock()
+
 	winSize := &pty.Winsize{
-		Cols: uint16(c.cols),
-		Rows: uint16(c.rows),
+		Cols: uint16(cols),
+		Rows: uint16(rows),
 	}
 	ptmx, err := pty.StartWithSize(cmd, winSize)
 	if err != nil {
@@ -107,7 +113,7 @@ func (c *Client) NewSession() (string, error) {
 	id := fmt.Sprintf("pty-%d", c.nextID)
 	c.nextID++
 
-	term := vt10x.New(vt10x.WithSize(c.cols, c.rows))
+	term := vt10x.New(vt10x.WithSize(cols, rows))
 
 	s := &session{
 		id:   id,
