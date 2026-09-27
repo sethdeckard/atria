@@ -212,11 +212,21 @@ Every client, `CompositeBackend`, and `CachedBackend` is safe for concurrent use
 
 ```go
 iterm.NewClient(iterm.Options{
-    SocketPath     string        // "" → ~/Library/Application Support/iTerm2/private/socket
-    NoPrompt       bool          // never trigger the AppleScript auth dialog
-    ClientName     string        // "" → "libatria"; the app name iTerm2 shows and the advisory header
+    SocketPath     string          // "" → ~/Library/Application Support/iTerm2/private/socket
+    NoPrompt       bool            // never trigger the AppleScript auth dialog; a 401 returns an error wrapping iterm.ErrAuthRequired
+    ClientName     string          // "" → "libatria"; the app name iTerm2 shows and the advisory header
     CommandTimeout time.Duration
+    AuthTimeout    time.Duration   // 0 → iterm.DefaultAuthTimeout (2m); total wait for an answer, including time behind another request on a shared gate
+    AuthGate       *iterm.AuthGate // nil → a gate of the client's own; share one so a refusal outlives the client
 }) *iterm.Client
+
+(*iterm.Client).RearmPrompt()   // allow one more request after a declined or timed-out one
+(*iterm.AuthGate).Armed() bool  // the zero value is armed
+(*iterm.AuthGate).Rearm()
+(*iterm.AuthGate).Err() error   // the failure that turned it off; nil while armed
+iterm.ErrAuthRequired           // a 401 with NoPrompt set
+iterm.ErrAuthFailed             // a request was declined or timed out, or an earlier one was; no dialog until re-armed
+iterm.ErrAuthPending            // AuthTimeout ran out waiting behind another request; the gate is untouched
 
 tmux.NewClient(tmux.Options{
     Path            string // "" → "tmux" on $PATH
@@ -522,6 +532,7 @@ type Options struct {
     NoSelfTTYFilter bool
     ProgramName     string        // "" → each client's default: "libatria" for iTerm2 and tmux, "this program" for DeviceTerm
     AllowITermPrompt bool
+    ITermPromptAnywhere bool // every iTerm2 client may prompt, from any terminal or none; supersedes AllowITermPrompt
     Getenv          func(string) string // nil → os.Getenv
 }
 
@@ -533,6 +544,7 @@ type Status struct {
     Active    bool
     Launch    bool
     Reason    string
+    Err       error // the probe error behind Reason, for errors.Is
 }
 
 type RoleChange struct {
@@ -553,6 +565,7 @@ func (s *Stack) Configure(opts Options)
 func (s *Stack) Enable(name string) (Status, *RoleChange, error)
 func (s *Stack) Disable(name string) (*RoleChange, error)
 func (s *Stack) Reprobe() ([]Status, *RoleChange)
+func (s *Stack) Reauthorize(name string) error
 func (s *Stack) Resize(cols, rows int)
 func (s *Stack) Close() error
 ```
@@ -567,7 +580,13 @@ DeviceTerm is the exception to the discovery model. It's either the primary or a
 
 `Statuses` lists PTY first, then the integrations in `Names` order. `Available` means the probe passed, `Active` means the environment matched too, `Launch` marks the primary, and `Reason` carries the probe error when there is one. `Ignored` returns names in `Options.Integrations` that the library doesn't recognize; it doesn't fail `Open`.
 
-`Enable` probes and adds an integration at runtime, promoting it to primary when it outranks the current one and its environment matches. `Disable` removes one and re-derives the primary from what remains. Both return a `RoleChange` when a backend moved between the primary and integration roles, because its session IDs gain or lose their prefix and anything you hold by ID has to follow. A `RoleChange` comes back whenever the primary changed; `nil` means it didn't. `Source` is empty when no IDs moved, which happens only when the outgoing primary had no integration entry (DeviceTerm is the one backend without one). `Enable` and `Reprobe` build clients that never trigger the iTerm2 AppleScript dialog; `AllowITermPrompt` applies to the client `Open` builds, which keeps the setting and can prompt again if it reconnects and is refused. Both invalidate the session cache behind `Backend()`, so the listing after a role change already carries the new IDs.
+`Enable` probes and adds an integration at runtime, promoting it to primary when it outranks the current one and its environment matches. `Disable` removes one and re-derives the primary from what remains. Both return a `RoleChange` when a backend moved between the primary and integration roles, because its session IDs gain or lose their prefix and anything you hold by ID has to follow. A `RoleChange` comes back whenever the primary changed; `nil` means it didn't. `Source` is empty when no IDs moved, which happens only when the outgoing primary had no integration entry (DeviceTerm is the one backend without one). Both invalidate the session cache behind `Backend()`, so the listing after a role change already carries the new IDs.
+
+`Enable` and `Reprobe` probe without holding the stack's lock, so a slow terminal or an open credential dialog doesn't hold up the stack's other methods, except `Close`. When `Reprobe` retries a live iTerm2 client, calls through `Backend()` that reach that client, Watcher listings included, wait for its connection, and so does `Close`. `AuthTimeout` bounds the credential request, not the whole wait; the handshake around it has no time limit. The result is applied against the state when the probe returns: a `Disable` that landed meanwhile wins and the probed client is closed, a queued `Reprobe` probe it overtook doesn't run at all, and promotion compares against the primary at that point. `Enable` for a name already being probed returns its current status. `Disable` closes the removed client in the background, so it returns even while that client has a credential dialog open.
+
+`Enable` and `Reprobe` build clients that never trigger the iTerm2 AppleScript dialog unless `ITermPromptAnywhere` is set. `AllowITermPrompt` applies only to the client `Open` builds. Either way, one declined or timed-out request turns prompting off for every iTerm2 client of the stack, reconnects included. After that, a client that may prompt fails on a 401 with `iterm.ErrAuthFailed` and shows no dialog until `Reauthorize("iterm2")`; a client with prompting off returns `iterm.ErrAuthRequired` as before. `Enable` doesn't turn it back on, because daemons call it on timers.
+
+`Statuses` reflects probes and the iTerm2 credential gate, not the health of every later call. A live client that starts failing shows up through `FailureReporter` on listings, so a tmux server that exits after its probe passed still reads as available. iTerm2 is the exception: when a live client's reconnect is declined, its entry turns unavailable with `iterm.ErrAuthFailed`, and `Reprobe` retries that same client after `Reauthorize`.
 
 `Configure` replaces the options later `Enable` and `Reprobe` calls build clients from (binary paths, `TmuxSession`, `ProgramName`, `CommandTimeout`); clients already running are untouched. A settings screen that edits the tmux launch session calls it before re-enabling tmux.
 

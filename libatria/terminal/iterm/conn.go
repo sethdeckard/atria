@@ -1,15 +1,13 @@
 package iterm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,7 +31,9 @@ type conn struct {
 	key        string
 	// requestAuth fetches a cookie and key when iTerm2 answers 401; nil
 	// means requestCookieAndKey.
-	requestAuth func(appName string) (cookie, key string, err error)
+	requestAuth func(ctx context.Context, appName string) (cookie, key string, err error)
+	authGate    *AuthGate     // nil means a gate of this conn's own
+	authTimeout time.Duration // zero means DefaultAuthTimeout
 }
 
 func (c *conn) deadline() time.Duration {
@@ -55,23 +55,6 @@ func defaultSocketPath() string {
 		return ""
 	}
 	return filepath.Join(home, "Library", "Application Support", "iTerm2", "private", "socket")
-}
-
-// requestCookieAndKey requests a cookie and key from iTerm2 via AppleScript,
-// identifying the caller as appName. Returns cookie, key, or an error.
-func requestCookieAndKey(appName string) (string, string, error) {
-	cmd := exec.Command("/usr/bin/osascript", "-")
-	cmd.Stdin = strings.NewReader(
-		`tell application "iTerm2" to request cookie and key for app named ` + strconv.Quote(appName))
-	out, err := cmd.Output()
-	if err != nil {
-		return "", "", fmt.Errorf("AppleScript auth failed: %w", err)
-	}
-	parts := strings.Fields(strings.TrimSpace(string(out)))
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("unexpected auth response: %s", string(out))
-	}
-	return parts[0], parts[1], nil
 }
 
 // captureAuthFromEnv reads any pre-seeded iTerm2 auth from the current
@@ -158,26 +141,43 @@ func (c *conn) connect() error {
 			ErrAuthRequired, c.name(), c.name())
 	}
 
-	// Clear stale credentials and request fresh ones via AppleScript.
+	// Clear stale credentials and request fresh ones via AppleScript. The
+	// gate refuses without a dialog once a request has failed.
 	c.cookie = ""
 	c.key = ""
 	requestAuth := c.requestAuth
 	if requestAuth == nil {
 		requestAuth = requestCookieAndKey
 	}
-	cookie, key, authErr := requestAuth(c.name())
+	if c.authGate == nil {
+		c.authGate = &AuthGate{}
+	}
+	limit := c.authTimeout
+	if limit <= 0 {
+		limit = DefaultAuthTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	cookie, key, authErr := c.authGate.request(ctx, c.name(), limit, requestAuth)
 	if authErr != nil {
-		return fmt.Errorf("iTerm2 auth: %w", authErr)
+		return authErr
 	}
 	c.cookie = cookie
 	c.key = key
 
 	// Retry with fresh credentials.
 	headers = c.buildHeaders()
-	ws, _, err = c.dial(sockPath, headers)
+	ws, resp, err = c.dial(sockPath, headers)
 	if err != nil {
 		c.cookie = ""
 		c.key = ""
+		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+			// iTerm2 refused the credentials it just issued; asking again
+			// would only repeat the dialog.
+			err := fmt.Errorf("%w for %q: iTerm2 refused the credentials it issued", ErrAuthFailed, c.name())
+			c.authGate.disarm(err)
+			return err
+		}
 		return terminal.Unavailable("WebSocket dial after auth", err)
 	}
 

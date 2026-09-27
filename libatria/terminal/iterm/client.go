@@ -1,6 +1,7 @@
 package iterm
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,17 @@ const DefaultClientName = "libatria"
 // was not allowed to request credentials (Options.NoPrompt).
 var ErrAuthRequired = errors.New("iTerm2 requires authorization")
 
+// ErrAuthFailed reports that a credential request was declined, failed, or
+// timed out, or that an earlier one did and the client's AuthGate is
+// disarmed. No dialog appears again until the gate is re-armed.
+var ErrAuthFailed = errors.New("iTerm2 authorization failed")
+
+// ErrAuthPending reports that the credential deadline passed before this
+// client's request started, which in practice means it was waiting behind
+// another client's request on a shared AuthGate. The gate is unchanged and
+// nothing needs re-arming.
+var ErrAuthPending = errors.New("iTerm2 authorization pending")
+
 // Options configures a Client. The zero value connects to the default socket,
 // prompts for credentials when iTerm2 asks, and identifies itself as
 // DefaultClientName.
@@ -55,20 +67,33 @@ type Options struct {
 	// covering the write and the read; zero means
 	// terminal.DefaultCommandTimeout. A timeout closes the connection and is
 	// reported as terminal.ErrUnavailable; the next call reconnects. The
-	// initial handshake and the AppleScript credential dialog are not bounded.
+	// initial handshake is not bounded; the credential dialog has AuthTimeout.
 	CommandTimeout time.Duration
+	// AuthTimeout bounds the total wait for credentials, including time
+	// spent behind another client's request on a shared AuthGate; zero means
+	// DefaultAuthTimeout. Running out during this client's own request counts
+	// as a failure and disarms the gate; running out while still waiting
+	// behind another returns ErrAuthPending and leaves the gate alone.
+	AuthTimeout time.Duration
+	// AuthGate serializes credential requests and shares a failure across
+	// the clients using it; nil gives the client a gate of its own. A failed
+	// request disarms it, and then a 401 returns ErrAuthFailed without a dialog, on
+	// every reconnect, until AuthGate.Rearm or Client.RearmPrompt.
+	AuthGate *AuthGate
 }
 
 // Client implements terminal.Backend using iTerm2's native protobuf-over-WebSocket API.
 type Client struct {
-	mu         sync.Mutex // guards conn; the conn serializes its own use
-	conn       *conn
-	socketPath string // override for testing; empty uses default
-	noPrompt   bool   // suppress interactive AppleScript auth
-	clientName string
-	timeout    time.Duration
+	mu          sync.Mutex // guards conn; the conn serializes its own use
+	conn        *conn
+	socketPath  string // override for testing; empty uses default
+	noPrompt    bool   // suppress interactive AppleScript auth
+	clientName  string
+	timeout     time.Duration
+	authGate    *AuthGate
+	authTimeout time.Duration
 	// requestAuth fetches a cookie and key; tests replace the AppleScript call.
-	requestAuth func(appName string) (cookie, key string, err error)
+	requestAuth func(ctx context.Context, appName string) (cookie, key string, err error)
 }
 
 type lineInfo struct {
@@ -84,14 +109,25 @@ func NewClient(opts Options) *Client {
 	if name == "" {
 		name = DefaultClientName
 	}
+	gate := opts.AuthGate
+	if gate == nil {
+		gate = &AuthGate{}
+	}
 	return &Client{
 		socketPath:  opts.SocketPath,
 		noPrompt:    opts.NoPrompt,
 		clientName:  name,
 		timeout:     terminal.TimeoutOr(opts.CommandTimeout),
+		authGate:    gate,
+		authTimeout: opts.AuthTimeout,
 		requestAuth: requestCookieAndKey,
 	}
 }
+
+// RearmPrompt re-arms the client's AuthGate after a failed credential
+// request, so the next 401 may show the dialog again. With a shared gate it
+// re-arms every client sharing it.
+func (c *Client) RearmPrompt() { c.authGate.Rearm() }
 
 // ensureConn returns the shared connection, connecting on demand.
 // c.mu guards connection creation; conn.connect checks and opens the
@@ -105,6 +141,8 @@ func (c *Client) ensureConn() (*conn, error) {
 			clientName:  c.clientName,
 			timeout:     c.timeout,
 			requestAuth: c.requestAuth,
+			authGate:    c.authGate,
+			authTimeout: c.authTimeout,
 		}
 	}
 	cn := c.conn

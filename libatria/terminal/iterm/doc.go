@@ -11,10 +11,13 @@
 // whenever the caller is a TUI or has no user at the keyboard. The request
 // works from any process allowed to send Apple events, inside iTerm2 or not,
 // so a background process can prompt too; the first request triggers macOS's
-// Automation consent for the binary. With Options.NoPrompt set, a 401
-// handshake response returns an error wrapping ErrAuthRequired. To connect
-// without credentials, disable iTerm2's automation auth by creating
-// ~/.config/iterm2/disable-automation-auth.
+// Automation consent for the binary. The wait for an answer is bounded by
+// Options.AuthTimeout, and a request that is declined or times out disarms
+// the client's AuthGate: later 401s, reconnects included, fail with
+// ErrAuthFailed and show no dialog until the gate is re-armed. With
+// Options.NoPrompt set, a 401 handshake response returns an error wrapping
+// ErrAuthRequired. To connect without credentials, disable iTerm2's
+// automation auth by creating ~/.config/iterm2/disable-automation-auth.
 //
 // Each iTerm2 session is a Session; its iTerm2 session ID is the ID. Screen
 // reads use GetBufferRequest and are the primary status mechanism.

@@ -122,8 +122,10 @@ Uses iTerm2's native protobuf-over-WebSocket API via Unix socket. No external de
 - Inside iTerm2 (`TERM_PROGRAM == "iTerm.app"`): auth credentials (`ITERM2_COOKIE`) are pre-set by iTerm2 for child processes. If missing, AppleScript requests them interactively — safe because this runs before the TUI alt screen at startup.
 - Outside iTerm2 (Terminal, tmux, Kitty): passive discovery only (`noPrompt` mode). Connects without credentials; works when iTerm2 has automation auth disabled. No AppleScript dialogs are triggered. To disable auth: create `~/.config/iterm2/disable-automation-auth`.
 - Settings toggle (during TUI): always `noPrompt` — no system dialogs over alt screen. Config is saved so auth happens on next restart if needed.
+- Library callers (`libatria.Options.ITermPromptAnywhere`): every iTerm2 client the stack builds may prompt, in `Open`, `Enable`, and `Reprobe`, from any terminal or none. It's meant for a background process with no screen of its own. Atria doesn't set it.
+- A declined or timed-out AppleScript request turns prompting off for every iTerm2 client of the stack, reconnects included, until `Stack.Reauthorize`. Atria never calls it, so restarting atria is how to try again.
 
-**Design decision:** AppleScript auth is intentionally suppressed outside iTerm2 and during TUI operation. This means cross-terminal discovery requires disabling iTerm2's automation auth. The alternative (prompting from any terminal) causes unexpected macOS Automation dialogs at startup.
+**Design decision:** AppleScript auth is intentionally suppressed outside iTerm2 and during TUI operation. Cross-terminal discovery without valid credentials requires disabling iTerm2's automation auth. The alternative (prompting from any terminal) causes unexpected macOS Automation dialogs at startup. This is atria's choice, not a limit of the library: `ITermPromptAnywhere` exposes the alternative as an opt-in for callers without a TUI.
 
 ### tmux (`integrations = ["tmux"]`)
 

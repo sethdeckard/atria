@@ -106,7 +106,7 @@ Every terminal you name contributes the sessions it can see. One of them is the 
 
 Session IDs depend on role. The primary's sessions are listed bare; every other backend's carry a `source:` prefix (`tmux:%3`, `pty:pty-0`). `Enable`, `Disable`, and `Reprobe` change the set at runtime and return a `RoleChange` whenever the primary changed, because the backend that swapped roles now lists its sessions under different IDs. Rewrite anything you hold by ID from `RoleChange.Source`, `Prefix`, and `ToPrefixed`, or you'll address the wrong session after a toggle.
 
-`Enable` and `Reprobe` build clients that never open the iTerm2 AppleScript dialog. `AllowITermPrompt` applies to the client `Open` builds inside iTerm2; that client keeps the setting and can prompt again if it reconnects and iTerm2 demands auth.
+`Enable` and `Reprobe` build clients that never open the iTerm2 AppleScript dialog unless you set `ITermPromptAnywhere`, and they probe without holding the stack's lock, so `Statuses` answers while a probe waits. `AllowITermPrompt` applies only to the client `Open` builds inside iTerm2; that client keeps the setting and can prompt again if it reconnects and iTerm2 demands auth, until a request is declined or times out.
 
 ## Terminal Requirements and Caveats
 
@@ -114,7 +114,23 @@ Session IDs depend on role. The primary's sessions are listed bare; every other 
 
 Enable the Python API (Settings > General > Magic > Enable Python API). The client speaks protobuf over the API's Unix socket; nothing else is installed.
 
-Authentication is the sharp edge. Inside iTerm2, `Open` with `AllowITermPrompt` can request credentials through AppleScript, which shows a macOS Automation dialog; do that at startup, before any UI of your own. Everywhere else interactive authentication is suppressed. Credentials already in the environment are still used; without them the connection works only when iTerm2's automation auth is disabled: create `~/.config/iterm2/disable-automation-auth`.
+Authentication is the sharp edge. Inside iTerm2, `Open` with `AllowITermPrompt` can request credentials through AppleScript, which shows a macOS Automation dialog; do that at startup, before any UI of your own. Credentials already in the environment are always used.
+
+A background process, such as a daemon started by launchd, sets `ITermPromptAnywhere` instead. The AppleScript request works from any process allowed to send Apple events, so every iTerm2 client the stack builds can prompt, including the ones from `Enable` and `Reprobe`. A daemon started before iTerm2 authenticates on its first `Reprobe` after iTerm2 launches. The first request also triggers macOS's Automation consent for your binary. Leave it off in a TUI, where the dialog would cover your screen.
+
+`Open` waits for the answer, up to two minutes (`iterm.DefaultAuthTimeout`). `Enable` and `Reprobe` wait too, without holding the stack's lock. When `Reprobe` retries a live iTerm2 client, anything reaching that client through `Backend()`, Watcher listings included, waits with it, and so does `Close`.
+
+One declined or timed-out request turns prompting off for the whole stack, so a person who said no isn't asked again on every reprobe. `Enable` doesn't turn it back on. Give the person a way to call `Reauthorize("iterm2")`, then `Reprobe`.
+
+While the dialog is open, other iTerm2 clients sharing the gate that get a 401 wait behind it rather than showing a dialog at the same time. If it's declined they fail without one; if it succeeds each asks for its own credentials, because credentials belong to each client. A client whose own `AuthTimeout` runs out while waiting gets `iterm.ErrAuthPending`, and nothing needs re-arming.
+
+`Status.Err` tells the cases apart with `errors.Is`: `terminal.ErrUnavailable` means iTerm2 couldn't be reached (usually it isn't running), `iterm.ErrAuthRequired` means prompting is off, and `iterm.ErrAuthFailed` means the request was declined or timed out.
+
+`Statuses` only knows what probes and the credential gate tell it. A terminal that fails after its probe passed, such as a tmux server that exits, shows up in listings through `terminal.FailureReporter`, not in `Statuses`. A live iTerm2 client whose reconnect is declined is the exception: its entry turns unavailable with `iterm.ErrAuthFailed`, and `Reprobe` after `Reauthorize` retries it.
+
+If iTerm2 asks for credentials again after it restarts, reconnecting shows the dialog again while prompting is on. The `disable-automation-auth` file below avoids the dialog entirely.
+
+Without valid credentials and with prompting off, connecting requires disabling iTerm2's automation auth: create `~/.config/iterm2/disable-automation-auth`. With prompting off, an HTTP 401 handshake response returns an error wrapping `iterm.ErrAuthRequired`.
 
 The client reads `ITERM2_COOKIE` and `ITERM2_KEY` from its own environment and then unsets them, so processes it launches can't inherit the credentials. If your program needs them afterwards, read them first.
 

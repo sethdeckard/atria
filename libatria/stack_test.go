@@ -2,14 +2,18 @@ package libatria
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/sethdeckard/atria/libatria/terminal"
+	"github.com/sethdeckard/atria/libatria/terminal/iterm"
 	"github.com/sethdeckard/atria/libatria/watch"
 )
 
@@ -502,5 +506,417 @@ func TestToggleWhileWatching(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("watcher did not stop")
+	}
+}
+
+func TestITermOptionsPrompt(t *testing.T) {
+	inITerm := map[string]string{"TERM_PROGRAM": "iTerm.app"}
+	elsewhere := map[string]string{"TERM_PROGRAM": "WezTerm"}
+	tests := []struct {
+		name   string
+		opts   Options
+		env    map[string]string
+		atOpen bool
+		prompt bool
+	}{
+		{"zero options", Options{}, inITerm, true, false},
+		{"allow at Open inside iTerm2", Options{AllowITermPrompt: true}, inITerm, true, true},
+		{"allow at Open elsewhere", Options{AllowITermPrompt: true}, elsewhere, true, false},
+		{"allow at Open with no terminal", Options{AllowITermPrompt: true}, nil, true, false},
+		{"allow on Enable inside iTerm2", Options{AllowITermPrompt: true}, inITerm, false, false},
+		{"anywhere at Open with no terminal", Options{ITermPromptAnywhere: true}, nil, true, true},
+		{"anywhere on Enable with no terminal", Options{ITermPromptAnywhere: true}, nil, false, true},
+		{"anywhere on Enable elsewhere", Options{ITermPromptAnywhere: true}, elsewhere, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Stack{opts: tt.opts, getenv: env(tt.env)}
+			if got := s.itermOptions(tt.atOpen).NoPrompt; got != !tt.prompt {
+				t.Errorf("NoPrompt = %v, want %v", got, !tt.prompt)
+			}
+		})
+	}
+
+	s := &Stack{opts: Options{ProgramName: "dash", CommandTimeout: 2 * time.Second}, getenv: env(nil)}
+	o := s.itermOptions(false)
+	if o.ClientName != "dash" || o.CommandTimeout != 2*time.Second {
+		t.Errorf("options not passed through: %+v", o)
+	}
+}
+
+// probeBackend is a Backend whose Available blocks until the test sends the
+// probe's result on release. Like the iTerm2 client, whose connection mutex
+// is held through a credential dialog, Close waits for an Available in
+// progress. Only Available, ListSessions, and Close are called on it.
+type probeBackend struct {
+	terminal.Backend
+	started   chan struct{}
+	release   chan error
+	mu        sync.Mutex // held through Available
+	closed    atomic.Bool
+	closeOnce sync.Once
+	done      chan struct{} // closed by Close
+}
+
+func newProbeBackend() *probeBackend {
+	return &probeBackend{started: make(chan struct{}, 1), release: make(chan error, 1), done: make(chan struct{})}
+}
+
+func (p *probeBackend) Available() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.started <- struct{}{}
+	return <-p.release
+}
+
+func (p *probeBackend) ListSessions() ([]terminal.Session, error) { return nil, nil }
+
+func (p *probeBackend) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.closed.Store(true)
+	p.closeOnce.Do(func() { close(p.done) })
+	return nil
+}
+
+// waitClosed fails the test unless p is closed within a second; Stack closes
+// dropped clients in the background.
+func waitClosed(t *testing.T, p *probeBackend) {
+	t.Helper()
+	select {
+	case <-p.done:
+	case <-time.After(time.Second):
+		t.Fatal("client was never closed")
+	}
+}
+
+// openWithProbes opens a PTY-only stack whose later Enable and Reprobe
+// calls build the given backend for each name.
+func openWithProbes(t *testing.T, vals map[string]string, backends map[string]*probeBackend) *Stack {
+	t.Helper()
+	s, err := Open(Options{Getenv: env(vals), NoSelfTTYFilter: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	s.build = func(name string, _ bool) terminal.Backend {
+		b, ok := backends[name]
+		if !ok {
+			panic("no probe backend for " + name) // may run off the test goroutine
+		}
+		return b
+	}
+	return s
+}
+
+// waitStarted fails the test unless p's probe starts within a second.
+func waitStarted(t *testing.T, p *probeBackend) {
+	t.Helper()
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		t.Fatal("probe never started")
+	}
+}
+
+// returnsPromptly fails the test unless fn returns within a second.
+func returnsPromptly(t *testing.T, what string, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		fn()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatalf("%s blocked behind a probe in flight", what)
+	}
+}
+
+// The regression: a probe waiting on the terminal (or a credential dialog)
+// must not hold the Stack's lock.
+func TestProbeRunsOutsideTheLock(t *testing.T) {
+	tmux := newProbeBackend()
+	s := openWithProbes(t, map[string]string{"TMUX": "/tmp/tmux-1/default,1,0"}, map[string]*probeBackend{"tmux": tmux})
+
+	type result struct {
+		st Status
+		rc *RoleChange
+	}
+	out := make(chan result, 1)
+	go func() {
+		st, rc, _ := s.Enable("tmux")
+		out <- result{st, rc}
+	}()
+	waitStarted(t, tmux)
+
+	returnsPromptly(t, "Statuses", func() {
+		if st := statusOf(t, s, "tmux"); !st.Enabled || st.Available {
+			t.Errorf("status during probe = %+v, want enabled and not yet available", st)
+		}
+	})
+	returnsPromptly(t, "Configure", func() { s.Configure(Options{}) })
+	returnsPromptly(t, "a second Enable", func() {
+		if _, rc, _ := s.Enable("tmux"); rc != nil {
+			t.Errorf("Enable while probing returned %+v, want nil", rc)
+		}
+	})
+	returnsPromptly(t, "Reprobe", func() { s.Reprobe() })
+
+	tmux.release <- nil
+	r := <-out
+	if !r.st.Available || r.rc == nil || r.rc.NewPrimary != "tmux" {
+		t.Fatalf("Enable = %+v, %+v; want tmux available and primary", r.st, r.rc)
+	}
+}
+
+func TestDisableDuringProbeDropsIt(t *testing.T) {
+	tmux := newProbeBackend()
+	s := openWithProbes(t, map[string]string{"TMUX": "/tmp/tmux-1/default,1,0"}, map[string]*probeBackend{"tmux": tmux})
+
+	out := make(chan *RoleChange, 1)
+	go func() {
+		_, rc, _ := s.Enable("tmux")
+		out <- rc
+	}()
+	waitStarted(t, tmux)
+	if _, err := s.Disable("tmux"); err != nil {
+		t.Fatal(err)
+	}
+	tmux.release <- nil
+
+	if rc := <-out; rc != nil {
+		t.Errorf("RoleChange = %+v, want nil", rc)
+	}
+	if st := statusOf(t, s, "tmux"); st.Enabled || st.Available {
+		t.Errorf("status = %+v, want disabled", st)
+	}
+	if got := s.PrimarySource(); got != "pty" {
+		t.Errorf("primary = %q, want pty", got)
+	}
+	if len(prefixes(s.Composite())) != 0 {
+		t.Errorf("integrations = %q, want none", prefixes(s.Composite()))
+	}
+	waitClosed(t, tmux)
+}
+
+// Promotion compares against the primary when the probe returns: kitty
+// started first against PTY, but tmux (higher rank) took primary meanwhile.
+func TestPromotionDecidedAtWireIn(t *testing.T) {
+	kitty, tmux := newProbeBackend(), newProbeBackend()
+	s := openWithProbes(t,
+		map[string]string{"TMUX": "/tmp/tmux-1/default,1,0", "KITTY_WINDOW_ID": "1"},
+		map[string]*probeBackend{"kitty": kitty, "tmux": tmux})
+
+	out := make(chan *RoleChange, 1)
+	go func() {
+		_, rc, _ := s.Enable("kitty")
+		out <- rc
+	}()
+	waitStarted(t, kitty)
+
+	tmux.release <- nil
+	if _, rc, _ := s.Enable("tmux"); rc == nil || rc.NewPrimary != "tmux" {
+		t.Fatalf("tmux Enable RoleChange = %+v, want tmux primary", rc)
+	}
+	kitty.release <- nil
+	if rc := <-out; rc != nil {
+		t.Errorf("kitty RoleChange = %+v, want nil (tmux outranks it)", rc)
+	}
+	if got := s.PrimarySource(); got != "tmux" {
+		t.Errorf("primary = %q, want tmux", got)
+	}
+	if st := statusOf(t, s, "kitty"); !st.Available || st.Launch {
+		t.Errorf("kitty status = %+v, want available, not launching", st)
+	}
+}
+
+func TestFailedProbeRecordsErrAndCloses(t *testing.T) {
+	tmux := newProbeBackend()
+	s := openWithProbes(t, nil, map[string]*probeBackend{"tmux": tmux})
+	probeErr := fmt.Errorf("probe: %w", terminal.ErrUnavailable)
+	tmux.release <- probeErr
+
+	st, rc, err := s.Enable("tmux")
+	if err != nil || rc != nil {
+		t.Fatalf("Enable = %v, %+v", err, rc)
+	}
+	if !errors.Is(st.Err, terminal.ErrUnavailable) || st.Reason != probeErr.Error() || st.Available {
+		t.Errorf("status = %+v, want Err and Reason from the probe", st)
+	}
+	if !tmux.closed.Load() {
+		t.Error("failed client wasn't closed")
+	}
+}
+
+func TestReauthorize(t *testing.T) {
+	s, err := Open(Options{Getenv: env(nil), NoSelfTTYFilter: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	for _, name := range []string{"tmux", "pty", "bogus"} {
+		if err := s.Reauthorize(name); err == nil {
+			t.Errorf("Reauthorize(%q) = nil, want an error", name)
+		}
+	}
+	if s.itermOptions(false).AuthGate != s.authGate {
+		t.Fatal("iTerm2 clients don't share the Stack's gate")
+	}
+	if err := s.Reauthorize("iterm2"); err != nil || !s.authGate.Armed() {
+		t.Fatalf("Reauthorize(iterm2) = %v, armed %v", err, s.authGate.Armed())
+	}
+}
+
+// A live iTerm2 client whose reconnect is declined disarms the shared gate
+// without a probe; Statuses must still report it, and Reauthorize then
+// Reprobe must retry that same client in place.
+func TestDisarmedGateReportedForLiveClient(t *testing.T) {
+	it := newProbeBackend()
+	s := openWithProbes(t, map[string]string{"TERM_PROGRAM": "iTerm.app"}, map[string]*probeBackend{"iterm2": it})
+	it.release <- nil
+	if st, _, _ := s.Enable("iterm2"); !st.Available {
+		t.Fatalf("Enable = %+v, want available", st)
+	}
+	<-it.started
+
+	var gateErr error
+	s.gateErr = func() error { return gateErr }
+	gateErr = fmt.Errorf("%w for %q: user declined; prompting stays off until it is re-armed", iterm.ErrAuthFailed, "libatria")
+
+	st := statusOf(t, s, "iterm2")
+	if st.Available || st.Active || !errors.Is(st.Err, iterm.ErrAuthFailed) || st.Reason != gateErr.Error() {
+		t.Fatalf("status after declined reconnect = %+v, want unavailable with ErrAuthFailed", st)
+	}
+	if got := s.PrimarySource(); got != "iterm" {
+		t.Errorf("primary = %q, want iterm unchanged", got)
+	}
+
+	// Still disarmed: Reprobe retries the live client and it fails again.
+	it.release <- fmt.Errorf("cannot connect to iTerm2: %w", gateErr)
+	statuses, rc := s.Reprobe()
+	<-it.started
+	if rc != nil {
+		t.Errorf("Reprobe RoleChange = %+v, want nil", rc)
+	}
+	for _, st := range statuses {
+		if st.Name == "iterm2" && (st.Available || !errors.Is(st.Err, iterm.ErrAuthFailed)) {
+			t.Errorf("status after disarmed Reprobe = %+v", st)
+		}
+	}
+
+	// Re-armed: the same client connects again.
+	if err := s.Reauthorize("iterm2"); err != nil {
+		t.Fatal(err)
+	}
+	gateErr = nil
+	it.release <- nil
+	s.Reprobe()
+	<-it.started
+	if st := statusOf(t, s, "iterm2"); !st.Available || st.Err != nil || st.Reason != "" || !st.Launch {
+		t.Errorf("status after Reauthorize and Reprobe = %+v, want available and launching", st)
+	}
+	if it.closed.Load() {
+		t.Error("the live client was closed")
+	}
+	if got := prefixes(s.Composite()); len(got) != 2 || got[0] != "iterm:" {
+		t.Errorf("integrations = %q, want the same iterm entry plus pty", got)
+	}
+}
+
+// liveITermDeclined makes iTerm2 live through it, then has its reconnect
+// declined (a disarmed gate), so Reprobe will retry it in place.
+func liveITermDeclined(t *testing.T, s *Stack, it *probeBackend) {
+	t.Helper()
+	it.release <- nil
+	if st, _, _ := s.Enable("iterm2"); !st.Available {
+		t.Fatalf("Enable(iterm2) = %+v, want available", st)
+	}
+	<-it.started
+	declined := fmt.Errorf("%w for %q: user declined", iterm.ErrAuthFailed, "libatria")
+	s.gateErr = func() error { return declined }
+}
+
+// A probe queued behind a slow one and disabled meanwhile must not run: no
+// Available call on the disabled client, and the client ends up closed.
+func TestReprobeSkipsProbeDisabledWhileQueued(t *testing.T) {
+	tmux, it := newProbeBackend(), newProbeBackend()
+	s := openWithProbes(t, nil, map[string]*probeBackend{"tmux": tmux, "iterm2": it})
+	tmux.release <- errors.New("no server")
+	_, _, _ = s.Enable("tmux")
+	<-tmux.started
+	liveITermDeclined(t, s, it)
+	it.release <- errors.New("probed after Disable") // so a wrongful probe returns rather than hangs
+
+	done := make(chan struct{})
+	go func() {
+		s.Reprobe()
+		close(done)
+	}()
+	waitStarted(t, tmux) // iTerm2 is queued behind it
+	returnsPromptly(t, "Disable", func() {
+		if _, err := s.Disable("iterm2"); err != nil {
+			t.Error(err)
+		}
+	})
+	tmux.release <- errors.New("no server")
+	<-done
+
+	select {
+	case <-it.started:
+		t.Fatal("the disabled client was probed after Disable")
+	default:
+	}
+	waitClosed(t, it)
+	if st := statusOf(t, s, "iterm2"); st.Enabled || st.Available {
+		t.Errorf("iterm2 status = %+v, want disabled", st)
+	}
+}
+
+// Disabling iTerm2 while its live client is blocked in a probe (a credential
+// dialog open) must not wait for it: Disable, Statuses, and listings all
+// return, and the client is closed once the probe lets go.
+func TestDisableDoesNotWaitForBlockedLiveProbe(t *testing.T) {
+	it := newProbeBackend()
+	s := openWithProbes(t, map[string]string{"TERM_PROGRAM": "iTerm.app"}, map[string]*probeBackend{"iterm2": it})
+	liveITermDeclined(t, s, it)
+	t.Cleanup(func() { // so a failure doesn't leave the probe, and Close, stuck
+		select {
+		case it.release <- nil:
+		default:
+		}
+	})
+	if got := s.PrimarySource(); got != "iterm" {
+		t.Fatalf("primary = %q, want iterm", got)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		s.Reprobe()
+		close(done)
+	}()
+	waitStarted(t, it)
+
+	returnsPromptly(t, "Disable", func() {
+		if rc, err := s.Disable("iterm2"); err != nil || rc == nil || rc.NewPrimary != "pty" {
+			t.Errorf("Disable = %+v, %v; want pty primary", rc, err)
+		}
+	})
+	returnsPromptly(t, "Statuses", func() { s.Statuses() })
+	returnsPromptly(t, "ListSessions", func() {
+		if _, err := s.Backend().ListSessions(); err != nil {
+			t.Errorf("ListSessions: %v", err)
+		}
+	})
+	if it.closed.Load() {
+		t.Fatal("closed while its probe still held it")
+	}
+
+	it.release <- nil
+	<-done
+	waitClosed(t, it)
+	if st := statusOf(t, s, "iterm2"); st.Enabled || st.Available {
+		t.Errorf("iterm2 status = %+v, want disabled", st)
 	}
 }
