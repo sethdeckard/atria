@@ -31,6 +31,9 @@ type conn struct {
 	timeout    time.Duration
 	cookie     string
 	key        string
+	// requestAuth fetches a cookie and key when iTerm2 answers 401; nil
+	// means requestCookieAndKey.
+	requestAuth func(appName string) (cookie, key string, err error)
 }
 
 func (c *conn) deadline() time.Duration {
@@ -148,16 +151,21 @@ func (c *conn) connect() error {
 		return terminal.Unavailable("WebSocket dial", err)
 	}
 
-	// 401: auth required. Skip AppleScript when noPrompt is set (e.g.,
-	// settings toggle during TUI) to avoid system dialogs over alt screen.
+	// 401: auth required. Skip AppleScript when noPrompt is set (e.g., a
+	// TUI whose screen a system dialog would cover).
 	if c.noPrompt {
-		return fmt.Errorf("iTerm2 requires authorization — restart Atria inside iTerm2 to authorize")
+		return fmt.Errorf("%w for %q and prompting is off; allow %s to prompt for credentials, or create ~/.config/iterm2/disable-automation-auth",
+			ErrAuthRequired, c.name(), c.name())
 	}
 
 	// Clear stale credentials and request fresh ones via AppleScript.
 	c.cookie = ""
 	c.key = ""
-	cookie, key, authErr := requestCookieAndKey(c.name())
+	requestAuth := c.requestAuth
+	if requestAuth == nil {
+		requestAuth = requestCookieAndKey
+	}
+	cookie, key, authErr := requestAuth(c.name())
 	if authErr != nil {
 		return fmt.Errorf("iTerm2 auth: %w", authErr)
 	}

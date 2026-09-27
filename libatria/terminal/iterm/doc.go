@@ -8,9 +8,12 @@
 // child processes don't inherit them. The client first connects with any
 // credentials it has; if the handshake returns 401, it requests credentials
 // through an AppleScript dialog unless Options.NoPrompt is set. Set it
-// whenever the caller is a TUI or has no user at the keyboard.
-// With prompting disabled and no valid credentials, connecting requires
-// iTerm2's automation auth to be disabled by creating
+// whenever the caller is a TUI or has no user at the keyboard. The request
+// works from any process allowed to send Apple events, inside iTerm2 or not,
+// so a background process can prompt too; the first request triggers macOS's
+// Automation consent for the binary. With Options.NoPrompt set, a 401
+// handshake response returns an error wrapping ErrAuthRequired. To connect
+// without credentials, disable iTerm2's automation auth by creating
 // ~/.config/iterm2/disable-automation-auth.
 //
 // Each iTerm2 session is a Session; its iTerm2 session ID is the ID. Screen

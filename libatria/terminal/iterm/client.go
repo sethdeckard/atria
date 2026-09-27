@@ -2,6 +2,7 @@ package iterm
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -31,6 +32,10 @@ func unquoteJSON(s string) string {
 // DefaultClientName is the name iTerm2 sees for this client when Options.ClientName is empty.
 const DefaultClientName = "libatria"
 
+// ErrAuthRequired reports that iTerm2 demanded authorization and the client
+// was not allowed to request credentials (Options.NoPrompt).
+var ErrAuthRequired = errors.New("iTerm2 requires authorization")
+
 // Options configures a Client. The zero value connects to the default socket,
 // prompts for credentials when iTerm2 asks, and identifies itself as
 // DefaultClientName.
@@ -39,8 +44,8 @@ type Options struct {
 	// ~/Library/Application Support/iTerm2/private/socket.
 	SocketPath string
 	// NoPrompt suppresses the AppleScript credential dialog. With it set, a
-	// 401 from iTerm2 is returned as an error. Set it whenever the caller is
-	// a TUI or has no user at the keyboard.
+	// 401 from iTerm2 is returned as an error wrapping ErrAuthRequired. Set
+	// it whenever the caller is a TUI or has no user at the keyboard.
 	NoPrompt bool
 	// ClientName is the application name in the AppleScript credential
 	// request and the x-iterm2-advisory-name header. iTerm2 shows it in its
@@ -62,6 +67,8 @@ type Client struct {
 	noPrompt   bool   // suppress interactive AppleScript auth
 	clientName string
 	timeout    time.Duration
+	// requestAuth fetches a cookie and key; tests replace the AppleScript call.
+	requestAuth func(appName string) (cookie, key string, err error)
 }
 
 type lineInfo struct {
@@ -78,10 +85,11 @@ func NewClient(opts Options) *Client {
 		name = DefaultClientName
 	}
 	return &Client{
-		socketPath: opts.SocketPath,
-		noPrompt:   opts.NoPrompt,
-		clientName: name,
-		timeout:    terminal.TimeoutOr(opts.CommandTimeout),
+		socketPath:  opts.SocketPath,
+		noPrompt:    opts.NoPrompt,
+		clientName:  name,
+		timeout:     terminal.TimeoutOr(opts.CommandTimeout),
+		requestAuth: requestCookieAndKey,
 	}
 }
 
@@ -91,7 +99,13 @@ func NewClient(opts Options) *Client {
 func (c *Client) ensureConn() (*conn, error) {
 	c.mu.Lock()
 	if c.conn == nil {
-		c.conn = &conn{socketPath: c.socketPath, noPrompt: c.noPrompt, clientName: c.clientName, timeout: c.timeout}
+		c.conn = &conn{
+			socketPath:  c.socketPath,
+			noPrompt:    c.noPrompt,
+			clientName:  c.clientName,
+			timeout:     c.timeout,
+			requestAuth: c.requestAuth,
+		}
 	}
 	cn := c.conn
 	c.mu.Unlock()

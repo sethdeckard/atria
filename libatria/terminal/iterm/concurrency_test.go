@@ -19,6 +19,13 @@ import (
 // the socket path and a counter of accepted WebSocket connections.
 func startFakeITerm(t *testing.T) (string, *atomic.Int32) {
 	t.Helper()
+	return startFakeITermAuth(t, "")
+}
+
+// startFakeITermAuth is startFakeITerm with automation auth on: when cookie
+// is non-empty, a handshake without that x-iterm2-cookie is refused with 401.
+func startFakeITermAuth(t *testing.T, cookie string) (string, *atomic.Int32) {
+	t.Helper()
 	// Unix socket paths are limited to about 100 bytes; t.TempDir is too long.
 	dir, err := os.MkdirTemp("", "iterm")
 	if err != nil {
@@ -33,6 +40,10 @@ func startFakeITerm(t *testing.T) (string, *atomic.Int32) {
 	var conns atomic.Int32
 	up := websocket.Upgrader{Subprotocols: []string{"api.iterm2.com"}}
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if cookie != "" && r.Header.Get("x-iterm2-cookie") != cookie {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		ws, err := up.Upgrade(w, r, nil)
 		if err != nil {
 			return
