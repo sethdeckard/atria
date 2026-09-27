@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.8.0
+
+- Add `ITermPromptAnywhere` to the library's `Options`: every iTerm2 client the stack builds, in `Open`, `Enable`, and `Reprobe`, can request credentials through AppleScript from any process, inside a terminal or not, so a daemon can reach iTerm2 without the `disable-automation-auth` file; atria doesn't set it
+- Add `Stack.Reauthorize` and `Status.Err` to the library: one declined or timed-out credential request turns iTerm2 prompting off for the stack, reconnects included, until `Reauthorize("iterm2")`, and `Status.Err` tells iTerm2 being unreachable (`terminal.ErrUnavailable`) from prompting being off (`iterm.ErrAuthRequired`) and a declined request (`iterm.ErrAuthFailed`)
+- Bound the iTerm2 credential request with `iterm.Options.AuthTimeout`, 2 minutes by default, including time spent waiting behind another client's request on a shared `iterm.AuthGate`; before, an unanswered dialog blocked forever
+- `Enable` and `Reprobe` probe without holding the stack's lock, and `Disable` closes the removed client in the background, so a slow terminal or an open credential dialog no longer holds up `Statuses` and the stack's other methods; a client whose probe fails is now closed
+- atria started inside iTerm2 stops asking for iTerm2 credentials after one declined or timed-out request, where before it could ask again on every reconnect; restart atria to be asked again
+- The iTerm2 authorization error names the calling program and points to both fixes (allowing it to prompt, or creating `~/.config/iterm2/disable-automation-auth`), instead of telling every library caller to restart Atria inside iTerm2
+
 ## v0.7.0
 
 - Add libatria: atria's terminal integrations, agent detection, status tracking, and a session watcher as a public Go library at `github.com/sethdeckard/atria/libatria`; see `docs/libatria/README.md` for the guide and `docs/libatria/API.md` for the reference. It ships in this module and follows atria's version, so the API may change between minor releases until v1.0.0, and breaking changes are listed here
