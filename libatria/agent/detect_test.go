@@ -51,36 +51,45 @@ func TestExtractActivity(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
+		job      string
 		expected string
 	}{
-		{"full format", "✳ Editing src/game.go (sourcekit-lsp)", "Editing src/game.go"},
-		{"flower prefix", "✻ Reading…", "Reading…"},
-		{"star prefix", "✶ Doodling…", "Doodling…"},
-		{"eight spoke prefix", "✽ Frosting…", "Frosting…"},
-		{"four teardrop prefix", "✢ Frosting…", "Frosting…"},
-		{"no parentheses", "✳ Editing src/game.go", "Editing src/game.go"},
-		{"sparkle only", "✳", ""},
-		{"no sparkle with parens", "Running tests (jest)", "Running tests"},
-		{"no sparkle no parens", "Running tests", "Running tests"},
-		{"empty string", "", ""},
-		{"sparkle with space", "✳ Idle", "Idle"},
-		{"nested parens stripped last", "✳ Foo (bar) (baz)", "Foo (bar)"},
-		{"opencode title", "OC | Reading file (opencode)", "Reading file"},
-		{"opencode title no suffix", "OC | Editing code", "Editing code"},
-		{"copilot robot prefix", "🤖 Asking clarifying question", "Asking clarifying question"},
-		{"copilot no prefix", "GitHub Copilot", ""},
-		{"product name claude code", "Claude Code", ""},
-		{"product name codex", "codex", ""},
-		{"product name opencode", "OpenCode", ""},
-		{"product name claude", "✳ Claude Code", ""},
-		{"cd command", "cd", ""},
+		{"job suffix", "✳ Editing src/game.go (sourcekit-lsp)", "sourcekit-lsp", "Editing src/game.go"},
+		{"job given as a path", "✳ Editing src/game.go (sourcekit-lsp)", "/usr/bin/sourcekit-lsp", "Editing src/game.go"},
+		{"job suffix case-insensitive", "Running tests (Jest)", "jest", "Running tests"},
+		{"login shell suffix", "..ts/go/loadout (-zsh)", "zsh", "..ts/go/loadout"},
+		{"suffix not the job", "✳ Editing src/game.go (sourcekit-lsp)", "zsh", "Editing src/game.go (sourcekit-lsp)"},
+		{"own parenthetical, no job", "✳ Fix parser (phase 2)", "", "Fix parser (phase 2)"},
+		{"own parenthetical then agent suffix", "✳ Fix parser (phase 2) (claude)", "", "Fix parser (phase 2)"},
+		{"own parenthetical then job suffix", "✳ Fix parser (phase 2) (node)", "node", "Fix parser (phase 2)"},
+		{"agent suffix without job", "✳ Editing main.go (claude)", "", "Editing main.go"},
+		{"flower prefix", "✻ Reading…", "", "Reading…"},
+		{"star prefix", "✶ Doodling…", "", "Doodling…"},
+		{"eight spoke prefix", "✽ Frosting…", "", "Frosting…"},
+		{"four teardrop prefix", "✢ Frosting…", "", "Frosting…"},
+		{"no parentheses", "✳ Editing src/game.go", "", "Editing src/game.go"},
+		{"sparkle only", "✳", "", ""},
+		{"no sparkle no parens", "Running tests", "", "Running tests"},
+		{"empty string", "", "", ""},
+		{"empty parens kept", "Running tests ()", "", "Running tests ()"},
+		{"sparkle with space", "✳ Idle", "", "Idle"},
+		{"opencode title", "OC | Reading file (opencode)", "", "Reading file"},
+		{"opencode title no suffix", "OC | Editing code", "", "Editing code"},
+		{"copilot robot prefix", "🤖 Asking clarifying question", "", "Asking clarifying question"},
+		{"copilot no prefix", "GitHub Copilot", "", ""},
+		{"product name claude code", "Claude Code", "", ""},
+		{"product name codex", "codex", "", ""},
+		{"product name codex with job", "codex (codex)", "codex", ""},
+		{"product name opencode", "OpenCode", "", ""},
+		{"product name claude", "✳ Claude Code", "", ""},
+		{"cd command", "cd", "", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ExtractActivity(tt.input)
+			got := ExtractActivity(tt.input, tt.job)
 			if got != tt.expected {
-				t.Errorf("ExtractActivity(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("ExtractActivity(%q, %q) = %q, want %q", tt.input, tt.job, got, tt.expected)
 			}
 		})
 	}

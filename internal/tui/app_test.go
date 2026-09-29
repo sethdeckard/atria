@@ -1193,7 +1193,7 @@ func TestSessionsRefreshedUpdatesActivity(t *testing.T) {
 
 	updated, _ := m.Update(SessionsRefreshedMsg{
 		Sessions: []terminal.Session{
-			{ID: "sess-1", Name: "\u2733 Editing main.go (sourcekit-lsp)"},
+			{ID: "sess-1", Name: "\u2733 Editing main.go (sourcekit-lsp)", Job: "sourcekit-lsp"},
 		},
 	})
 	um := modelFrom(updated)

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"path"
 	"strings"
 )
 
@@ -34,11 +35,16 @@ func Detect(name string) Type {
 
 // ExtractActivity returns the activity text an agent put in its session title,
 // or "" when the title is only a product name. It strips the agent glyph, the
-// "OC | " and "🤖 " prefixes, and a trailing parenthesized suffix:
-// "✳ Editing src/game.go (sourcekit-lsp)" becomes "Editing src/game.go".
-// Activity is informational; Claude Code updates its title while idle, so a
-// change here says nothing about status.
-func ExtractActivity(name string) string {
+// "OC | " and "🤖 " prefixes, and a trailing parenthesized job name. Some
+// terminals, iTerm2 among them, append the foreground job to the title, so
+// "✳ Editing src/game.go (sourcekit-lsp)" with job "sourcekit-lsp" becomes
+// "Editing src/game.go". The suffix is stripped only when it names job (or
+// its base name, or a login shell's "-zsh" form) or an agent binary from
+// Types; any other trailing parenthetical belongs to the title and is kept.
+// job may be "" when the terminal doesn't report one. Activity is
+// informational; Claude Code updates its title while idle, so a change here
+// says nothing about status.
+func ExtractActivity(name, job string) string {
 	s := name
 
 	// Strip the Claude prefix glyph (with optional trailing space).
@@ -53,9 +59,8 @@ func ExtractActivity(name string) string {
 	// Strip "🤖 " prefix for Copilot sessions.
 	s = strings.TrimPrefix(s, "\U0001F916 ")
 
-	// Remove a trailing parenthesized suffix, e.g. " (sourcekit-lsp)" or " (opencode)".
-	if idx := strings.LastIndex(s, "("); idx > 0 {
-		if strings.HasSuffix(s, ")") {
+	if idx := strings.LastIndex(s, "("); idx > 0 && strings.HasSuffix(s, ")") {
+		if namesJob(s[idx+1:len(s)-1], job) {
 			s = s[:idx]
 		}
 	}
@@ -70,6 +75,26 @@ func ExtractActivity(name string) string {
 	}
 
 	return s
+}
+
+// namesJob reports whether the suffix matches the session job or a supported
+// agent binary.
+func namesJob(suffix, job string) bool {
+	suffix = strings.TrimPrefix(strings.TrimSpace(suffix), "-")
+	if suffix == "" {
+		return false
+	}
+	if job = strings.TrimPrefix(strings.TrimSpace(job), "-"); job != "" {
+		if strings.EqualFold(suffix, job) || strings.EqualFold(suffix, path.Base(job)) {
+			return true
+		}
+	}
+	for _, t := range Types() {
+		if strings.EqualFold(suffix, string(t)) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasClaudePrefix(name string) bool {

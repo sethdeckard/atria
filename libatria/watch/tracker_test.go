@@ -187,7 +187,7 @@ func TestRefreshTable(t *testing.T) {
 		{
 			name:     "activity from title stamps LastActivity",
 			seed:     Tracker{Type: agent.Claude, Status: agent.StatusWorking},
-			sess:     terminal.Session{Name: "✳ Editing main.go (sourcekit-lsp)"},
+			sess:     terminal.Session{Name: "✳ Editing main.go (sourcekit-lsp)", Job: "sourcekit-lsp"},
 			wantType: agent.Claude, wantActivity: "Editing main.go", wantStamp: true,
 		},
 		{

@@ -371,7 +371,7 @@ Notes:
 
 ### Session Name Activity
 
-Session names are checked on each tick via `ListSessions()`. `ExtractActivity()` strips the `✳` prefix and parenthesized suffixes. Activity text is informational only — displayed in all states (including idle) but does **not** change status. Screen reads are the sole authority on status. Claude updates its tab title even while idle, so session name changes are unreliable as a working signal.
+Session names are checked on each tick via `ListSessions()`. `ExtractActivity()` strips the `✳` prefix and a trailing parenthetical that names the foreground job or an agent binary. A title's own parenthetical, as in `✳ Fix parser (phase 2)`, is kept. Activity text is informational only — displayed in all states (including idle) but does **not** change status. Screen reads are the sole authority on status. Claude updates its tab title even while idle, so session name changes are unreliable as a working signal.
 
 ### Debug Logging
 

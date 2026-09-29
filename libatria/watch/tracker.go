@@ -186,7 +186,7 @@ func (t *Tracker) Observe(screen string, now time.Time) Transition {
 // exited agent still contains idle patterns higher up the screen.
 func (t *Tracker) Refresh(sess terminal.Session, now time.Time) RefreshResult {
 	var r RefreshResult
-	if activity := agent.ExtractActivity(sess.Name); activity != t.Activity {
+	if activity := agent.ExtractActivity(sess.Name, sess.Job); activity != t.Activity {
 		t.Activity = activity
 		if activity != "" {
 			t.LastActivity = now
