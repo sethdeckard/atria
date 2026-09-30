@@ -116,7 +116,9 @@ Enable the Python API (Settings > General > Magic > Enable Python API). The clie
 
 Authentication is the sharp edge. Inside iTerm2, `Open` with `AllowITermPrompt` can request credentials through AppleScript, which shows a macOS Automation dialog; do that at startup, before any UI of your own. Credentials already in the environment are always used.
 
-A background process, such as a daemon started by launchd, sets `ITermPromptAnywhere` instead. The AppleScript request works from any process allowed to send Apple events, so every iTerm2 client the stack builds can prompt, including the ones from `Enable` and `Reprobe`. A daemon started before iTerm2 authenticates on its first `Reprobe` after iTerm2 launches. The first request also triggers macOS's Automation consent for your binary. Leave it off in a TUI, where the dialog would cover your screen.
+A background process, such as a daemon started by launchd, sets `ITermPromptAnywhere` instead. The AppleScript request works from any process allowed to send Apple events, so every iTerm2 client the stack builds can prompt, including the ones from `Enable` and `Reprobe`. A daemon started before iTerm2 authenticates on its first `Reprobe` after iTerm2 launches. Leave it off in a TUI, where the dialog would cover your screen.
+
+The first request also asks for macOS Automation consent, and macOS attributes it to the app your program was started from, not to your program. Started from Terminal.app, the dialog asks to allow Terminal.app to control iTerm2, and granting that lets everything you run from Terminal do the same. Started inside iTerm2, no consent is asked for. Decide which app you're granting before you click Allow; a daemon launchd starts has no terminal app in its ancestry.
 
 `Open` waits for the answer, up to two minutes (`iterm.DefaultAuthTimeout`). `Enable` and `Reprobe` wait too, without holding the stack's lock. When `Reprobe` retries a live iTerm2 client, anything reaching that client through `Backend()`, Watcher listings included, waits with it, and so does `Close`.
 
