@@ -56,9 +56,10 @@ type StyledReader interface {
 
 // Optional interfaces. A Backend may implement any of these; callers
 // type-assert and degrade when the assertion fails. CompositeBackend
-// implements the routing and reporting interfaces (all but Invalidator);
-// CachedBackend forwards them and adds Invalidator, so a caller holding either
-// can assert once and stop worrying about which backend owns a session.
+// implements the routing and reporting interfaces, Lister included (all but
+// Invalidator); CachedBackend forwards them and adds Invalidator, so a caller
+// holding either can assert once and stop worrying about which backend owns a
+// session.
 //
 // Closing is expressed with io.Closer rather than a local interface.
 
@@ -81,14 +82,69 @@ type Invalidator interface {
 	Invalidate()
 }
 
-// FailureReporter is implemented by aggregating backends that can say which
-// integration sources failed during the most recent ListSessions call that
-// itself returned without error (a primary failure returns early and leaves
-// the previous report in place). A caller that tracks sessions should keep
-// those belonging to a failed source rather than treat their absence as an
-// exit.
+// FailureReporter reports integration failures from the most recent listing
+// whose primary succeeded. A primary failure preserves the previous report.
+// A caller that tracks sessions should keep those belonging to a failed source
+// rather than treat their absence as an exit. The report can come from another
+// caller's listing, so a program that lists from more than one place should
+// use Lister instead.
 type FailureReporter interface {
 	FailedSources() []string
+}
+
+// SourceError is a listing failure attributed to one source. Unwrap gives
+// the source's own error, so errors.Is(err, ErrUnavailable) still holds for a
+// lost terminal.
+type SourceError struct {
+	Source  string // the source label: "pty", "iterm", "tmux", ...
+	Primary bool   // the source is the composite's primary backend
+	Err     error
+}
+
+func (e *SourceError) Error() string {
+	if e.Primary {
+		return "primary backend " + e.Source + ": " + e.Err.Error()
+	}
+	return e.Source + ": " + e.Err.Error()
+}
+
+func (e *SourceError) Unwrap() error { return e.Err }
+
+// Listing is one listing's sessions together with the sources that failed
+// while producing it. Sessions from a failed source are absent, so a caller
+// that tracks sessions should keep those whose Source is in Failed.
+type Listing struct {
+	Sessions []Session
+	Failed   []*SourceError
+}
+
+// FailedSources returns the Source of each failure, in order.
+func (l Listing) FailedSources() []string {
+	var out []string
+	for _, f := range l.Failed {
+		out = append(out, f.Source)
+	}
+	return out
+}
+
+// primaryFailure returns the primary's failure, or nil when it answered.
+func (l Listing) primaryFailure() *SourceError {
+	for _, f := range l.Failed {
+		if f.Primary {
+			return f
+		}
+	}
+	return nil
+}
+
+// Lister is implemented by aggregating backends. List returns the sessions
+// and the failures from a single listing, so they can't disagree the way
+// ListSessions followed by FailedSources can when another caller lists in
+// between. A failed source, the primary included, is reported in
+// Listing.Failed rather than as an error, and the sources that answered are
+// still listed; the error is for a backend that produced no listing at all.
+type Lister interface {
+	List() (Listing, error)
 }
 
 // PrimaryReporter is implemented by aggregating backends and names the source

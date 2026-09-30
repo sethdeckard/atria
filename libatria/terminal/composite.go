@@ -58,7 +58,27 @@ func (c *CompositeBackend) Available() error {
 // ListSessions merges sessions from primary and all integrations.
 // Integration sessions are prefixed and tagged with Source.
 // Deduplication by TTY ensures the same terminal isn't listed twice.
+// An integration failure is skipped and reported through FailedSources; a
+// primary failure fails the whole call with a *SourceError, because a caller
+// that can't see failures would otherwise drop the primary's sessions. List
+// keeps the integrations when the primary fails.
 func (c *CompositeBackend) ListSessions() ([]Session, error) {
+	l, err := c.List()
+	if err != nil {
+		return nil, err
+	}
+	if pf := l.primaryFailure(); pf != nil {
+		return nil, pf
+	}
+	return l.Sessions, nil
+}
+
+// List merges sessions from the primary and every integration, as
+// ListSessions does, and reports each source that failed in Listing.Failed.
+// A failed primary doesn't stop the integrations from being listed. It never
+// returns an error. A listing whose primary answered also becomes the
+// FailedSources report.
+func (c *CompositeBackend) List() (Listing, error) {
 	// Snapshot backends under read lock — the actual ListSessions calls
 	// (which may involve subprocesses/sockets) run without holding any lock,
 	// so interactive paths (SendText, ReadScreen, etc.) are not blocked.
@@ -70,61 +90,54 @@ func (c *CompositeBackend) ListSessions() ([]Session, error) {
 	copy(integrations, c.integrations)
 	c.mu.RUnlock()
 
-	primarySessions, err := primary.ListSessions()
-	if err != nil {
-		return nil, fmt.Errorf("primary backend: %w", err)
-	}
-
-	// Track TTYs from primary for deduplication.
+	var l Listing
+	// Track TTYs for deduplication; the primary is listed first, so it wins.
 	seenTTY := make(map[string]bool)
-	var result []Session
-	for _, s := range primarySessions {
-		s.Source = primarySource
-		if selfTTY != "" && s.TTY == selfTTY {
-			continue
-		}
-		result = append(result, s)
-		if s.TTY != "" {
-			seenTTY[s.TTY] = true
-		}
-	}
-
-	var failedSources []string
-	for _, integ := range integrations {
-		sessions, err := integ.Backend.ListSessions()
-		if err != nil {
-			// Integration errors are non-fatal — skip silently.
-			failedSources = append(failedSources, integ.Source)
-			continue
-		}
+	add := func(sessions []Session, prefix, source string) {
 		for _, s := range sessions {
 			if selfTTY != "" && s.TTY == selfTTY {
 				continue
 			}
-			// Deduplicate by TTY.
 			if s.TTY != "" && seenTTY[s.TTY] {
 				continue
 			}
 			if s.TTY != "" {
 				seenTTY[s.TTY] = true
 			}
-			s.ID = integ.Prefix + s.ID
-			s.Source = integ.Source
-			result = append(result, s)
+			s.ID = prefix + s.ID
+			s.Source = source
+			l.Sessions = append(l.Sessions, s)
 		}
 	}
 
-	// Only the failedSources assignment needs write access.
-	c.mu.Lock()
-	c.failedSources = failedSources
-	c.mu.Unlock()
+	if sessions, err := primary.ListSessions(); err != nil {
+		l.Failed = append(l.Failed, &SourceError{Source: primarySource, Primary: true, Err: err})
+	} else {
+		add(sessions, "", primarySource)
+	}
+	for _, integ := range integrations {
+		sessions, err := integ.Backend.ListSessions()
+		if err != nil {
+			l.Failed = append(l.Failed, &SourceError{Source: integ.Source, Err: err})
+			continue
+		}
+		add(sessions, integ.Prefix, integ.Source)
+	}
 
-	return result, nil
+	if l.primaryFailure() == nil {
+		// Only the failedSources assignment needs write access.
+		c.mu.Lock()
+		c.failedSources = l.FailedSources()
+		c.mu.Unlock()
+	}
+	return l, nil
 }
 
 // FailedSources returns the integration sources that failed during the last
-// ListSessions call. This allows callers to skip cleanup for sessions
-// belonging to transiently unavailable integrations.
+// listing whose primary answered. This allows callers to skip cleanup for
+// sessions belonging to transiently unavailable integrations. Another
+// caller's listing replaces the report; List returns failures with the
+// listing they belong to.
 func (c *CompositeBackend) FailedSources() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -400,6 +413,7 @@ var (
 	_ Resizer         = (*CompositeBackend)(nil)
 	_ SourceLauncher  = (*CompositeBackend)(nil)
 	_ FailureReporter = (*CompositeBackend)(nil)
+	_ Lister          = (*CompositeBackend)(nil)
 	_ PrimaryReporter = (*CompositeBackend)(nil)
 	_ KeySender       = (*CompositeBackend)(nil)
 	_ BellSource      = (*CompositeBackend)(nil)

@@ -126,7 +126,7 @@ While the dialog is open, other iTerm2 clients sharing the gate that get a 401 w
 
 `Status.Err` tells the cases apart with `errors.Is`: `terminal.ErrUnavailable` means iTerm2 couldn't be reached (usually it isn't running), `iterm.ErrAuthRequired` means prompting is off, and `iterm.ErrAuthFailed` means the request was declined or timed out.
 
-`Statuses` only knows what probes and the credential gate tell it. A terminal that fails after its probe passed, such as a tmux server that exits, shows up in listings through `terminal.FailureReporter`, not in `Statuses`. A live iTerm2 client whose reconnect is declined is the exception: its entry turns unavailable with `iterm.ErrAuthFailed`, and `Reprobe` after `Reauthorize` retries it.
+`Statuses` only knows what probes and the credential gate tell it. A terminal that fails after its probe passed, such as a tmux server that stops answering, shows up in `Listing.Failed` and the Watcher's `Error` events, not in `Statuses`. A live iTerm2 client whose reconnect is declined is the exception: its entry turns unavailable with `iterm.ErrAuthFailed`, and `Reprobe` after `Reauthorize` retries it.
 
 If iTerm2 asks for credentials again after it restarts, reconnecting shows the dialog again while prompting is on. The `disable-automation-auth` file below avoids the dialog entirely.
 
@@ -140,7 +140,7 @@ A dropped socket is reconnected on the next call, and calls in between return `E
 
 Sessions are discovered across every tmux session with `list-panes -a`. The pane ID (`%3`) is the session ID, and `allow-rename on` (the tmux default) is what lets an agent's title escape reach `pane_title`.
 
-With no tmux server running, `ListSessions` returns an empty list rather than an error, because a server that exited took every session with it. Permission denied, connection refused, and timeouts are `ErrUnavailable`.
+With no tmux server running, `ListSessions` returns an empty list rather than an error, because a server that exited took every session with it. Permission denied, connection refused, and timeouts are `ErrUnavailable`. The probe makes one `list-sessions` round trip: no server passes, and a server that won't answer fails it.
 
 Text goes through `send-keys -l`. A write that is exactly `\r` or `\n` is sent as the tmux `Enter` key, and semicolons are escaped so tmux's own parser doesn't eat them. `SendKey` uses tmux key names (`Escape`, `C-c`, `Up`) rather than raw bytes. Launches go into the current session when you're inside tmux and into a detached session named after `ProgramName` otherwise. `FocusSession` does nothing outside tmux.
 
@@ -170,7 +170,9 @@ The emulator holds `pty.DefaultRows` lines (40, or `Options.PTYRows`), so a read
 
 Every client reports a connection-level failure so that `errors.Is(err, terminal.ErrUnavailable)` holds: a socket that won't dial or has closed, a tmux server refusing connections, a DeviceTerm `transport.*` error, and any command timeout. The CLI clients bound every subprocess with `Options.CommandTimeout` (5s by default), and a timeout also satisfies `errors.Is(err, context.DeadlineExceeded)`.
 
-A composite `ListSessions` fails only when the primary fails. An integration's failure is reported through `terminal.FailureReporter`, and the Watcher keeps that source's sessions rather than removing them, so a terminal restart doesn't look like every agent exiting. Sessions that are gone for real are removed once their source lists successfully again.
+A composite `ListSessions` fails only when the primary fails, with a `*terminal.SourceError` that names it. `List` reports every failed source with the listing it belongs to, a failed primary included, and keeps listing the integrations.
+
+The Watcher uses `List`. It keeps a failed source's sessions and reports the failure as an `Error` event each pass, so a terminal restart doesn't look like every agent exiting. Sessions that are gone for real are removed once their source lists successfully again.
 
 Transport failures recover without a restart; DeviceTerm's grant loss is the exception and needs a new Automation tab. The iTerm2 client reconnects on its next call, the CLI clients spawn a fresh process per call, and `Stack.Reprobe` retries integrations whose probe failed at `Open`, adding or promoting the ones that now answer.
 

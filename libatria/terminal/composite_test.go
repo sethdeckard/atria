@@ -908,3 +908,82 @@ func TestComposite_CloseJoinsErrorsAndClosesAll(t *testing.T) {
 		t.Fatalf("integration should still be closed after primary error, calls = %d", integ.closeCalls)
 	}
 }
+
+func TestComposite_ListKeepsIntegrationsWhenPrimaryFails(t *testing.T) {
+	primary := &trackingBackend{listErr: Unavailable("tmux list-panes", errors.New("permission denied"))}
+	integ := &trackingBackend{
+		mockBackend: mockBackend{sessions: []Session{{ID: "s1", Name: "claude", TTY: "/dev/ttys001"}}},
+	}
+	comp := NewCompositeBackend(primary, "tmux", []Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: integ},
+	})
+
+	l, err := comp.List()
+	if err != nil {
+		t.Fatalf("List error = %v, want nil", err)
+	}
+	if len(l.Sessions) != 1 || l.Sessions[0].ID != "iterm:s1" || l.Sessions[0].Source != "iterm" {
+		t.Fatalf("Sessions = %+v, want the iterm session", l.Sessions)
+	}
+	if len(l.Failed) != 1 || l.Failed[0].Source != "tmux" || !l.Failed[0].Primary {
+		t.Fatalf("Failed = %+v, want the tmux primary", l.Failed)
+	}
+	if !errors.Is(l.Failed[0], ErrUnavailable) {
+		t.Fatalf("failure %v should unwrap to ErrUnavailable", l.Failed[0])
+	}
+}
+
+func TestComposite_ListSessionsPrimaryFailureNamesSource(t *testing.T) {
+	primary := &trackingBackend{listErr: errors.New("timed out")}
+	comp := NewCompositeBackend(primary, "tmux", []Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: &trackingBackend{}},
+	})
+
+	_, err := comp.ListSessions()
+	var se *SourceError
+	if !errors.As(err, &se) || se.Source != "tmux" || !se.Primary {
+		t.Fatalf("err = %v, want a primary *SourceError for tmux", err)
+	}
+	if want := "primary backend tmux: timed out"; err.Error() != want {
+		t.Fatalf("err = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestComposite_PrimaryFailureLeavesFailedSourcesReport(t *testing.T) {
+	primary := &trackingBackend{mockBackend: mockBackend{sessions: []Session{{ID: "pty-0"}}}}
+	integ := &trackingBackend{listErr: errors.New("connection refused")}
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: integ},
+	})
+	if _, err := comp.ListSessions(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The primary fails and the integration recovers: the earlier report
+	// stays, because the failed listing is not the one ListSessions returned.
+	primary.listErr = errors.New("boom")
+	integ.listErr = nil
+	if _, err := comp.ListSessions(); err == nil {
+		t.Fatal("expected the primary's error")
+	}
+	if got := comp.FailedSources(); len(got) != 1 || got[0] != "iterm" {
+		t.Fatalf("FailedSources = %v, want [iterm]", got)
+	}
+}
+
+func TestComposite_ListReportsIntegrationFailure(t *testing.T) {
+	primary := &trackingBackend{mockBackend: mockBackend{sessions: []Session{{ID: "pty-0"}}}}
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: &trackingBackend{listErr: errors.New("socket closed")}},
+	})
+	l, err := comp.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Sessions) != 1 || len(l.Failed) != 1 || l.Failed[0].Primary || l.Failed[0].Source != "iterm" {
+		t.Fatalf("listing = %+v, want pty-0 and an iterm failure", l)
+	}
+	if got := l.Failed[0].Error(); got != "iterm: socket closed" {
+		t.Fatalf("Error() = %q", got)
+	}
+}

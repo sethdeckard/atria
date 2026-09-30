@@ -98,11 +98,17 @@ func verb(args []string) string {
 	return args[0]
 }
 
-// Available checks that tmux is on PATH. It does not require a running
-// server: ListSessions reports an empty list when there is none.
+// Available checks that tmux is on PATH and that its server answers one
+// round trip (list-sessions) within the command timeout. It does not require
+// a running server: with none, ListSessions reports an empty list, so
+// Available passes too. A server that times out or refuses the connection
+// fails it.
 func (c *Client) Available() error {
 	if _, err := exec.LookPath(c.tmuxPath); err != nil {
 		return fmt.Errorf("tmux not found in PATH")
+	}
+	if _, err := c.run("list-sessions", "-F", "#{session_id}"); err != nil && !isNoServerError(err) {
+		return fmt.Errorf("tmux server not answering: %w", err)
 	}
 	return nil
 }

@@ -18,7 +18,7 @@ const (
 	ActivityChanged                  // the title's activity text changed
 	TypeChanged                      // the pane now runs a different agent; FromType and ToType say which
 	ScreenRead                       // a screen was read (only with Options.EmitScreenReads)
-	Error                            // a backend call failed; Err is set. Session is set for a per-session read error and zero for a listing error
+	Error                            // a backend call failed; see Event.Err and Event.Session
 )
 
 func (k EventKind) String() string {
@@ -89,5 +89,5 @@ type Event struct {
 	MatchLine        string       // StatusChanged: the classifier's line, the attention text when To is needs_input
 	Reason           RemoveReason // SessionRemoved
 	Screen           string       // ScreenRead; never carries a bell byte
-	Err              error        // Error; errors.Is(Err, terminal.ErrUnavailable) for a lost terminal
+	Err              error        // Error; errors.Is(Err, terminal.ErrUnavailable) for a lost terminal, errors.As into a *terminal.SourceError names the source of a listing failure
 }

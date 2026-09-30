@@ -129,14 +129,29 @@ type Resizer interface{ Resize(cols, rows int) }
 type SourceLauncher interface{ NewSessionOn(source string) (string, error) }
 type Invalidator interface{ Invalidate() }
 type FailureReporter interface{ FailedSources() []string }
+type Lister interface{ List() (Listing, error) }
 type PrimaryReporter interface{ PrimarySource() string }
 type BellSource interface{ ConsumeBell(sessionID string) bool }
 // plus io.Closer
+
+type Listing struct {
+    Sessions []Session
+    Failed   []*SourceError
+}
+func (l Listing) FailedSources() []string
+
+type SourceError struct {
+    Source  string
+    Primary bool
+    Err     error // Unwrap returns it, so errors.Is(err, ErrUnavailable) still holds
+}
 ```
 
 `CompositeBackend` implements all of them. `CachedBackend` forwards all of them. `pty.Client` is a `Resizer`, a `BellSource`, and an `io.Closer`; `iterm.Client` is an `io.Closer`. `Close` currently returns nothing; it becomes `Close() error` so the clients satisfy `io.Closer`.
 
-`FailedSources` names the integrations whose `ListSessions` failed on the most recent composite call. Use it to keep sessions from a source that is temporarily unreachable instead of dropping them.
+`FailedSources` names the integrations that failed on the composite's most recent listing whose primary answered. Any caller's listing replaces it, so if more than one part of your program lists, the failures you read can belong to a different listing than the sessions you hold.
+
+`List` returns the sessions and the failures of one listing together. Each failure is a `*SourceError` naming its source, with `Primary` set for the primary. A failed primary doesn't stop the integrations from being listed, and the composite's `List` never returns an error. `CachedBackend` keeps a listing's failures with it, but doesn't cache a listing whose primary failed, so the next call retries.
 
 `ConsumeBell` reports whether the session rang its bell since the last time anyone asked, and clears the flag. Only the PTY client has bell state; the other terminals don't include BEL in captured text. The PTY's plain `ReadScreen` already consumes the flag and prepends `"\x07"` to its output, which is how the classifier sees a bell today. Its styled read doesn't touch the flag, because a BEL in display output would ring the viewer's own terminal. `ConsumeBell` exists so a caller that reads only the styled screen can still get the bell; see `StyledScreens` in the `watch` package. The composite and cache route it and return false when the owning backend has no bell state.
 
@@ -194,7 +209,7 @@ func ProcessCWD(pid int) (string, error)
 var ErrUnavailable = errors.New("terminal unavailable")
 ```
 
-Every client wraps connection-level failure so `errors.Is(err, terminal.ErrUnavailable)` holds: the iTerm2 socket failing to dial or closing, tmux failing to reach its server (permission denied, connection refused, a timeout), kitty and WezTerm socket errors, DeviceTerm `transport.*` errors, and any command timeout. When no tmux server is running, `ListSessions` returns an empty list (a server that exited took every session with it, and treating that as an outage would leave phantom rows until it came back); per-session operations against it return `ErrUnavailable`. A composite `ListSessions` reports an integration failure through `FailedSources` and returns the error only when the primary fails.
+Every client wraps connection-level failure so `errors.Is(err, terminal.ErrUnavailable)` holds: the iTerm2 socket failing to dial or closing, tmux failing to reach its server (permission denied, connection refused, a timeout), kitty and WezTerm socket errors, DeviceTerm `transport.*` errors, and any command timeout. When no tmux server is running, `ListSessions` returns an empty list (a server that exited took every session with it, and treating that as an outage would leave phantom rows until it came back); per-session operations against it return `ErrUnavailable`. A composite `ListSessions` reports an integration failure through `FailedSources` and returns an error only when the primary fails, as a `*SourceError` that names it (`primary backend tmux: …`). `List` reports that failure in `Failed` instead and keeps the integrations.
 
 Recovery doesn't need a restart. The iTerm2 client already reconnects on the next call after a drop, and the CLI clients spawn a fresh process per call. `libatria.Stack.Reprobe` covers integrations that failed their initial probe.
 
@@ -497,7 +512,9 @@ Bell delivery is the same on both paths. The plain path gets the bell inside the
 
 `Snapshot.Process` is resolved when the session is added and again whenever it might have gone stale: when `Refresh` reports the session was retyped (the user quit one agent and started another in the same pane) and when the recorded PID no longer exists. The stale value is cleared first, so a `Process` with a non-zero `PID` is one the Watcher has seen alive. Call `ResolveProcess` yourself when you can't wait for the next tick.
 
-Terminal loss: a failed `ListSessions` emits `Error` and leaves every tracked session as it was. A single failed source (reported through `FailureReporter`) keeps its sessions while the rest proceed. A failed `ReadScreen` emits `Error` for that session and changes nothing. Check `errors.Is(ev.Err, terminal.ErrUnavailable)` to tell a lost terminal from an ordinary read error. When the terminal comes back, retained sessions resume on the next successful tick, and sessions that really ended are removed as `RemovedGone`.
+Terminal loss: with a `terminal.Lister` backend (the composite and the cache are both), every failed source keeps its sessions while the rest proceed, the primary included. Each gets one `Error` event per pass with a zero `Session`, and `errors.As` into a `*terminal.SourceError` names it.
+
+Other backends fall back to `FailureReporter`, whose failed sources keep their sessions without an event, and a failed `ListSessions` emits one `Error` and leaves every tracked session as it was. A failed `ReadScreen` emits `Error` for that session and changes nothing. Check `errors.Is(ev.Err, terminal.ErrUnavailable)` to tell a lost terminal from an ordinary read error. When the terminal comes back, retained sessions resume on the next successful tick, and sessions that really ended are removed as `RemovedGone`.
 
 The Watcher tolerates the backend changing under it. `Stack.Enable`, `Disable`, and `Reprobe` can run while it polls; sessions whose IDs change role are removed and rediscovered under the new ID.
 
@@ -590,7 +607,7 @@ DeviceTerm is the exception to the discovery model. It's either the primary or a
 
 `Enable` and `Reprobe` build clients that never trigger the iTerm2 AppleScript dialog unless `ITermPromptAnywhere` is set. `AllowITermPrompt` applies only to the client `Open` builds. Either way, one declined or timed-out request turns prompting off for every iTerm2 client of the stack, reconnects included. After that, a client that may prompt fails on a 401 with `iterm.ErrAuthFailed` and shows no dialog until `Reauthorize("iterm2")`; a client with prompting off returns `iterm.ErrAuthRequired` as before. `Enable` doesn't turn it back on, because daemons call it on timers.
 
-`Statuses` reflects probes and the iTerm2 credential gate, not the health of every later call. A live client that starts failing shows up through `FailureReporter` on listings, so a tmux server that exits after its probe passed still reads as available. iTerm2 is the exception: when a live client's reconnect is declined, its entry turns unavailable with `iterm.ErrAuthFailed`, and `Reprobe` retries that same client after `Reauthorize`.
+`Statuses` reflects probes and the iTerm2 credential gate, not the health of every later call. A live client that starts failing shows up in `Listing.Failed`, not in `Statuses`. Every client's `Available` except PTY's makes a round trip to its terminal, tmux's included (one `list-sessions`; with no server running it passes), so a probe catches a terminal that has stopped answering. iTerm2 is the exception: when a live client's reconnect is declined, its entry turns unavailable with `iterm.ErrAuthFailed`, and `Reprobe` retries that same client after `Reauthorize`.
 
 `Configure` replaces the options later `Enable` and `Reprobe` calls build clients from (binary paths, `TmuxSession`, `ProgramName`, `CommandTimeout`); clients already running are untouched. A settings screen that edits the tmux launch session calls it before re-enabling tmux.
 

@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -200,3 +201,77 @@ func TestCachedBackendForwardsOptionalInterfaces(t *testing.T) {
 		t.Fatal("NewSessionOn without SourceLauncher must error")
 	}
 }
+
+func TestCachedBackendListKeepsItsOwnFailures(t *testing.T) {
+	primary := &trackingBackend{mockBackend: mockBackend{sessions: []Session{{ID: "pty-0"}}}}
+	integ := &trackingBackend{listErr: errors.New("socket closed")}
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: integ},
+	})
+	cached := NewCachedBackend(comp, time.Minute)
+
+	first, err := cached.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := first.FailedSources(); len(got) != 1 || got[0] != "iterm" {
+		t.Fatalf("Failed = %v, want [iterm]", got)
+	}
+
+	// A second caller lists the composite directly after iTerm2 recovers,
+	// which clears the composite's own report.
+	integ.listErr = nil
+	if _, err := comp.ListSessions(); err != nil {
+		t.Fatal(err)
+	}
+	if got := comp.FailedSources(); len(got) != 0 {
+		t.Fatalf("composite FailedSources = %v, want none", got)
+	}
+
+	// The cache still describes the listing it serves.
+	again, err := cached.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Sessions) != 1 || len(again.Failed) != 1 || again.Failed[0].Source != "iterm" {
+		t.Fatalf("cached listing = %+v, want pty-0 with the iterm failure", again)
+	}
+	if got := cached.FailedSources(); len(got) != 1 || got[0] != "iterm" {
+		t.Fatalf("cached FailedSources = %v, want [iterm]", got)
+	}
+}
+
+func TestCachedBackendDoesNotCachePrimaryFailure(t *testing.T) {
+	primary := &trackingBackend{listErr: errors.New("boom")}
+	cached := NewCachedBackend(NewCompositeBackend(primary, "tmux", nil), time.Minute)
+
+	if _, err := cached.ListSessions(); err == nil {
+		t.Fatal("expected the primary's error")
+	}
+	primary.listErr = nil
+	primary.sessions = []Session{{ID: "%1"}}
+	sessions, err := cached.ListSessions()
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("ListSessions = %v, %v; want a fresh listing once the primary answers", sessions, err)
+	}
+}
+
+func TestCachedBackendWrapsPlainFailureReporter(t *testing.T) {
+	inner := &reporterBackend{failed: []string{"iterm"}}
+	cached := NewCachedBackend(inner, time.Minute)
+	l, err := cached.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Failed) != 1 || l.Failed[0].Source != "iterm" || l.Failed[0].Err == nil {
+		t.Fatalf("Failed = %+v, want iterm with an error", l.Failed)
+	}
+}
+
+// reporterBackend is a FailureReporter that is not a Lister.
+type reporterBackend struct {
+	mockBackend
+	failed []string
+}
+
+func (r *reporterBackend) FailedSources() []string { return r.failed }

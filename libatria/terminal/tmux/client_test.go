@@ -563,3 +563,35 @@ exit 0
 		t.Fatalf("absent socket = %v, %v; want empty, nil", sessions, err)
 	}
 }
+
+func TestAvailableRoundTrip(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{"server answers", `[ "$1" = "list-sessions" ] && echo '$0'; exit 0`, false},
+		{"no server", `echo "no server running on /tmp/tmux-501/default" >&2; exit 1`, false},
+		{"permission denied", `echo "error connecting to /tmp/tmux-501/default (Permission denied)" >&2; exit 1`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient(Options{Path: writeFakeTmux(t, tt.body+"\n")})
+			err := c.Available()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Available() = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && !errors.Is(err, terminal.ErrUnavailable) {
+				t.Fatalf("Available() = %v, want ErrUnavailable", err)
+			}
+		})
+	}
+}
+
+func TestAvailableTimesOut(t *testing.T) {
+	c := NewClient(Options{Path: writeFakeTmux(t, "sleep 5\n"), CommandTimeout: 100 * time.Millisecond})
+	err := c.Available()
+	if !errors.Is(err, terminal.ErrUnavailable) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Available() = %v, want a timeout", err)
+	}
+}

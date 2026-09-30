@@ -141,6 +141,8 @@ the session ID.
 **Requirements:**
 - `allow-rename on` (tmux default) for Claude Code's terminal title escape sequences to work as `pane_title`
 
+**Probe:** `Available` runs one `list-sessions`. No server passes; a server that times out or refuses the connection shows tmux as unavailable in Settings, with the reason.
+
 **Focus behavior:**
 - `select-window -t <id>` + best-effort `switch-client -t <owning session>`
 - Works automatically when Atria runs inside tmux

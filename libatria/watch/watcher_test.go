@@ -713,3 +713,141 @@ func TestReresolveFollowsProcessCwdWithinGate(t *testing.T) {
 		t.Fatalf("expected re-add under the process cwd, got %+v", evs)
 	}
 }
+
+// listerFake adds terminal.Lister to fakeBackend. Its FailedSources, from the
+// embedded fake, is left free to disagree with the listing, so a test can
+// tell which one the Watcher trusted.
+type listerFake struct {
+	*fakeBackend
+	failures []*terminal.SourceError
+}
+
+func (l *listerFake) List() (terminal.Listing, error) {
+	sessions, err := l.ListSessions()
+	if err != nil {
+		return terminal.Listing{}, err
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return terminal.Listing{Sessions: sessions, Failed: l.failures}, nil
+}
+
+func newListerWatcher(t *testing.T, b *listerFake) *Watcher {
+	t.Helper()
+	stubResolve(t, func(terminal.Session) terminal.Process { return terminal.Process{} }, func(int) bool { return true })
+	return New(b, Options{Clock: newClock(), WatchDirs: []string{"/home/me/projects"}})
+}
+
+func TestWatcherTrustsListOverFailedSources(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	s := claudeSession(b.fakeBackend, "iterm:s1")
+	s.Source = "iterm"
+	b.setSessions(s)
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	drain(w.Events())
+
+	// The listing says iTerm2 failed; FailedSources, as if another caller
+	// had listed since, says nothing did. The session must be kept.
+	b.mu.Lock()
+	b.sessions = nil
+	b.failures = []*terminal.SourceError{{Source: "iterm", Err: terminal.Unavailable("iTerm2", errors.New("socket closed"))}}
+	b.failed = nil
+	b.mu.Unlock()
+	w.discoverOnce(ctx)
+	evs := drain(w.Events())
+	if len(evs) != 1 || evs[0].Kind != Error {
+		t.Fatalf("want one Error event, got %+v", evs)
+	}
+	var se *terminal.SourceError
+	if !errors.As(evs[0].Err, &se) || se.Source != "iterm" || !errors.Is(evs[0].Err, terminal.ErrUnavailable) {
+		t.Fatalf("Err = %v, want an unavailable *SourceError for iterm", evs[0].Err)
+	}
+	if _, ok := w.Session("iterm:s1"); !ok {
+		t.Fatal("session of a failed source must be kept")
+	}
+
+	// The opposite disagreement: the listing reports no failure while
+	// FailedSources names iTerm2. The listing wins and the session is gone.
+	b.mu.Lock()
+	b.failures = nil
+	b.failed = []string{"iterm"}
+	b.mu.Unlock()
+	w.discoverOnce(ctx)
+	evs = drain(w.Events())
+	if len(evs) != 1 || evs[0].Kind != SessionRemoved || evs[0].Reason != RemovedGone {
+		t.Fatalf("want a gone removal, got %+v", evs)
+	}
+}
+
+func TestWatcherKeepsFailedPrimarySessions(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	primary := claudeSession(b.fakeBackend, "%1")
+	primary.Source = "tmux"
+	other := claudeSession(b.fakeBackend, "iterm:s2")
+	other.Source = "iterm"
+	b.setSessions(primary, other)
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	w.discoverOnce(ctx) // the first Refresh reports activity; settle it
+	drain(w.Events())
+
+	// tmux, the primary, stops answering; iTerm2 still lists.
+	b.mu.Lock()
+	b.sessions = []terminal.Session{other}
+	b.failures = []*terminal.SourceError{{Source: "tmux", Primary: true, Err: errors.New("permission denied")}}
+	b.mu.Unlock()
+	w.discoverOnce(ctx)
+	evs := drain(w.Events())
+	if len(evs) != 1 || evs[0].Kind != Error || evs[0].Session.ID != "" {
+		t.Fatalf("want one listing Error event, got %+v", evs)
+	}
+	var se *terminal.SourceError
+	if !errors.As(evs[0].Err, &se) || !se.Primary || se.Source != "tmux" {
+		t.Fatalf("Err = %v, want the tmux primary", evs[0].Err)
+	}
+	if len(w.Sessions()) != 2 {
+		t.Fatalf("both sessions must be kept, got %+v", w.Sessions())
+	}
+}
+
+func TestWatcherSkipsPaneOfFailedSourceListedElsewhere(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	primary := claudeSession(b.fakeBackend, "%1")
+	primary.Source, primary.TTY = "tmux", "/dev/ttys001"
+	// iTerm2's tmux integration shows the same pane on the same TTY.
+	mirror := claudeSession(b.fakeBackend, "iterm:s1")
+	mirror.Source, mirror.TTY = "iterm", "/dev/ttys001"
+	b.setSessions(primary) // the composite drops the mirror while tmux answers
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	w.discoverOnce(ctx) // the first Refresh reports activity; settle it
+	drain(w.Events())
+
+	// tmux fails, so nothing in the listing hides the mirror.
+	b.mu.Lock()
+	b.sessions = []terminal.Session{mirror}
+	b.failures = []*terminal.SourceError{{Source: "tmux", Primary: true, Err: errors.New("timed out")}}
+	b.mu.Unlock()
+	w.discoverOnce(ctx)
+	evs := drain(w.Events())
+	if len(evs) != 1 || evs[0].Kind != Error {
+		t.Fatalf("want only the Error event, got %+v", evs)
+	}
+	if got := w.Sessions(); len(got) != 1 || got[0].ID != "%1" {
+		t.Fatalf("Sessions = %+v, want only %%1", got)
+	}
+
+	// tmux recovers: no add, no removal.
+	b.mu.Lock()
+	b.sessions = []terminal.Session{primary}
+	b.failures = nil
+	b.mu.Unlock()
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("recovery should be quiet, got %+v", evs)
+	}
+}

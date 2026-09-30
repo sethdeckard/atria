@@ -18,10 +18,15 @@
 // send also selects on the context, so cancellation unblocks event delivery
 // and Run returns after in-flight backend calls finish. A send racing with
 // cancellation may still succeed, and events already buffered stay readable
-// after Run returns and closes the channel. A failed listing or a source reported
-// by terminal.FailureReporter keeps its sessions rather than removing them,
-// and errors.Is(ev.Err, terminal.ErrUnavailable) tells a lost terminal from
-// an ordinary read failure.
+// after Run returns and closes the channel. A failed listing or a failed
+// source keeps its sessions rather than removing them. With a
+// terminal.Lister backend (CompositeBackend and CachedBackend are both) the
+// failed sources come with the listing they belong to, a failed primary
+// included, and each is reported every pass as an Error event whose Err is a
+// *terminal.SourceError naming it. Other backends fall back to
+// terminal.FailureReporter, whose sources are retained silently.
+// errors.Is(ev.Err, terminal.ErrUnavailable) tells a lost terminal from an
+// ordinary read failure.
 //
 // Watcher's accessors are safe for concurrent use with Run, and the backend
 // may change underneath it (integrations enabled, disabled, or re-probed)

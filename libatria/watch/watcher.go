@@ -231,35 +231,41 @@ func (w *Watcher) logf(format string, args ...any) {
 // discoverOnce runs one discovery pass. It reports false when ctx ended.
 func (w *Watcher) discoverOnce(ctx context.Context) bool {
 	now := w.clock.Now()
-	sessions, err := w.backend.ListSessions()
+	listing, err := w.list()
 	if err != nil {
 		w.logf("watch: list sessions: %v", err)
 		return w.emit(ctx, []Event{{Kind: Error, Time: now, Err: err}})
 	}
+	var events []Event
 	failed := map[string]bool{}
-	if fr, ok := w.backend.(terminal.FailureReporter); ok {
-		for _, src := range fr.FailedSources() {
-			failed[src] = true
+	for _, f := range listing.Failed {
+		failed[f.Source] = true
+		if f.Err != nil {
+			w.logf("watch: list sessions: %v", f)
+			events = append(events, Event{Kind: Error, Time: now, Err: f})
 		}
 	}
 
-	live := make(map[string]terminal.Session, len(sessions))
+	live := make(map[string]terminal.Session, len(listing.Sessions))
 	var candidates []terminal.Session
-	for _, s := range sessions {
+	for _, s := range listing.Sessions {
 		if w.opts.Filter != nil && !w.opts.Filter(s) {
 			continue
 		}
 		live[s.ID] = s
 	}
 
-	var events []Event
 	var reresolve []*tracked
 	removed := map[string]bool{}
+	retainedTTY := map[string]bool{}
 	w.mu.Lock()
 	for id, t := range w.tracked {
 		sess, ok := live[id]
 		if !ok {
 			if failed[t.tr.Source] {
+				if t.sess.TTY != "" {
+					retainedTTY[t.sess.TTY] = true
+				}
 				continue // its source didn't answer; keep it
 			}
 			delete(w.tracked, id)
@@ -289,9 +295,12 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 		}
 	}
 	// A session removed in this pass is not a candidate in this pass; it can
-	// be identified afresh on the next one if it is still listed.
+	// be identified afresh on the next one if it is still listed. Nor is one
+	// on the TTY of a session kept because its source failed: the composite
+	// dedups by TTY only within a listing, so with that source missing
+	// another source can list the same pane under its own ID.
 	for id, s := range live {
-		if _, ok := w.tracked[id]; !ok && !removed[id] {
+		if _, ok := w.tracked[id]; !ok && !removed[id] && (s.TTY == "" || !retainedTTY[s.TTY]) {
 			candidates = append(candidates, s)
 		}
 	}
@@ -401,6 +410,28 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 	}
 	w.mu.Unlock()
 	return w.emit(ctx, events)
+}
+
+// list returns one listing and the sources that failed while producing it.
+// A terminal.Lister gives both from one call. Otherwise the failed sources
+// come from terminal.FailureReporter, with a nil Err because the reporter
+// doesn't say what went wrong, and they are retained but not reported as
+// Error events.
+func (w *Watcher) list() (terminal.Listing, error) {
+	if l, ok := w.backend.(terminal.Lister); ok {
+		return l.List()
+	}
+	sessions, err := w.backend.ListSessions()
+	if err != nil {
+		return terminal.Listing{}, err
+	}
+	listing := terminal.Listing{Sessions: sessions}
+	if fr, ok := w.backend.(terminal.FailureReporter); ok {
+		for _, src := range fr.FailedSources() {
+			listing.Failed = append(listing.Failed, &terminal.SourceError{Source: src})
+		}
+	}
+	return listing, nil
 }
 
 func (w *Watcher) wantsAgent(t agent.Type) bool {
