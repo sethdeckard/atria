@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.9.0
+
+- Breaking for library callers: `agent.ExtractActivity` takes the session's job, `ExtractActivity(name, job)`, and strips a trailing parenthetical only when it names that job or an agent binary, so a title's own parenthetical survives: `✳ Fix parser (phase 2)` no longer shows as `Fix parser`, in atria and in `watch.Snapshot.Activity`
+- Breaking for library callers: the Watcher emits an `Error` event every pass for each source that failed to list, with `Err` a `*terminal.SourceError` naming it; integration failures used to be silent
+- Add `terminal.Lister`, `Listing`, and `SourceError` to the library: a listing's failures come back with the listing, so a second caller listing through the composite or the cache can no longer make the Watcher drop an integration's sessions; `CompositeBackend` and `CachedBackend` implement it, and `CachedBackend.FailedSources` now describes the cached listing
+- A failed primary no longer hides the integrations from the library's `List`, and the Watcher keeps the primary's sessions while it's down; `ListSessions` still fails when the primary does, now with an error that names it
+- A tmux server that exists but won't answer (a timeout, permission denied) now shows as unavailable in atria's settings with the reason, instead of available with listings failing silently; no running server still counts as available
+- The library's Watcher remembers sessions it ruled out and identifies them again only when their title, job, TTY, or the processes on that TTY change, or after `watch.Options.RecheckInterval` (30s by default), so plain shells no longer cost a screen read every pass; adds `terminal.PIDsByTTY`
+- iTerm2's plain `ReadScreen` returns spaces for blank cells instead of NUL bytes, as its styled read already did
+
 ## v0.8.0
 
 - Add `ITermPromptAnywhere` to the library's `Options`: every iTerm2 client the stack builds, in `Open`, `Enable`, and `Reprobe`, can request credentials through AppleScript from any process, inside a terminal or not, so a daemon can reach iTerm2 without the `disable-automation-auth` file; atria doesn't set it
