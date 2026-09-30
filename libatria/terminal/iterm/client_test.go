@@ -340,6 +340,26 @@ func TestJoinBufferLinesAnchorsToLastNonblank(t *testing.T) {
 	}
 }
 
+func TestJoinBufferLinesReplacesNulWithSpace(t *testing.T) {
+	lines := []*pb.LineContents{
+		{Text: proto.String("a\x00\x00b")},
+		{Text: proto.String("tail\x00\x00")},
+		{Text: proto.String("\x00\x00\x00")},
+		{Text: proto.String("\x00\x00\x00")},
+	}
+	got := joinBufferLines(lines, 3)
+	want := "a  b\ntail  "
+	if got != want {
+		t.Errorf("joinBufferLines() = %q, want %q", got, want)
+	}
+
+	// A zero limit disables trimming; all-NUL rows become spaces.
+	got = joinBufferLines(lines[2:], 0)
+	if want := "   \n   "; got != want {
+		t.Errorf("joinBufferLines() = %q, want %q", got, want)
+	}
+}
+
 func TestIsSemanticallyBlankIgnoresNulls(t *testing.T) {
 	if !isSemanticallyBlank("\x00 \x00\t") {
 		t.Fatal("expected NUL-padded whitespace to be blank")

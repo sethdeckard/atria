@@ -83,8 +83,8 @@ func joinBufferLinesStyled(contents []*pb.LineContents, lines int) string {
 //
 // iTerm2 represents blank cells as NUL (\x00) in the text field, one per cell.
 // They must be replaced with a single space (not deleted) so spacing is kept
-// and the rune↔cell alignment used by the style walk stays correct — the plain
-// ReadScreen path does the same NUL→space substitution downstream.
+// and the rune↔cell alignment used by the style walk stays correct.
+// joinBufferLines does the same for the plain read.
 func styledLine(lc *pb.LineContents) string {
 	text := strings.ReplaceAll(lc.GetText(), "\x00", " ")
 	styles := lc.GetStyle()

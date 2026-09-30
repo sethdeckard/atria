@@ -249,6 +249,8 @@ pty.NewClient(cols, rows int) *pty.Client // unchanged; DefaultCols 120, Default
 
 The iTerm2 constructor changes shape: today it is `NewClient(socketPath ...string)` plus a `SetNoPrompt` setter. tmux changes from two positional strings to an options struct. The names atria hardcodes into these clients (`"atria"` in the AppleScript request, the advisory header, the DeviceTerm reason text, and the tmux fallback session) become options, and atria passes `"atria"` so its wire traffic and UI text don't change.
 
+iTerm2 sends a cell nothing has written to as NUL. `iterm.Client` returns each one as a space, in both `ReadScreen` and `ReadScreenStyled`, so its screen text never contains NUL and a row of unwritten cells trims as blank. The `Backend` interface doesn't promise this for every terminal.
+
 `deviceterm.CLIError{Code, Message}` stays exported. Branch on `Code`, never on `Message`.
 
 ## Package agent

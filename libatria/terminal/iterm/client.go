@@ -332,10 +332,13 @@ func isSemanticallyBlank(s string) bool {
 	return strings.TrimSpace(normalizeBufferText(s)) == ""
 }
 
+// joinBufferLines replaces NUL cells with spaces and joins the rows. When a
+// positive line limit is exceeded, it keeps up to that many rows ending at the
+// last nonblank row, or the buffer's end if all rows are blank.
 func joinBufferLines(contents []*pb.LineContents, lines int) string {
 	var allLines []string
 	for _, lc := range contents {
-		allLines = append(allLines, lc.GetText())
+		allLines = append(allLines, strings.ReplaceAll(lc.GetText(), "\x00", " "))
 	}
 	if len(allLines) > lines && lines > 0 {
 		end := len(allLines)
@@ -520,7 +523,8 @@ func (c *Client) getBuffer(sessionID string, lr *pb.LineRange, lines int) (strin
 	return joinBufferLines(gbr.GetContents(), lines), nil
 }
 
-// ReadScreen captures the visible screen contents of a session.
+// ReadScreen captures the visible screen contents of a session. Blank cells
+// come back as spaces, never NUL.
 func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 	content, err := c.getBuffer(sessionID, &pb.LineRange{
 		ScreenContentsOnly: proto.Bool(true),
