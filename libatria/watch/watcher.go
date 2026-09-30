@@ -23,6 +23,7 @@ const (
 	DefaultIdleInterval      = 3 * time.Second
 	DefaultParallelism       = 4
 	DefaultEventBuffer       = 256
+	DefaultRecheckInterval   = 30 * time.Second
 )
 
 // ErrAlreadyRunning is returned by Run when Run has already been called on
@@ -48,6 +49,14 @@ type Options struct {
 	Filter func(terminal.Session) bool
 	// Agents, when set, limits which agent types are added.
 	Agents []agent.Type
+	// RecheckInterval is how long a session ruled out as an agent is left
+	// alone. It is identified again sooner when its title, foreground job,
+	// TTY, or the processes on that TTY change, which is how an agent
+	// starting in it is noticed on the next pass, and on every pass for a
+	// few seconds after, while a new agent draws its UI. 0 means
+	// DefaultRecheckInterval; a negative value identifies every unknown
+	// session on every pass.
+	RecheckInterval time.Duration
 
 	Parallelism     int  // concurrent ReadScreen and Identify calls; 0 means DefaultParallelism
 	EventBuffer     int  // Events channel capacity; 0 means DefaultEventBuffer
@@ -73,8 +82,25 @@ type Watcher struct {
 
 	mu          sync.Mutex
 	tracked     map[string]*tracked
+	ruledOut    map[string]ruledOut
 	projectDirs []string
 }
+
+// ruledOut is what a listed session looked like when Identify last ruled it
+// out, so a later pass can tell whether anything that decides the answer
+// has changed.
+type ruledOut struct {
+	name, job, tty string
+	pids           string // the TTY's process IDs, from terminal.PIDsByTTY
+	at             time.Time
+	settleUntil    time.Time // identify on every pass until then
+}
+
+// settleWindow is how long a session stays under watch after it first
+// appears or something about it changes. An agent that has just started may
+// not have drawn anything recognisable when the change is noticed, and once
+// it has, nothing else about the pane may change until RecheckInterval.
+const settleWindow = 10 * time.Second
 
 // tracked is one session under watch.
 type tracked struct {
@@ -88,6 +114,7 @@ type tracked struct {
 // Seams for tests: process resolution shells out, and liveness is a signal.
 var (
 	resolveProcess = ResolveProcess
+	pidsByTTY      = terminal.PIDsByTTY
 	processAlive   = func(pid int) bool {
 		p, err := os.FindProcess(pid)
 		if err != nil {
@@ -118,6 +145,9 @@ func New(b terminal.Backend, opts Options) *Watcher {
 	if opts.EventBuffer <= 0 {
 		opts.EventBuffer = DefaultEventBuffer
 	}
+	if opts.RecheckInterval == 0 {
+		opts.RecheckInterval = DefaultRecheckInterval
+	}
 	clock := opts.Clock
 	if clock == nil {
 		clock = realClock{}
@@ -128,6 +158,7 @@ func New(b terminal.Backend, opts Options) *Watcher {
 		clock:       clock,
 		events:      make(chan Event, opts.EventBuffer),
 		tracked:     make(map[string]*tracked),
+		ruledOut:    make(map[string]ruledOut),
 		projectDirs: append([]string(nil), opts.ProjectDirs...),
 	}
 }
@@ -304,6 +335,11 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 			candidates = append(candidates, s)
 		}
 	}
+	for id := range w.ruledOut {
+		if _, ok := live[id]; !ok {
+			delete(w.ruledOut, id)
+		}
+	}
 	projectDirs := append([]string(nil), w.projectDirs...)
 	w.mu.Unlock()
 
@@ -311,6 +347,7 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 		return false
 	}
 	events = nil
+	candidates, pids := w.reopened(candidates, now)
 
 	// Identify new sessions and re-resolve processes outside the lock; both
 	// shell out. Bounded parallelism keeps process pressure predictable, and
@@ -382,14 +419,17 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 			if id.Skip != SkipNone {
 				w.logf("watch: skip %s (%s)", s.ID, id.Skip)
 			}
+			w.ruleOut(s, id, pids, now)
 			continue
 		}
 		if !w.wantsAgent(id.Type) {
+			w.ruleOut(s, id, pids, now)
 			continue
 		}
 		if _, exists := w.tracked[s.ID]; exists {
 			continue
 		}
+		delete(w.ruledOut, s.ID)
 		t := &tracked{
 			sess: s,
 			dir:  id.Dir,
@@ -432,6 +472,72 @@ func (w *Watcher) list() (terminal.Listing, error) {
 		}
 	}
 	return listing, nil
+}
+
+// reopened skips unchanged, previously rejected candidates once their settle
+// window ends, until RecheckInterval expires. It returns the candidates to
+// identify and the process lists it read, which also record what a new
+// ruling saw. The process lists come from one ps run, made only
+// when a candidate has a TTY; if it fails, candidates with a TTY are all
+// identified.
+func (w *Watcher) reopened(candidates []terminal.Session, now time.Time) ([]terminal.Session, map[string]string) {
+	if w.opts.RecheckInterval < 0 {
+		return candidates, nil
+	}
+	var pids map[string]string
+	for _, s := range candidates {
+		if s.TTY != "" {
+			var err error
+			if pids, err = pidsByTTY(); err != nil {
+				w.logf("watch: process list: %v", err)
+				pids = nil
+			}
+			break
+		}
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var keep []terminal.Session
+	for _, s := range candidates {
+		r, ok := w.ruledOut[s.ID]
+		same := ok && r.name == s.Name && r.job == s.Job && r.tty == s.TTY &&
+			now.Sub(r.at) < w.opts.RecheckInterval && !now.Before(r.settleUntil) &&
+			(s.TTY == "" || (pids != nil && r.pids == ttyPIDs(pids, s.TTY)))
+		if !same {
+			keep = append(keep, s)
+		}
+	}
+	return keep, pids
+}
+
+// ruleOut remembers a candidate that Identify did not make a tracked agent,
+// so later passes can skip it. Two rulings prove nothing and are not
+// remembered, so the session is tried again on the next pass: a failed
+// screen read, and an agent process found on the TTY before its title or
+// screen names it. A session that is new, or whose title, job, TTY, or
+// processes changed since the last ruling, is also identified on every pass
+// for settleWindow. Caller holds w.mu.
+func (w *Watcher) ruleOut(s terminal.Session, id Identity, pids map[string]string, now time.Time) {
+	if w.opts.RecheckInterval < 0 || id.Skip == SkipScreenReadFailed || (id.Type == "" && id.Process.PID != 0) {
+		delete(w.ruledOut, s.ID)
+		return
+	}
+	r := ruledOut{name: s.Name, job: s.Job, tty: s.TTY, pids: ttyPIDs(pids, s.TTY), at: now}
+	prev, ok := w.ruledOut[s.ID]
+	switch {
+	case !ok || prev.name != r.name || prev.job != r.job || prev.tty != r.tty || prev.pids != r.pids:
+		r.settleUntil = now.Add(settleWindow)
+	case now.Before(prev.settleUntil):
+		r.settleUntil = prev.settleUntil
+	}
+	w.ruledOut[s.ID] = r
+}
+
+// ttyPIDs looks up a session's TTY ("/dev/ttys003" or "ttys003") in a
+// terminal.PIDsByTTY result.
+func ttyPIDs(pids map[string]string, tty string) string {
+	return pids[strings.TrimPrefix(tty, "/dev/")]
 }
 
 func (w *Watcher) wantsAgent(t agent.Type) bool {

@@ -199,9 +199,12 @@ type Process struct {
 
 func ProcessesOnTTY(tty string) ([]Process, error)
 func ProcessCWD(pid int) (string, error)
+func PIDsByTTY() (map[string]string, error)
 ```
 
 `ProcessesOnTTY` runs `ps -t <tty>` and fills `Cwd` the way `DiscoverCWD`'s TTY strategy does today (`lsof -a -d cwd`), adding `/proc/<pid>/cwd` on Linux, which the PTY client already uses for its own child. `Cwd` is best-effort and may be empty. `terminal` doesn't know which of those processes is the agent; `agent.FindProcess` does that. `DiscoverCWD` is rebuilt on these two functions with no change in result.
+
+`PIDsByTTY` runs `ps` once for the whole machine and returns each terminal's process IDs as a sorted, comma-separated string, keyed by the TTY name without `/dev/` (`ttys003`, `pts/0`). Processes with no terminal are left out. It resolves no cwds, so it's cheap enough to run every pass, and a change in a TTY's list means something started or exited there.
 
 ### Terminal Loss
 
@@ -435,7 +438,7 @@ func ResolveProcess(b terminal.Backend, sess terminal.Session) (terminal.Process
 
 With watch directories (atria's mode), it resolves the directory with `DiscoverCWD` and then checks the result against `WatchDirs` itself, skipping with `SkipOutsideWatchDirs` when the path isn't under one of them. That second check matters because `DiscoverCWD`'s last strategy matches project basenames in the title against `ProjectDirs`, and a `ProjectDirs` entry needn't be under any watch directory; without the check, the gate would leak. Then it reads the agent from the title. When the title is unknown and a directory was found, it reads the screen and calls `InferFromScreen`; a read failure sets `SkipScreenReadFailed` and `Err`. An unknown title with no directory is `SkipUnknownTitleNoDir` and costs no screen read. A known title with no directory is not a skip; `OK()` is false and the caller decides.
 
-With no watch directories (a daemon's mode), nothing is gated. `Dir` comes from the agent process's cwd when `ResolveProcess` finds one, else from `GetVar("path")`, and it may be empty. An unknown title always gets a screen read. `OK()` needs only `Type`, so any agent session the backend lists qualifies. `DiscoverCWD` itself is unchanged: with an empty watch list its two path-validating strategies match nothing, and only the title-to-`ProjectDirs` name match can still return a directory. The ungated behaviour is `Identify`'s alone, so atria's discovery doesn't change.
+With no watch directories (a daemon's mode), nothing is gated. `Dir` comes from the agent process's cwd when `ResolveProcess` finds one, else from `GetVar("path")`, and it may be empty. An unknown title always gets a screen read; the Watcher remembers sessions it ruled out, so it doesn't pay that on every pass. `OK()` needs only `Type`, so any agent session the backend lists qualifies. `DiscoverCWD` itself is unchanged: with an empty watch list its two path-validating strategies match nothing, and only the title-to-`ProjectDirs` name match can still return a directory. The ungated behaviour is `Identify`'s alone, so atria's discovery doesn't change.
 
 `ResolveProcess` finds the agent process for a session: `ProcessesOnTTY` then `FindProcess`, or the PTY child pid and its descendants when the backend owns the process. It returns the zero `Process` and `""` when nothing matches. `Identify` calls it, and it's exported so a consumer that hears about a session from a hook can refresh the process on demand. The lookup is best-effort and never changes the skip decision.
 
@@ -456,6 +459,7 @@ type Options struct {
     ProjectDirs       []string
     Filter            func(terminal.Session) bool
     Agents            []agent.Type  // nil → all
+    RecheckInterval   time.Duration // 0 → 30s; negative → identify every unknown session every pass
     Parallelism       int           // 0 → 4
     EventBuffer       int           // 0 → 256
     EmitScreenReads   bool
@@ -501,6 +505,10 @@ func (w *Watcher) Session(id string) (Snapshot, bool)
 `Run` blocks until the context is cancelled and closes `Events` on return. Calling it twice returns `ErrAlreadyRunning`. On each discovery tick it lists sessions, refreshes tracked ones, identifies new ones, and removes sessions that are gone or orphaned. On each poll tick it reads the screen of every session whose interval has elapsed, `ActiveInterval` for working, needs_input, and error, `IdleInterval` otherwise. New sessions start as working, matching what atria does.
 
 `WatchDirs` is passed to `Identify` and decides its mode: with directories, only sessions under them are added; with none, directory filtering is off and every agent session the backend lists is a candidate. `Filter` runs on every listed session before anything else; `Agents` limits which types are added.
+
+A session `Identify` ruled out isn't identified again until its title, foreground job, TTY, or the processes on its TTY change, or `RecheckInterval` passes. The process lists come from one `ps` run per pass, made only when a candidate has a TTY. A change of directory alone waits for the interval: in gated mode, an agent that moves into a watch directory is checked again on the first discovery pass at least `RecheckInterval` after it was last ruled out.
+
+An agent that starts in a plain shell changes the title or the process list, and from then on the session is identified on every pass for about 10 seconds, because a new agent may not have drawn anything recognisable yet. A new session gets the same window. In ungated mode, where `Identify` resolves the agent process, a session whose process is an agent but whose title and screen don't say so yet isn't remembered at all. Neither is a failed screen read.
 
 Events for one session arrive in causal order, with `SessionAdded` first and `SessionRemoved` last. Sends block when the buffer is full. Nothing is dropped while `Run` is live, and a slow consumer pauses polling until it catches up. Backpressure was chosen over dropping because a lost needs_input event leaves an agent waiting until someone notices. Every send also selects on the context, so cancelling it unblocks delivery even with a full buffer and a consumer that has stopped reading, and `Run` returns once in-flight backend calls finish. A send racing with cancellation may still succeed, and events already buffered stay readable after `Run` closes the channel. Events are sent outside the Watcher's lock, so `Sessions()` and `Session()` never wait on a blocked send.
 

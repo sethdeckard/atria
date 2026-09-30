@@ -156,3 +156,38 @@ func TestUnavailableAndTimeoutHelpers(t *testing.T) {
 		t.Fatal("TimeoutOr defaults wrong")
 	}
 }
+
+func TestPIDsByTTY(t *testing.T) {
+	withFakeRunner(t, func(name string, args ...string) ([]byte, error) {
+		if name != "ps" || strings.Join(args, " ") != "-A -o tty=,pid=" {
+			t.Errorf("ran %s %v", name, args)
+		}
+		return []byte("??        1\n" +
+			"ttys003 412\n" +
+			"ttys001  90\n" +
+			"ttys003  77\n" +
+			"?       300\n" +
+			"pts/0  1200\n" +
+			"garbage\n"), nil
+	})
+	got, err := PIDsByTTY()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"ttys003": "77,412", "ttys001": "90", "pts/0": "1200"}
+	if len(got) != len(want) {
+		t.Fatalf("PIDsByTTY = %v, want %v", got, want)
+	}
+	for tty, pids := range want {
+		if got[tty] != pids {
+			t.Errorf("PIDsByTTY[%q] = %q, want %q", tty, got[tty], pids)
+		}
+	}
+}
+
+func TestPIDsByTTYError(t *testing.T) {
+	withFakeRunner(t, func(string, ...string) ([]byte, error) { return nil, errors.New("no ps") })
+	if _, err := PIDsByTTY(); err == nil {
+		t.Fatal("expected an error")
+	}
+}

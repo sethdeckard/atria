@@ -92,7 +92,8 @@ func (id Identity) OK() bool {
 // With no watch directories nothing is gated: the directory comes from the
 // agent process's cwd when ResolveProcess finds one, else from
 // GetVar("path"), and may be empty; an unknown title always gets a screen
-// read.
+// read. The Watcher caches rejected sessions to reduce repeated
+// identification; see Options.RecheckInterval for retry behavior.
 //
 // The process lookup is best-effort; when it resolves a cwd, that cwd can
 // exclude the session from the watch directories.

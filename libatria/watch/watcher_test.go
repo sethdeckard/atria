@@ -654,7 +654,7 @@ func TestReresolveFollowsProcessCwdWithinGate(t *testing.T) {
 	b := newFake()
 	b.setSessions(claudeSession(b, "s1"))
 	cwd := "/home/me/projects/other"
-	w, _ := newWatcher(t, b, Options{})
+	w, clock := newWatcher(t, b, Options{})
 	stubResolve(t, func(terminal.Session) terminal.Process {
 		return terminal.Process{PID: 7, Argv: []string{"claude"}, Cwd: cwd}
 	}, func(int) bool { return true })
@@ -706,7 +706,15 @@ func TestReresolveFollowsProcessCwdWithinGate(t *testing.T) {
 	}
 
 	// Once the process is back in scope it is admitted under its own cwd.
+	// Nothing in the listing changed, so after the settle window that waits
+	// for RecheckInterval.
 	cwd = "/home/me/projects/fourth"
+	clock.Advance(settleWindow)
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("a ruled-out session waits for RecheckInterval, got %+v", evs)
+	}
+	clock.Advance(DefaultRecheckInterval)
 	w.discoverOnce(ctx)
 	evs = drain(w.Events())
 	if len(evs) != 1 || evs[0].Kind != SessionAdded || evs[0].Session.Dir != cwd {
@@ -849,5 +857,228 @@ func TestWatcherSkipsPaneOfFailedSourceListedElsewhere(t *testing.T) {
 	w.discoverOnce(ctx)
 	if evs := drain(w.Events()); len(evs) != 0 {
 		t.Fatalf("recovery should be quiet, got %+v", evs)
+	}
+}
+
+// newUngated builds an ungated Watcher, where an unknown title always costs
+// a screen read, which is what the ruled-out memory saves.
+func newUngated(t *testing.T, b *fakeBackend, recheck time.Duration) (*Watcher, *fakeClock) {
+	t.Helper()
+	stubResolve(t, func(terminal.Session) terminal.Process { return terminal.Process{} }, func(int) bool { return true })
+	clock := newClock()
+	return New(b, Options{Clock: clock, RecheckInterval: recheck}), clock
+}
+
+// stubPIDs replaces the ps-backed process list for the test and counts calls.
+// Call it after the Watcher is built: stubResolve installs a default.
+func stubPIDs(t *testing.T, fn func() (map[string]string, error)) *int {
+	t.Helper()
+	prev := pidsByTTY
+	calls := new(int)
+	pidsByTTY = func() (map[string]string, error) {
+		*calls++
+		return fn()
+	}
+	t.Cleanup(func() { pidsByTTY = prev })
+	return calls
+}
+
+func readCount(b *fakeBackend) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.reads)
+}
+
+func TestRuledOutSessionIsNotReidentified(t *testing.T) {
+	b := newFake()
+	shell := terminal.Session{ID: "s1", Name: "zsh", Source: "iterm", Job: "zsh"}
+	b.setSessions(shell)
+	b.setScreen("s1", "$ ls\n$ ")
+	w, clock := newUngated(t, b, 0)
+	pidCalls := stubPIDs(t, func() (map[string]string, error) { return nil, nil })
+	ctx := context.Background()
+
+	w.discoverOnce(ctx)
+	if n := readCount(b); n != 1 {
+		t.Fatalf("first pass reads = %d, want 1", n)
+	}
+	clock.Advance(settleWindow)
+	w.discoverOnce(ctx)
+	if n := readCount(b); n != 1 {
+		t.Fatalf("an unchanged ruled-out session was read again (%d reads)", n)
+	}
+	if *pidCalls != 0 {
+		t.Fatalf("ps ran %d times for sessions with no TTY", *pidCalls)
+	}
+
+	steps := []struct {
+		name   string
+		change func()
+	}{
+		{"title", func() { shell.Name = "vim"; b.setSessions(shell) }},
+		{"job", func() { shell.Job = "vim"; b.setSessions(shell) }},
+		{"interval", func() { clock.Advance(DefaultRecheckInterval) }},
+	}
+	for _, step := range steps {
+		before := readCount(b)
+		step.change()
+		w.discoverOnce(ctx)
+		if n := readCount(b); n != before+1 {
+			t.Fatalf("a changed %s should reopen the session (%d reads, want %d)", step.name, n, before+1)
+		}
+		clock.Advance(settleWindow)
+		w.discoverOnce(ctx)
+		if n := readCount(b); n != before+1 {
+			t.Fatalf("after the %s change the session should be remembered again", step.name)
+		}
+	}
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("a plain shell must not be tracked, got %+v", evs)
+	}
+}
+
+func TestRuledOutSessionReopensWhenTTYProcessesChange(t *testing.T) {
+	b := newFake()
+	b.setSessions(terminal.Session{ID: "%4", Name: "bash", Source: "tmux", TTY: "/dev/ttys004"})
+	b.setScreen("%4", "$ ")
+	pids := map[string]string{"ttys004": "100"}
+	var psErr error
+	w, clock := newUngated(t, b, 0)
+	stubPIDs(t, func() (map[string]string, error) {
+		if psErr != nil {
+			return nil, psErr
+		}
+		out := map[string]string{}
+		for k, v := range pids {
+			out[k] = v
+		}
+		return out, nil
+	})
+	ctx := context.Background()
+
+	w.discoverOnce(ctx)
+	clock.Advance(settleWindow)
+	w.discoverOnce(ctx)
+	if n := readCount(b); n != 1 {
+		t.Fatalf("reads = %d, want 1 while the TTY's processes are unchanged", n)
+	}
+
+	// Something starts on the TTY: identify again on the next pass.
+	pids["ttys004"] = "100,230"
+	w.discoverOnce(ctx)
+	if n := readCount(b); n != 2 {
+		t.Fatalf("reads = %d, want 2 after a process started", n)
+	}
+
+	// Without a process list there's no telling, so identify again.
+	psErr = errors.New("ps failed")
+	w.discoverOnce(ctx)
+	if n := readCount(b); n != 3 {
+		t.Fatalf("reads = %d, want 3 when ps fails", n)
+	}
+}
+
+func TestRuledOutSessionPicksUpAgentPromptly(t *testing.T) {
+	b := newFake()
+	b.setSessions(terminal.Session{ID: "s1", Name: "zsh", Source: "iterm"})
+	b.setScreen("s1", "$ ")
+	w, _ := newUngated(t, b, 0)
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	w.discoverOnce(ctx)
+
+	b.setSessions(terminal.Session{ID: "s1", Name: "✳ Claude Code", Source: "iterm"})
+	b.setScreen("s1", "✻ Reading…\n")
+	w.discoverOnce(ctx)
+	ev := recvEvent(t, w.Events())
+	if ev.Kind != SessionAdded || ev.Session.ID != "s1" {
+		t.Fatalf("want s1 added on the pass after the title changed, got %+v", ev)
+	}
+}
+
+func TestRuledOutMemoryOffAndReadFailures(t *testing.T) {
+	ctx := context.Background()
+
+	// A negative interval identifies every unknown session every pass.
+	b := newFake()
+	b.setSessions(terminal.Session{ID: "s1", Name: "zsh"})
+	w, _ := newUngated(t, b, -1)
+	for i := 0; i < 3; i++ {
+		w.discoverOnce(ctx)
+	}
+	if n := readCount(b); n != 3 {
+		t.Fatalf("reads = %d, want 3 with the memory off", n)
+	}
+
+	// A failed screen read proves nothing, so it isn't remembered.
+	b = newFake()
+	b.setSessions(terminal.Session{ID: "s1", Name: "zsh"})
+	b.readErr["s1"] = errors.New("read failed")
+	w, _ = newUngated(t, b, 0)
+	w.discoverOnce(ctx)
+	w.discoverOnce(ctx)
+	if n := readCount(b); n != 2 {
+		t.Fatalf("reads = %d, want 2 when the read keeps failing", n)
+	}
+}
+
+func TestAgentProcessBeforeItsUIIsNotRuledOut(t *testing.T) {
+	b := newFake()
+	b.setSessions(terminal.Session{ID: "s1", Name: "zsh", Source: "tmux"})
+	b.setScreen("s1", "") // started, nothing drawn yet
+	w, clock := newUngated(t, b, 0)
+	stubResolve(t, func(terminal.Session) terminal.Process {
+		return terminal.Process{PID: 9, Argv: []string{"claude"}}
+	}, func(int) bool { return true })
+	ctx := context.Background()
+
+	w.discoverOnce(ctx)
+	clock.Advance(settleWindow) // past the window, so only the process keeps it open
+	w.discoverOnce(ctx)
+	if n := readCount(b); n != 2 {
+		t.Fatalf("reads = %d, want 2: an agent process with no UI yet proves nothing", n)
+	}
+
+	b.setScreen("s1", "✻ Reading…\n")
+	w.discoverOnce(ctx)
+	ev := recvEvent(t, w.Events())
+	if ev.Kind != SessionAdded || ev.Session.ID != "s1" {
+		t.Fatalf("want s1 added once its UI renders, got %+v", ev)
+	}
+}
+
+func TestGatedSessionSettlesAfterItsProcessesChange(t *testing.T) {
+	b := newFake()
+	b.setSessions(terminal.Session{ID: "%5", Name: "bash", Source: "tmux", TTY: "/dev/ttys005"})
+	b.setVar("%5", "path", "/home/me/projects/app")
+	b.setScreen("%5", "$ ")
+	w, clock := newWatcher(t, b, Options{})
+	pids := "100"
+	stubPIDs(t, func() (map[string]string, error) { return map[string]string{"ttys005": pids}, nil })
+	ctx := context.Background()
+
+	w.discoverOnce(ctx)
+	clock.Advance(settleWindow)
+	w.discoverOnce(ctx)
+	if n := readCount(b); n != 1 {
+		t.Fatalf("reads = %d, want 1 once settled", n)
+	}
+
+	// claude starts; in gated mode Identify doesn't look for the process
+	// behind an unknown title, and the first read catches a blank screen.
+	pids = "100,230"
+	b.setScreen("%5", "")
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("nothing to add yet, got %+v", evs)
+	}
+
+	// The UI draws a pass later; nothing in the listing changes.
+	b.setScreen("%5", "✻ Reading…\n")
+	clock.Advance(DefaultDiscoveryInterval)
+	w.discoverOnce(ctx)
+	ev := recvEvent(t, w.Events())
+	if ev.Kind != SessionAdded || ev.Session.ID != "%5" {
+		t.Fatalf("want %%5 added within the settle window, got %+v", ev)
 	}
 }

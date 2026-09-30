@@ -222,5 +222,9 @@ func stubResolve(t *testing.T, resolve func(terminal.Session) terminal.Process, 
 		return p, ""
 	}
 	processAlive = alive
-	t.Cleanup(func() { resolveProcess, processAlive = prevR, prevA })
+	// The ruled-out memory's process list shells out to ps; keep it off the
+	// host too. stubPIDs replaces this where a test needs real lists.
+	prevP := pidsByTTY
+	pidsByTTY = func() (map[string]string, error) { return map[string]string{}, nil }
+	t.Cleanup(func() { resolveProcess, processAlive, pidsByTTY = prevR, prevA, prevP })
 }

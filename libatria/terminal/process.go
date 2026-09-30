@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -101,4 +102,38 @@ func ProcessCWD(pid int) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("cwd not found for pid %d", pid)
+}
+
+// PIDsByTTY runs ps once and returns, for every terminal that has processes,
+// its process IDs as a sorted comma-separated list, keyed by the TTY name
+// without "/dev/" ("ttys003", "pts/0"). Processes with no terminal are left
+// out. The list changes when a process starts or exits on that TTY, which
+// makes it a cheap signal that a pane is running something new.
+func PIDsByTTY() (map[string]string, error) {
+	out, err := runCommand("ps", "-A", "-o", "tty=,pid=")
+	if err != nil {
+		return nil, fmt.Errorf("ps -A: %w", err)
+	}
+	pids := map[string][]int{}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || strings.Trim(fields[0], "?") == "" {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+		pids[fields[0]] = append(pids[fields[0]], pid)
+	}
+	result := make(map[string]string, len(pids))
+	for tty, list := range pids {
+		sort.Ints(list)
+		parts := make([]string, len(list))
+		for i, pid := range list {
+			parts[i] = strconv.Itoa(pid)
+		}
+		result[tty] = strings.Join(parts, ",")
+	}
+	return result, nil
 }
