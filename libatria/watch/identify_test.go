@@ -2,6 +2,7 @@ package watch
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/sethdeckard/atria/libatria/agent"
@@ -137,6 +138,7 @@ func TestSkipReasonStrings(t *testing.T) {
 		SkipScreenReadFailed:      "screen read failed",
 		SkipUnknownTitleAndScreen: "unknown title and screen",
 		SkipOutsideWatchDirs:      "outside watch dirs",
+		SkipShellOnly:             "only a shell on the tty",
 	}
 	for r, s := range want {
 		if r.String() != s {
@@ -174,5 +176,94 @@ func TestIdentifyGatedProcessCwdIsAuthoritative(t *testing.T) {
 	stubResolve(t, func(terminal.Session) terminal.Process { return terminal.Process{} }, func(int) bool { return true })
 	if id = Identify(b, sess, opts); !id.OK() || id.Dir != "/home/me/projects/app" {
 		t.Fatalf("fallback identity = %+v", id)
+	}
+}
+
+func procs(argvs ...string) []terminal.Process {
+	var out []terminal.Process
+	for i, a := range argvs {
+		out = append(out, terminal.Process{PID: 100 + i, Argv: strings.Fields(a)})
+	}
+	return out
+}
+
+func TestIdentifyUngatedShellOnlySkipsScreen(t *testing.T) {
+	b := newFake()
+	b.setScreen("s1", codexScreen) // agent text left on a plain shell's screen
+	stubLookup(t, processLookup{Procs: procs("login -pf me", "-zsh"), Seen: true})
+	id := Identify(b, terminal.Session{ID: "s1", Name: "..s/go/app (-zsh)", TTY: "ttys018"}, IdentifyOptions{})
+	if id.OK() || id.Type != "" || id.Skip != SkipShellOnly || id.Observed {
+		t.Fatalf("shell-only identity = %+v", id)
+	}
+	if len(b.reads) != 0 {
+		t.Fatalf("a shell-only tty must not spend a screen read, got %v", b.reads)
+	}
+}
+
+func TestIdentifyUngatedNonShellKeepsScreenFallback(t *testing.T) {
+	b := newFake()
+	b.setScreen("s1", codexScreen)
+	// The agent runs on the far side of ssh, so the local TTY has no agent
+	// process; the screen is all there is to go on.
+	stubLookup(t, processLookup{Procs: procs("login -pf me", "-zsh", "ssh devbox"), Seen: true})
+	id := Identify(b, terminal.Session{ID: "s1", Name: "devbox", TTY: "ttys018"}, IdentifyOptions{})
+	if !id.OK() || id.Type != agent.Codex {
+		t.Fatalf("ssh identity = %+v", id)
+	}
+}
+
+func TestIdentifyKnownTitleIgnoresShellOnly(t *testing.T) {
+	b := newFake()
+	stubLookup(t, processLookup{Procs: procs("-zsh"), Seen: true})
+	id := Identify(b, terminal.Session{ID: "s1", Name: "✳ Fix parser"}, IdentifyOptions{})
+	if !id.OK() || id.Type != agent.Claude {
+		t.Fatalf("known title identity = %+v", id)
+	}
+}
+
+func TestIdentifyGatedShellOnlySkipsScreen(t *testing.T) {
+	b := newFake()
+	b.setVar("s1", "path", "/home/me/projects/app")
+	b.setScreen("s1", codexScreen)
+	opts := IdentifyOptions{WatchDirs: []string{"/home/me/projects"}}
+	sess := terminal.Session{ID: "s1", Name: "app"}
+
+	stubLookup(t, processLookup{Procs: procs("-zsh"), Seen: true})
+	id := Identify(b, sess, opts)
+	if id.OK() || id.Skip != SkipShellOnly {
+		t.Fatalf("gated shell-only identity = %+v", id)
+	}
+	if len(b.reads) != 0 {
+		t.Fatalf("a shell-only tty must not spend a screen read, got %v", b.reads)
+	}
+
+	stubLookup(t, processLookup{Procs: procs("-zsh", "tmux attach"), Seen: true})
+	if id = Identify(b, sess, opts); !id.OK() || id.Type != agent.Codex || id.Dir != "/home/me/projects/app" {
+		t.Fatalf("gated non-shell identity = %+v", id)
+	}
+}
+
+func TestProcessLookupShellOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		l    processLookup
+		want bool
+	}{
+		{"login shell", processLookup{Procs: procs("-zsh"), Seen: true}, true},
+		{"shell by path", processLookup{Procs: procs("/bin/zsh"), Seen: true}, true},
+		{"login and shell", processLookup{Procs: procs("login -pf me", "-zsh"), Seen: true}, true},
+		{"nested shells", processLookup{Procs: procs("-zsh", "bash"), Seen: true}, true},
+		{"empty list", processLookup{Seen: true}, false},
+		{"not seen", processLookup{Procs: procs("-zsh")}, false},
+		{"editor in foreground", processLookup{Procs: procs("-zsh", "vim notes.md"), Seen: true}, false},
+		{"agent through node", processLookup{Procs: procs("-zsh", "node /usr/local/lib/cli.js"), Seen: true}, false},
+		{"empty argv", processLookup{Procs: []terminal.Process{{PID: 1}}, Seen: true}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.l.shellOnly(); got != tt.want {
+				t.Errorf("shellOnly() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

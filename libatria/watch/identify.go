@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,7 @@ const (
 	SkipScreenReadFailed                 // the screen read that would have identified the agent failed; see Identity.Err
 	SkipUnknownTitleAndScreen            // neither the title nor the screen names an agent
 	SkipOutsideWatchDirs                 // gated mode: the directory found is not under any watch directory
+	SkipShellOnly                        // title names no agent and the TTY runs only shells (and login), so no screen read was spent
 )
 
 // String returns a human-readable reason for debug logging.
@@ -36,6 +38,8 @@ func (r SkipReason) String() string {
 		return "unknown title and screen"
 	case SkipOutsideWatchDirs:
 		return "outside watch dirs"
+	case SkipShellOnly:
+		return "only a shell on the tty"
 	default:
 		return ""
 	}
@@ -91,9 +95,17 @@ func (id Identity) OK() bool {
 //
 // With no watch directories nothing is gated: the directory comes from the
 // agent process's cwd when ResolveProcess finds one, else from
-// GetVar("path"), and may be empty; an unknown title always gets a screen
-// read. The Watcher caches rejected sessions to reduce repeated
-// identification; see Options.RecheckInterval for retry behavior.
+// GetVar("path"), and may be empty; an unknown title gets a screen read
+// unless the process lookup finds only shells or login. The Watcher caches
+// rejected sessions to reduce repeated identification; see
+// Options.RecheckInterval for retry behavior.
+//
+// In both modes, an unknown title gets no screen read when the process
+// lookup saw the session's TTY and every process on it is a shell or login
+// (SkipShellOnly): a plain shell can still show an agent's text, in log
+// output or scrollback left by an agent that exited. A lookup that couldn't
+// see the TTY, or that saw anything else on it (ssh, tmux, an agent started
+// through node), leaves the screen read as the fallback.
 //
 // The process lookup is best-effort; when it resolves a cwd, that cwd can
 // exclude the session from the watch directories.
@@ -113,15 +125,25 @@ func Identify(b terminal.Backend, sess terminal.Session, opts IdentifyOptions) I
 		}
 		id.Dir = dir
 		id.Type = agent.Detect(sess.Name)
+		var l processLookup
+		looked := false
 		if id.Type == "" {
 			if dir == "" {
 				id.Skip = SkipUnknownTitleNoDir
 				return id
 			}
+			l, looked = resolveProcess(b, sess), true
+			if l.shellOnly() {
+				id.Skip = SkipShellOnly
+				return id
+			}
 			inferFromScreen(b, sess, lines, &id)
 		}
 		if id.Type != "" {
-			id.Process, _ = resolveProcess(b, sess)
+			if !looked {
+				l = resolveProcess(b, sess)
+			}
+			id.Process = l.Proc
 			if cwd := id.Process.Cwd; cwd != "" {
 				if !terminal.UnderAnyDir(cwd, opts.WatchDirs) {
 					id.Dir = ""
@@ -134,9 +156,9 @@ func Identify(b terminal.Backend, sess terminal.Session, opts IdentifyOptions) I
 		return id
 	}
 
-	proc, _ := resolveProcess(b, sess)
-	id.Process = proc
-	id.Dir = proc.Cwd
+	l := resolveProcess(b, sess)
+	id.Process = l.Proc
+	id.Dir = l.Proc.Cwd
 	if id.Dir == "" {
 		if v, err := b.GetVar(sess.ID, "path"); err == nil {
 			id.Dir = strings.TrimSpace(v)
@@ -144,6 +166,10 @@ func Identify(b terminal.Backend, sess terminal.Session, opts IdentifyOptions) I
 	}
 	id.Type = agent.Detect(sess.Name)
 	if id.Type == "" {
+		if l.shellOnly() {
+			id.Skip = SkipShellOnly
+			return id
+		}
 		inferFromScreen(b, sess, lines, &id)
 	}
 	return id
@@ -167,32 +193,65 @@ func inferFromScreen(b terminal.Backend, sess terminal.Session, lines int, id *I
 // ResolveProcess finds the agent process behind a session: the processes on
 // the session's TTY (or, for a backend that owns its child and reports no
 // TTY, the TTY of the pid GetVar returns) narrowed by agent.FindProcess. It
-// returns the zero Process and "" when nothing matches or the lookup fails,
-// and is exported so a caller that hears about a session from a hook can
-// refresh the process on demand.
+// returns the zero Process and "" both when no process matches and when the
+// lookup fails, and is exported so a caller that hears about a session from
+// a hook can refresh the process on demand.
 func ResolveProcess(b terminal.Backend, sess terminal.Session) (terminal.Process, agent.Type) {
+	l := lookupProcess(b, sess)
+	return l.Proc, l.Type
+}
+
+// processLookup is what a process lookup found. Seen reports that the TTY's
+// processes were listed, which ResolveProcess's result can't distinguish
+// from a failed lookup.
+type processLookup struct {
+	Proc  terminal.Process // the agent process, zero when none matched
+	Type  agent.Type
+	Procs []terminal.Process // every process on the TTY, when Seen
+	Seen  bool
+}
+
+func lookupProcess(b terminal.Backend, sess terminal.Session) processLookup {
 	tty := sess.TTY
 	if tty == "" {
 		v, err := b.GetVar(sess.ID, "pid")
 		if err != nil {
-			return terminal.Process{}, ""
+			return processLookup{}
 		}
 		pid, err := strconv.Atoi(strings.TrimSpace(v))
 		if err != nil || pid <= 0 {
-			return terminal.Process{}, ""
+			return processLookup{}
 		}
 		tty = terminal.TTYForPID(pid)
 		if tty == "" {
-			return terminal.Process{}, ""
+			return processLookup{}
 		}
 	}
 	procs, err := terminal.ProcessesOnTTY(tty)
 	if err != nil {
-		return terminal.Process{}, ""
+		return processLookup{}
 	}
-	p, typ, ok := agent.FindProcess(procs)
-	if !ok {
-		return terminal.Process{}, ""
+	l := processLookup{Procs: procs, Seen: true}
+	if p, typ, ok := agent.FindProcess(procs); ok {
+		l.Proc, l.Type = p, typ
 	}
-	return p, typ
+	return l
+}
+
+// shellOnly reports whether the lookup saw the TTY and found nothing on it
+// but shells and login. An empty list proves nothing and reports false.
+func (l processLookup) shellOnly() bool {
+	if !l.Seen || len(l.Procs) == 0 {
+		return false
+	}
+	for _, p := range l.Procs {
+		if len(p.Argv) == 0 {
+			return false
+		}
+		name := strings.TrimPrefix(filepath.Base(p.Argv[0]), "-")
+		if name != "login" && !isShellJob(name) {
+			return false
+		}
+	}
+	return true
 }

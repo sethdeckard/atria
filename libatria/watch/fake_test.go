@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sethdeckard/atria/libatria/agent"
 	"github.com/sethdeckard/atria/libatria/terminal"
 )
 
@@ -213,13 +212,21 @@ func drain(ch <-chan Event) []Event {
 	}
 }
 
+// stubLookup replaces the process lookup Identify uses with one returning l
+// for every session.
+func stubLookup(t *testing.T, l processLookup) {
+	t.Helper()
+	prev := resolveProcess
+	resolveProcess = func(terminal.Backend, terminal.Session) processLookup { return l }
+	t.Cleanup(func() { resolveProcess = prev })
+}
+
 // stubResolve replaces process resolution and liveness for a test.
 func stubResolve(t *testing.T, resolve func(terminal.Session) terminal.Process, alive func(int) bool) {
 	t.Helper()
 	prevR, prevA := resolveProcess, processAlive
-	resolveProcess = func(_ terminal.Backend, s terminal.Session) (terminal.Process, agent.Type) {
-		p := resolve(s)
-		return p, ""
+	resolveProcess = func(_ terminal.Backend, s terminal.Session) processLookup {
+		return processLookup{Proc: resolve(s)}
 	}
 	processAlive = alive
 	// The ruled-out memory's process list shells out to ps; keep it off the

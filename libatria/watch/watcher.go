@@ -113,7 +113,7 @@ type tracked struct {
 
 // Seams for tests: process resolution shells out, and liveness is a signal.
 var (
-	resolveProcess = ResolveProcess
+	resolveProcess = lookupProcess
 	pidsByTTY      = terminal.PIDsByTTY
 	processAlive   = func(pid int) bool {
 		p, err := os.FindProcess(pid)
@@ -379,7 +379,7 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 				return
 			}
 			defer func() { <-sem }()
-			procs[i], _ = resolveProcess(w.backend, sess)
+			procs[i] = resolveProcess(w.backend, sess).Proc
 		}(i, t.sess)
 	}
 	wg.Wait()
