@@ -181,9 +181,10 @@ func (t *Tracker) Observe(screen string, now time.Time) Transition {
 // taken from the session. Then an orphan tick is counted when the session is
 // idle, has been screen-checked, and either the title no longer names an
 // agent while the last screen shows no agent UI, or (iTerm2 only) the
-// foreground job is a shell. All three conditions are needed: Claude Code
-// drops the agent glyph from its title while idle, and scrollback from an
-// exited agent still contains idle patterns higher up the screen.
+// foreground job is a shell. All three conditions are needed: a title can
+// stop naming the agent while it still runs (the user or the terminal can
+// retitle the pane), and scrollback from an exited agent still contains
+// idle patterns higher up the screen.
 func (t *Tracker) Refresh(sess terminal.Session, now time.Time) RefreshResult {
 	var r RefreshResult
 	if activity := agent.ExtractActivity(sess.Name, sess.Job); activity != t.Activity {

@@ -7,10 +7,11 @@ import (
 
 // Detect returns the agent type a session title names, or "" when the title
 // isn't an agent's. Matching is case-insensitive on the product name, with
-// two glyph shortcuts: Claude Code titles start with one of ✳ ✻ ✶ ✽ ✢ and
-// Copilot titles start with 🤖. Claude Code drops its glyph while idle, so a
-// "" result on a session you already track is not evidence the agent exited;
-// see HasScreen for that.
+// two glyph shortcuts: Claude Code titles start with one of ✳ ✻ ✶ ✽ ✢, or
+// with the ◐ ◓ ◑ ◒ spinner while it works, and Copilot titles start with 🤖.
+// A title can stop naming the agent while it still runs (the user or the
+// terminal can retitle the pane), so a "" result on a session you already
+// track is not evidence the agent exited; see HasScreen for that.
 func Detect(name string) Type {
 	lower := strings.ToLower(name)
 
@@ -102,7 +103,7 @@ func hasClaudePrefix(name string) bool {
 }
 
 func claudePrefix(name string) string {
-	for _, prefix := range []string{"\u2733", "✻", "✶", "✽", "✢"} {
+	for _, prefix := range []string{"\u2733", "✻", "✶", "✽", "✢", "◐", "◓", "◑", "◒"} {
 		if strings.HasPrefix(name, prefix) {
 			return prefix
 		}

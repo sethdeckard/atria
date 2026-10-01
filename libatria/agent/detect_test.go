@@ -16,6 +16,10 @@ func TestDetect(t *testing.T) {
 		{"asterisk eight spoke prefix", "✽ Frosting…", Claude},
 		{"asterisk four teardrop prefix", "✢ Frosting…", Claude},
 		{"sparkle only", "✳", Claude},
+		{"spinner left half", "◐ Fix parser", Claude},
+		{"spinner upper half", "◓ Fix parser", Claude},
+		{"spinner right half", "◑ Fix parser", Claude},
+		{"spinner lower half", "◒ Fix parser", Claude},
 		{"claude lowercase", "my-claude-session", Claude},
 		{"claude uppercase", "CLAUDE-CODE", Claude},
 		{"claude mixed case", "Claude Agent", Claude},
@@ -67,6 +71,10 @@ func TestExtractActivity(t *testing.T) {
 		{"star prefix", "✶ Doodling…", "", "Doodling…"},
 		{"eight spoke prefix", "✽ Frosting…", "", "Frosting…"},
 		{"four teardrop prefix", "✢ Frosting…", "", "Frosting…"},
+		{"spinner left half", "◐ Fix parser (claude)", "", "Fix parser"},
+		{"spinner upper half", "◓ Fix parser (claude)", "", "Fix parser"},
+		{"spinner right half", "◑ Fix parser (claude)", "", "Fix parser"},
+		{"spinner lower half", "◒ Fix parser (claude)", "", "Fix parser"},
 		{"no parentheses", "✳ Editing src/game.go", "", "Editing src/game.go"},
 		{"sparkle only", "✳", "", ""},
 		{"no sparkle no parens", "Running tests", "", "Running tests"},
@@ -92,5 +100,18 @@ func TestExtractActivity(t *testing.T) {
 				t.Errorf("ExtractActivity(%q, %q) = %q, want %q", tt.input, tt.job, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestExtractActivitySameAcrossGlyphs(t *testing.T) {
+	const title = "Fix parser (phase 2) (claude)"
+	want := ExtractActivity(title, "")
+	if want != "Fix parser (phase 2)" {
+		t.Fatalf("ExtractActivity(%q) = %q", title, want)
+	}
+	for _, glyph := range []string{"✳", "✻", "✶", "✽", "✢", "◐", "◓", "◑", "◒"} {
+		if got := ExtractActivity(glyph+" "+title, ""); got != want {
+			t.Errorf("ExtractActivity with %s = %q, want %q", glyph, got, want)
+		}
 	}
 }

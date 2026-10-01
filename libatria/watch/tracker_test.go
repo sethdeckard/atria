@@ -320,3 +320,21 @@ func TestObserveBellDoesNotCountAsScreenChange(t *testing.T) {
 		t.Fatalf("unmatched = %d, want 1", tr.UnmatchedReads)
 	}
 }
+
+func TestRefreshGlyphChangeIsNotActivityChange(t *testing.T) {
+	tr := Tracker{Type: agent.Claude, Status: agent.StatusIdle}
+	for i, name := range []string{
+		"✳ Fix parser (claude)",
+		"◐ Fix parser (claude)",
+		"◑ Fix parser (claude)",
+		"✳ Fix parser (claude)",
+	} {
+		r := tr.Refresh(terminal.Session{Name: name}, t0)
+		if r.ActivityChanged != (i == 0) {
+			t.Errorf("Refresh(%q): ActivityChanged = %v, want %v", name, r.ActivityChanged, i == 0)
+		}
+		if tr.Activity != "Fix parser" {
+			t.Errorf("Refresh(%q): Activity = %q, want %q", name, tr.Activity, "Fix parser")
+		}
+	}
+}
