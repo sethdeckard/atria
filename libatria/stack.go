@@ -65,8 +65,9 @@ type Options struct {
 	// when the socket demands authentication, whatever terminal the process
 	// runs in or none. It is for a background process with no screen of its
 	// own for a dialog to cover; one started before iTerm2 authenticates
-	// through Reprobe. The first request triggers macOS's Automation consent
-	// for the binary. It supersedes AllowITermPrompt. Leave it false in a TUI.
+	// through Reprobe. The first request triggers macOS's Automation consent,
+	// which macOS attributes to the app the process was started from, not
+	// to the binary. It supersedes AllowITermPrompt. Leave it false in a TUI.
 	//
 	// Open waits for the person to answer, up to iterm.DefaultAuthTimeout.
 	// Enable and Reprobe wait too, without holding the Stack's lock, though
