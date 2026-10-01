@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.1
+
+- Fix Claude Code's working spinner (◐ ◓ ◑ ◒) staying in a session's activity: the activity flipped between `◑ Fix parser` and `Fix parser` as a session went working and idle, in atria and in `watch.Snapshot.Activity`, and the Watcher emitted `ActivityChanged` each time; `agent.Detect` now recognizes the spinner too, so a working session whose title doesn't say "claude" (a tmux pane title, for one) is detected
+
 ## v0.9.0
 
 - Breaking for library callers: `agent.ExtractActivity` takes the session's job, `ExtractActivity(name, job)`, and strips a trailing parenthetical only when it names that job or an agent binary, so a title's own parenthetical survives: `✳ Fix parser (phase 2)` no longer shows as `Fix parser`, in atria and in `watch.Snapshot.Activity`
