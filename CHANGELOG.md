@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.2
+
+- Fix `watch.Identify` taking a plain shell for an agent because its screen showed an agent's text (log output, or scrollback an exited agent left behind): when the TTY's processes can be listed and they're only shells and `login`, an unknown title is skipped with the new `SkipShellOnly` and no screen read. This applies in atria's discovery and in the library's Watcher. Anything else on the TTY (ssh, `tmux attach`, an agent started through `node`), or a TTY that can't be inspected, still falls back to the screen
+
 ## v0.9.1
 
 - Fix Claude Code's working spinner (◐ ◓ ◑ ◒) staying in a session's activity: the activity flipped between `◑ Fix parser` and `Fix parser` as a session went working and idle, in atria and in `watch.Snapshot.Activity`, and the Watcher emitted `ActivityChanged` each time; `agent.Detect` now recognizes the spinner too, so a working session whose title doesn't say "claude" (a tmux pane title, for one) is detected
