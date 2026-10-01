@@ -21,7 +21,7 @@ install:
 	go install -ldflags "$(LDFLAGS)" .
 
 release:
-	goreleaser release --clean
+	scripts/release.sh $(VERSION)
 
 clean:
 	rm -f atria
