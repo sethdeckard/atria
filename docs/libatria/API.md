@@ -322,7 +322,9 @@ A `Type`'s string value is the agent's CLI binary name, and `Installed` reports 
 
 `Detect` reads a session title and returns `""` when it isn't an agent. `ClassifyScreen` returns the highest-priority status found and the line that matched; `""` means nothing matched, which the `watch` package treats as a signal in its own right. `HasScreen` reports whether the agent's UI is present in the bottom region of a screen. `InferFromScreen` identifies the agent from product text first (when several products match, which one wins is unspecified) and otherwise from agent-specific patterns, returning `""` when the patterns leave more than one agent plausible. The classification rules move from `internal/terminal/monitor.go` and `patterns.go` without behaviour change, including the per-agent pattern registry, bottom-region anchoring, and Claude's todo-footer anchor.
 
-`ExtractActivity` returns the activity text in a title, or `""` when the title is only a product name. Some terminals, iTerm2 among them, append the foreground job to the title. So a trailing parenthetical is stripped only when it names `job` or an agent binary. Pass the session's `Job` as `job`, or `""` when the terminal doesn't report one. A title's own parenthetical, as in `✳ Fix parser (phase 2)`, is kept.
+`ExtractActivity` returns the activity text in a title, or `""` when the title is only a product name. It strips a leading agent glyph, including the braille spinner frame (U+2800 to U+28FF) that Codex puts on its title while a turn runs, so the text doesn't change from frame to frame.
+
+Some terminals, iTerm2 among them, append the foreground job to the title, so a trailing parenthetical is stripped only when it names `job` or an agent binary. Pass the session's `Job` as `job`, or `""` when the terminal doesn't report one. A title's own parenthetical, as in `✳ Fix parser (phase 2)`, is kept.
 
 `PatternsFor` returns the registry's own entry; don't modify the struct, its slices, or the regular expressions. There's no way to register a new agent type in this version.
 

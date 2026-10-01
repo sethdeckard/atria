@@ -3,6 +3,7 @@ package agent
 import (
 	"path"
 	"strings"
+	"unicode/utf8"
 )
 
 // Detect returns the agent type a session title names, or "" when the title
@@ -35,7 +36,8 @@ func Detect(name string) Type {
 }
 
 // ExtractActivity returns the activity text an agent put in its session title,
-// or "" when the title is only a product name. It strips the agent glyph, the
+// or "" when the title is only a product name. It strips the agent glyph, a
+// leading braille spinner frame (Codex shows one while a turn runs), the
 // "OC | " and "🤖 " prefixes, and a trailing parenthesized job name. Some
 // terminals, iTerm2 among them, append the foreground job to the title, so
 // "✳ Editing src/game.go (sourcekit-lsp)" with job "sourcekit-lsp" becomes
@@ -53,6 +55,8 @@ func ExtractActivity(name, job string) string {
 		s = strings.TrimPrefix(s, prefix)
 		s = strings.TrimLeft(s, " ")
 	}
+
+	s = trimSpinnerFrame(s)
 
 	// Strip "OC | " prefix for OpenCode sessions.
 	s = strings.TrimPrefix(s, "OC | ")
@@ -96,6 +100,17 @@ func namesJob(suffix, job string) bool {
 		}
 	}
 	return false
+}
+
+// trimSpinnerFrame strips one leading braille character (U+2800–U+28FF) and
+// the spaces after it. Codex prefixes its title with a braille spinner frame
+// while a turn runs and for a few seconds after it ends.
+func trimSpinnerFrame(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if r < 0x2800 || r > 0x28FF {
+		return s
+	}
+	return strings.TrimLeft(s[size:], " ")
 }
 
 func hasClaudePrefix(name string) bool {

@@ -91,6 +91,11 @@ func TestExtractActivity(t *testing.T) {
 		{"product name opencode", "OpenCode", "", ""},
 		{"product name claude", "✳ Claude Code", "", ""},
 		{"cd command", "cd", "", ""},
+		{"codex spinner frame", "⠹ Run marker command | demo (codex)", "codex", "Run marker command | demo"},
+		{"codex spinner frame without job", "⠋ Run marker command | demo", "", "Run marker command | demo"},
+		{"codex spinner frame only", "⠋", "", ""},
+		{"codex spinner frame product name", "⠼ codex (codex)", "codex", ""},
+		{"braille later in title kept", "Read ⠸ notes", "", "Read ⠸ notes"},
 	}
 
 	for _, tt := range tests {
@@ -112,6 +117,19 @@ func TestExtractActivitySameAcrossGlyphs(t *testing.T) {
 	for _, glyph := range []string{"✳", "✻", "✶", "✽", "✢", "◐", "◓", "◑", "◒"} {
 		if got := ExtractActivity(glyph+" "+title, ""); got != want {
 			t.Errorf("ExtractActivity with %s = %q, want %q", glyph, got, want)
+		}
+	}
+}
+
+func TestExtractActivitySameAcrossSpinnerFrames(t *testing.T) {
+	const title = "Run marker command | demo (codex)"
+	want := ExtractActivity(title, "codex")
+	if want != "Run marker command | demo" {
+		t.Fatalf("ExtractActivity(%q) = %q", title, want)
+	}
+	for _, frame := range []string{"⠋", "⠹", "⠸", "⠼"} {
+		if got := ExtractActivity(frame+" "+title, "codex"); got != want {
+			t.Errorf("ExtractActivity with %s = %q, want %q", frame, got, want)
 		}
 	}
 }

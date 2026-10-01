@@ -373,7 +373,11 @@ Notes:
 
 ### Session Name Activity
 
-Session names are checked on each tick via `ListSessions()`. `ExtractActivity()` strips the `✳` prefix and a trailing parenthetical that names the foreground job or an agent binary. A title's own parenthetical, as in `✳ Fix parser (phase 2)`, is kept. Activity text is informational only — displayed in all states (including idle) but does **not** change status. Screen reads are the sole authority on status. Claude updates its tab title even while idle, so session name changes are unreliable as a working signal.
+Session names are checked on each tick via `ListSessions()`. `ExtractActivity()` strips a leading agent glyph (Claude's `✳` or one of its spinner glyphs, or a Codex braille spinner frame such as `⠹`) and a trailing parenthetical that names the foreground job or an agent binary. A title's own parenthetical, as in `✳ Fix parser (phase 2)`, is kept.
+
+Codex puts the spinner frame on its title while a turn runs and for a few seconds after it ends. Stripping it keeps the activity text the same from frame to frame.
+
+Activity text is informational only. It's displayed in all states (including idle) but does **not** change status. Screen reads are the sole authority on status. Claude updates its tab title even while idle, so session name changes are unreliable as a working signal.
 
 ### Debug Logging
 
