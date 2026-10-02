@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.9.3
+
+- Fix Codex's working spinner staying in a session's activity: while a turn runs, and for a few seconds after, Codex puts a braille spinner frame in front of its title (`⠹ Fix parser | api`), so the activity changed with every frame, in atria and in `watch.Snapshot.Activity`, and the Watcher emitted `ActivityChanged` each time; `agent.ExtractActivity` now strips one leading braille character (U+2800 to U+28FF)
+- Fix Codex's folder-trust screen ("Trust this folder?") reading as idle: its options sit on `›` lines, which match Codex's idle prompt, so a session waiting on that screen never showed as needing input; it's now needs_input in atria and in the Watcher's `StatusChanged` events
+
 ## v0.9.2
 
 - Fix `watch.Identify` taking a plain shell for an agent because its screen showed an agent's text (log output, or scrollback an exited agent left behind): when the TTY's processes can be listed and they're only shells and `login`, an unknown title is skipped with the new `SkipShellOnly` and no screen read. This applies in atria's discovery and in the library's Watcher. Anything else on the TTY (ssh, `tmux attach`, an agent started through `node`), or a TTY that can't be inspected, still falls back to the screen
