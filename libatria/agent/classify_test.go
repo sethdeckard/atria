@@ -36,6 +36,8 @@ func TestClassifyOutput(t *testing.T) {
 		{"codex confirm prompt", "Press enter to confirm or esc to cancel", Codex, StatusNeedsInput},
 		{"codex question banner", "Question 1/1 (1 unanswered)", Codex, StatusNeedsInput},
 		{"codex none of the above option", "4. None of the above", Codex, StatusNeedsInput},
+		{"codex folder trust question", "Trust this folder? Codex can read, edit, and run files here", Codex, StatusNeedsInput},
+		{"codex folder trust footer", "enter continue · esc back", Codex, StatusNeedsInput},
 		{"codex prompt", "› Write tests for @filename", Codex, StatusIdle},
 		{"codex status bar idle", "gpt-5.3-codex default · 73% left · ~/projects/foo", Codex, StatusIdle},
 
@@ -68,6 +70,7 @@ func TestClassifyOutput(t *testing.T) {
 		{"opencode idle not codex", "ctrl+p commands", Codex, ""},
 		{"claude proceed not codex", "Do you want to proceed?", Codex, ""},
 		{"opencode permission not claude", "Permission required", Claude, ""},
+		{"codex folder trust not claude", "Trust this folder? Codex can read, edit, and run files here", Claude, ""},
 
 		// Unknown agent type: only shared patterns match
 		{"unknown bell", "\x07", "unknown", StatusNeedsInput},
@@ -240,6 +243,22 @@ func TestClassifyScreen(t *testing.T) {
 			Codex,
 			StatusNeedsInput,
 			"Question 1/1",
+		},
+		{
+			"codex folder trust screen",
+			"Folder access\n/private/tmp/example\nTrust this folder? Codex can read, edit, and run files here.\n› 1. Trust and continue\n  2. Back to Agent Command Center\nenter continue · esc back\n",
+			Codex,
+			StatusNeedsInput,
+			"Trust this folder?",
+		},
+		{
+			// On a narrow pane the explanation wraps and pushes the question
+			// out of the bottom region; the footer still marks the prompt.
+			"codex folder trust screen wrapped on narrow pane",
+			"Folder access\n/private/tmp/example\nTrust this folder? Codex can\nread, edit, and run files\nhere. Placeholder wrapped\nline one. Placeholder\nwrapped line two.\n\n› 1. Trust and continue\n  2. Back to Agent Command\n     Center\nenter continue · esc back\n",
+			Codex,
+			StatusNeedsInput,
+			"enter continue · esc back",
 		},
 		{
 			"codex numbered prose without ui marker stays unmatched",

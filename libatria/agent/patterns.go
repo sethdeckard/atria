@@ -50,6 +50,10 @@ var codexPatterns = &Patterns{
 		regexp.MustCompile(`Press enter to confirm`),
 		regexp.MustCompile(`Question \d+/\d+`),
 		regexp.MustCompile(`None of the above`),
+		regexp.MustCompile(`Trust this folder\?`), // folder-trust screen question
+		// Folder-trust footer. On a narrow pane the explanation wraps and
+		// pushes the question out of the bottom region; this still matches.
+		regexp.MustCompile(`enter continue · esc back`),
 	},
 	Working: []*regexp.Regexp{
 		regexp.MustCompile(`[•●] Working`),
