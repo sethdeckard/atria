@@ -328,47 +328,21 @@ Patterns are organized per-agent via the `Patterns` struct and `registry` map in
 
 Active statuses (working, needs_input, error) are only trusted in the **bottom 8 lines**, measured from the last non-blank line. This prevents false positives from conversation history in scrollback that may contain quoted prompt text or working indicators. Idle/completed patterns match anywhere since they're low-priority and harmless.
 
-### Claude Code Patterns
+### Per-Agent Patterns
 
-| Status | Pattern | Example |
-|--------|---------|---------|
-| Working | `[✻✶·] \S+…` | `✻ Reading…`, `✶ Doodling… (48s · ↓ 1.4k tokens)` |
-| Working | `esc to interrupt` (not in `⏵⏵` lines) | `esc to interrupt` |
-| Idle | `❯` prompt | `❯ ` |
-| Idle | `? for shortcuts` | `? for shortcuts` |
-| Needs input | `Do you want to proceed` | `Do you want to proceed?` |
-| Needs input | `Would you like to proceed` | `Would you like to proceed?` (plan mode) |
-| Needs input | `Allow .+\?` | `Allow file edit?` |
-| Needs input | `Esc to cancel` | `Esc to cancel · Tab to amend` |
+The patterns live in `libatria/agent/patterns.go`, each with a comment naming the screen it matches, and `libatria/agent/classify_test.go` has sample lines. This section covers what the patterns alone don't show.
 
-Notes:
-- `✻` alone (no trailing activity text with `…`) means Claude is **done**, not working.
-- Background task lines (`⏵⏵ ... esc to interrupt`) are excluded from working detection.
+**Claude Code**
 - Permission dialogs have ~10 blank lines of padding below them; the non-blank anchor handles this.
+- A `⏵⏵ … esc to interrupt` status bar counts as working while a background shell task runs. It doesn't when the line also shows a `(running)` task, because that bar stays up while Claude is idle.
 
-### Codex Patterns
-
-| Status | Pattern | Example |
-|--------|---------|---------|
-| Working | `[•●] Working` | `• Working (30s • esc to interrupt)` |
-| Idle | `›` prompt | `› Write tests for @filename` |
-| Idle | `gpt-\S+-codex` | `gpt-5.3-codex default · 73% left · ~/projects/foo` |
-
-Notes:
+**Codex**
 - Codex pads the bottom of its screen with many blank lines; 25-line reads are needed to capture content.
-- Codex session names are typically static ("codex"), unlike Claude which updates dynamically.
+- The folder-trust screen puts its options on `›` lines, which match the idle prompt. Its question and its footer are both needs_input patterns, and the footer still matches when a narrow pane wraps the question out of the bottom 8 lines.
+- Codex titles its tab `<thread name> | <directory>`, with a braille spinner frame in front while a turn runs.
 
-### OpenCode Patterns
-
-| Status | Pattern | Example |
-|--------|---------|---------|
-| Working | `esc interrupt` (matched by `esc\s+(?:to\s+)?interrupt`) | `■ ..... esc interrupt` |
-| Idle | `ctrl\+p commands` | `ctrl+t variants  tab agents  ctrl+p commands` |
-| Needs input | `Permission required` | `△ Permission required` |
-
-Notes:
-- OpenCode's working indicator uses `esc interrupt` (no "to"), matched by its own agent-specific regex.
-- Session names follow `OC | <description> (opencode)` format; `ExtractActivity()` strips both prefix and suffix.
+**OpenCode**
+- Session names follow `OC | <description> (opencode)`; `ExtractActivity()` strips both prefix and suffix.
 - OpenCode is also a Bubble Tea TUI, so two-step send applies.
 
 ### Session Name Activity
