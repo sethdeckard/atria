@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.10.0
+
+- Breaking for library callers: the Watcher reports a session's first screen read as the new `StatusKnown` event, once per session, instead of as a `StatusChanged` from the working placeholder; a session already at a prompt reports needs_input only there, so code that notifies on needs_input has to handle both kinds. `Snapshot.StatusKnown` says whether that read has happened
+- Add `Snapshot.Preexisting` to the library's Watcher: a session that was already listed when its terminal started answering, at the start of `Run` or when the terminal answers late (iTerm2 behind its credential dialog, an integration enabled after `Run` started), is marked, so a caller can take its first status as a starting state rather than a change; a session that appears later, including an agent started in a shell that was already open, isn't
+- Add `terminal.Listing.Sources`, every source that answered a listing including ones with no sessions, so an empty terminal can be told from an absent one; `CompositeBackend` fills it in, and the cache passes it through
+
 ## v0.9.3
 
 - Fix Codex's working spinner staying in a session's activity: while a turn runs, and for a few seconds after, Codex puts a braille spinner frame in front of its title (`⠹ Fix parser | api`), so the activity changed with every frame, in atria and in `watch.Snapshot.Activity`, and the Watcher emitted `ActivityChanged` each time; `agent.ExtractActivity` now strips one leading braille character (U+2800 to U+28FF)
