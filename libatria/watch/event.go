@@ -19,6 +19,12 @@ const (
 	TypeChanged                      // the pane now runs a different agent; FromType and ToType say which
 	ScreenRead                       // a screen was read (only with Options.EmitScreenReads)
 	Error                            // a backend call failed; see Event.Err and Event.Session
+	// StatusKnown reports a session's first status read from its screen,
+	// once per session and before any StatusChanged for it. It follows
+	// SessionAdded directly when identification already read the screen,
+	// and otherwise comes from the first successful poll; that first read
+	// is not also reported as a StatusChanged from the working placeholder.
+	StatusKnown
 )
 
 func (k EventKind) String() string {
@@ -37,6 +43,8 @@ func (k EventKind) String() string {
 		return "screen"
 	case Error:
 		return "error"
+	case StatusKnown:
+		return "known"
 	default:
 		return "unknown"
 	}
@@ -71,6 +79,7 @@ type Snapshot struct {
 	Type         agent.Type
 	Process      terminal.Process // zero until resolved; re-resolved on retype and when the PID dies
 	Status       agent.Status
+	StatusKnown  bool // Status was read from the screen at least once; until then it is the working placeholder
 	Activity     string
 	Attention    string
 	LastActivity time.Time
@@ -86,7 +95,7 @@ type Event struct {
 
 	From, To         agent.Status // StatusChanged
 	FromType, ToType agent.Type   // TypeChanged
-	MatchLine        string       // StatusChanged: the classifier's line, the attention text when To is needs_input
+	MatchLine        string       // StatusChanged and StatusKnown: the classifier's line, the attention text when the status is needs_input
 	Reason           RemoveReason // SessionRemoved
 	Screen           string       // ScreenRead; never carries a bell byte
 	Err              error        // Error; errors.Is(Err, terminal.ErrUnavailable) for a lost terminal, errors.As into a *terminal.SourceError names the source of a listing failure

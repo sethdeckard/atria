@@ -75,7 +75,7 @@ newID, err := agent.Launch(b, stack.PrimarySource(), "/Users/me/projects/api", "
 
 ## Watching Sessions
 
-`watch.Watcher` runs the discovery and status loop in a goroutine and delivers events on a channel. This prints every session it finds, with the agent process behind it, then streams status changes:
+`watch.Watcher` runs the discovery and status loop in a goroutine and delivers events on a channel. This prints every session it finds, with the agent process behind it, then streams each session's first status and its changes:
 
 ```go
 w := watch.New(b, watch.Options{})
@@ -84,6 +84,8 @@ go func() {
         switch ev.Kind {
         case watch.SessionAdded:
             fmt.Printf("+ %s %s pid=%d %v\n", ev.Session.ID, ev.Session.Type, ev.Session.Process.PID, ev.Session.Process.Argv)
+        case watch.StatusKnown:
+            fmt.Printf("  %s %s %q\n", ev.Session.ID, ev.Session.Status, ev.MatchLine)
         case watch.StatusChanged:
             fmt.Printf("  %s %s -> %s %q\n", ev.Session.ID, ev.From, ev.To, ev.MatchLine)
         case watch.SessionRemoved:

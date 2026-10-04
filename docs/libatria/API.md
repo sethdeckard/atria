@@ -62,7 +62,9 @@ _ = terminal.SendKey(b, target.ID, terminal.KeyEscape)
 w := watch.New(b, watch.Options{WatchDirs: []string{"/Users/me/projects"}})
 go w.Run(ctx)
 for ev := range w.Events() {
-    if ev.Kind == watch.StatusChanged && ev.To == agent.StatusNeedsInput {
+    needsInput := (ev.Kind == watch.StatusChanged && ev.To == agent.StatusNeedsInput) ||
+        (ev.Kind == watch.StatusKnown && ev.Session.Status == agent.StatusNeedsInput)
+    if needsInput {
         notify(ev.Session.ID, ev.MatchLine)
     }
 }
@@ -472,8 +474,8 @@ type Options struct {
     Logf              func(format string, args ...any)
 }
 
-type EventKind int    // SessionAdded, SessionRemoved, StatusChanged, ActivityChanged, ScreenRead, Error
-type RemoveReason int // RemovedGone, RemovedOrphan
+type EventKind int    // SessionAdded, SessionRemoved, StatusChanged, ActivityChanged, TypeChanged, ScreenRead, Error, StatusKnown
+type RemoveReason int // RemovedGone, RemovedOrphan, RemovedOutOfScope
 
 type Snapshot struct {
     terminal.Session
@@ -481,6 +483,7 @@ type Snapshot struct {
     Type         agent.Type
     Process      terminal.Process
     Status       agent.Status
+    StatusKnown  bool
     Activity     string
     Attention    string
     LastActivity time.Time
@@ -489,14 +492,15 @@ type Snapshot struct {
 }
 
 type Event struct {
-    Kind      EventKind
-    Time      time.Time
-    Session   Snapshot
-    From, To  agent.Status // StatusChanged
-    MatchLine string       // StatusChanged
-    Reason    RemoveReason // SessionRemoved
-    Screen    string       // ScreenRead
-    Err       error        // Error
+    Kind             EventKind
+    Time             time.Time
+    Session          Snapshot
+    From, To         agent.Status // StatusChanged
+    FromType, ToType agent.Type   // TypeChanged
+    MatchLine        string       // StatusChanged, StatusKnown
+    Reason           RemoveReason // SessionRemoved
+    Screen           string       // ScreenRead
+    Err              error        // Error
 }
 
 func New(b terminal.Backend, opts Options) *Watcher
@@ -506,7 +510,11 @@ func (w *Watcher) Sessions() []Snapshot
 func (w *Watcher) Session(id string) (Snapshot, bool)
 ```
 
-`Run` blocks until the context is cancelled and closes `Events` on return. Calling it twice returns `ErrAlreadyRunning`. On each discovery tick it lists sessions, refreshes tracked ones, identifies new ones, and removes sessions that are gone or orphaned. On each poll tick it reads the screen of every session whose interval has elapsed, `ActiveInterval` for working, needs_input, and error, `IdleInterval` otherwise. New sessions start as working, matching what atria does.
+`Run` blocks until the context is cancelled and closes `Events` on return. Calling it twice returns `ErrAlreadyRunning`. On each discovery tick it lists sessions, refreshes tracked ones, identifies new ones, and removes sessions that are gone or orphaned. On each poll tick it reads the screen of every session whose interval has elapsed, `ActiveInterval` for working, needs_input, and error, `IdleInterval` otherwise. New sessions start as working, matching what atria does, with `Snapshot.StatusKnown` false until the first successful screen read. That read sets it even when it matches no pattern.
+
+A session's first screen read is reported as `StatusKnown`, not as a `StatusChanged` from that placeholder. It comes right after `SessionAdded` when `Identify` read the screen to type the session, and from the first successful poll otherwise. A first read that matches no pattern leaves the status working, and a session removed before any read succeeds gets no `StatusKnown`.
+
+Handle both kinds when you act on a status. A session that's already sitting at a prompt reports needs_input in its `StatusKnown`, never in a `StatusChanged`.
 
 `WatchDirs` is passed to `Identify` and decides its mode: with directories, only sessions under them are added; with none, directory filtering is off and every agent session the backend lists is a candidate. `Filter` runs on every listed session before anything else; `Agents` limits which types are added.
 
@@ -514,7 +522,7 @@ A session `Identify` ruled out isn't identified again until its title, foregroun
 
 An agent that starts in a plain shell changes the title or the process list, and from then on the session is identified on every pass for about 10 seconds, because a new agent may not have drawn anything recognisable yet. A new session gets the same window. In ungated mode, where `Identify` resolves the agent process, a session whose process is an agent but whose title and screen don't say so yet isn't remembered at all. Neither is a failed screen read.
 
-Events for one session arrive in causal order, with `SessionAdded` first and `SessionRemoved` last. Sends block when the buffer is full. Nothing is dropped while `Run` is live, and a slow consumer pauses polling until it catches up. Backpressure was chosen over dropping because a lost needs_input event leaves an agent waiting until someone notices. Every send also selects on the context, so cancelling it unblocks delivery even with a full buffer and a consumer that has stopped reading, and `Run` returns once in-flight backend calls finish. A send racing with cancellation may still succeed, and events already buffered stay readable after `Run` closes the channel. Events are sent outside the Watcher's lock, so `Sessions()` and `Session()` never wait on a blocked send.
+Events for one session arrive in causal order, with `SessionAdded` first, `StatusKnown` before any `StatusChanged`, and `SessionRemoved` last. Sends block when the buffer is full. Nothing is dropped while `Run` is live, and a slow consumer pauses polling until it catches up. Backpressure was chosen over dropping because a lost needs_input event leaves an agent waiting until someone notices. Every send also selects on the context, so cancelling it unblocks delivery even with a full buffer and a consumer that has stopped reading, and `Run` returns once in-flight backend calls finish. A send racing with cancellation may still succeed, and events already buffered stay readable after `Run` closes the channel. Events are sent outside the Watcher's lock, so `Sessions()` and `Session()` never wait on a blocked send.
 
 `ScreenRead` events are off by default because they fire on every poll. `Parallelism` bounds concurrent `ReadScreen` and `Identify` calls; every non-PTY backend spends a subprocess or a socket round trip per read, so unbounded fan-out across many sessions is process pressure you can feel.
 

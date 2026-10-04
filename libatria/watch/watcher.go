@@ -224,6 +224,15 @@ func (w *Watcher) Session(id string) (Snapshot, bool) {
 	return t.snapshot(), true
 }
 
+// statusKnown builds the StatusKnown event for a session's first screen
+// read; line is that read's Transition.MatchLine.
+func (t *tracked) statusKnown(now time.Time, line string) Event {
+	if t.tr.Status == agent.StatusNeedsInput {
+		line = t.tr.Attention
+	}
+	return Event{Kind: StatusKnown, Time: now, Session: t.snapshot(), MatchLine: line}
+}
+
 func (t *tracked) snapshot() Snapshot {
 	return Snapshot{
 		Session:      t.sess,
@@ -231,6 +240,7 @@ func (t *tracked) snapshot() Snapshot {
 		Type:         t.tr.Type,
 		Process:      t.proc,
 		Status:       t.tr.Status,
+		StatusKnown:  t.tr.ScreenChecked,
 		Activity:     t.tr.Activity,
 		Attention:    t.tr.Attention,
 		LastActivity: t.tr.LastActivity,
@@ -436,10 +446,11 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 			proc: id.Process,
 			tr:   Tracker{Type: id.Type, Source: s.Source, Status: agent.StatusWorking},
 		}
+		var first Transition
 		if id.Observed {
 			// Identify already read the screen (and may have consumed a
 			// pending bell); that read is the session's first observation.
-			t.tr.Observe(id.Screen, now)
+			first = t.tr.Observe(id.Screen, now)
 			t.screen = strings.ReplaceAll(id.Screen, "\x07", "")
 		}
 		w.tracked[s.ID] = t
@@ -447,6 +458,9 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 			w.projectDirs = append(w.projectDirs, id.Dir)
 		}
 		events = append(events, Event{Kind: SessionAdded, Time: now, Session: t.snapshot()})
+		if id.Observed {
+			events = append(events, t.statusKnown(now, first.MatchLine))
+		}
 	}
 	w.mu.Unlock()
 	return w.emit(ctx, events)
@@ -629,10 +643,17 @@ func (w *Watcher) pollOnce(ctx context.Context) bool {
 			events = append(events, Event{Kind: Error, Time: readAt, Session: t.snapshot(), Err: res.err})
 			continue
 		}
+		known := t.tr.ScreenChecked
 		tr := t.tr.Observe(res.plain, readAt)
 		t.screen = res.styled
 		if w.opts.EmitScreenReads {
 			events = append(events, Event{Kind: ScreenRead, Time: readAt, Session: t.snapshot(), Screen: res.styled})
+		}
+		if !known {
+			// The first read replaces the working placeholder: report it as
+			// the session's known status, not as a change from it.
+			events = append(events, t.statusKnown(readAt, tr.MatchLine))
+			continue
 		}
 		if tr.StatusChanged() {
 			line := tr.MatchLine

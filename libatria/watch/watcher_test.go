@@ -43,7 +43,7 @@ func TestDiscoverAddsSessionAndPollTransitions(t *testing.T) {
 		t.Fatal("discover should not report cancellation")
 	}
 	ev := recvEvent(t, w.Events())
-	if ev.Kind != SessionAdded || ev.Session.ID != "s1" || ev.Session.Type != agent.Claude || ev.Session.Status != agent.StatusWorking || ev.Session.Dir != "/home/me/projects/app" {
+	if ev.Kind != SessionAdded || ev.Session.ID != "s1" || ev.Session.Type != agent.Claude || ev.Session.Status != agent.StatusWorking || ev.Session.StatusKnown || ev.Session.Dir != "/home/me/projects/app" {
 		t.Fatalf("added event = %+v", ev)
 	}
 	if ev.Session.Name != "✳ Editing main.go" || ev.Session.Source != "pty" {
@@ -53,10 +53,12 @@ func TestDiscoverAddsSessionAndPollTransitions(t *testing.T) {
 		t.Fatal("learned dir should be added to projectDirs")
 	}
 
-	// First poll: working screen, no status change, no ScreenRead by default.
+	// First poll: the working screen is the session's known status, not a
+	// change from the placeholder, and there's no ScreenRead by default.
 	w.pollOnce(ctx)
-	if evs := drain(w.Events()); len(evs) != 0 {
-		t.Fatalf("expected no events from a working read, got %+v", evs)
+	evs := drain(w.Events())
+	if len(evs) != 1 || evs[0].Kind != StatusKnown || evs[0].Session.Status != agent.StatusWorking || !evs[0].Session.StatusKnown || evs[0].MatchLine != "✻ Reading…" {
+		t.Fatalf("expected one StatusKnown from the first read, got %+v", evs)
 	}
 	// Screen shows the prompt: working -> idle.
 	b.setScreen("s1", "done\n❯ ")
@@ -78,9 +80,11 @@ func TestNeedsInputEdgeEmitsOnceWithAttention(t *testing.T) {
 	w, clock := newWatcher(t, b, Options{})
 	ctx := context.Background()
 	w.discoverOnce(ctx)
+	w.pollOnce(ctx) // first read: StatusKnown{working}
 	drain(w.Events())
 
 	b.setScreen("s1", "Do you want to proceed?\n")
+	clock.Advance(time.Second)
 	w.pollOnce(ctx)
 	ev := recvEvent(t, w.Events())
 	if ev.Kind != StatusChanged || ev.To != agent.StatusNeedsInput || ev.MatchLine != "Do you want to proceed?" || ev.Session.Attention != "Do you want to proceed?" {
@@ -91,6 +95,61 @@ func TestNeedsInputEdgeEmitsOnceWithAttention(t *testing.T) {
 	w.pollOnce(ctx)
 	if evs := drain(w.Events()); len(evs) != 0 {
 		t.Fatalf("stale needs_input read must not re-emit, got %+v", evs)
+	}
+}
+
+func TestFirstReadIsStatusKnownNotStatusChanged(t *testing.T) {
+	b := newFake()
+	b.setSessions(claudeSession(b, "s1"))
+	b.setScreen("s1", "Do you want to proceed?\n")
+	w, clock := newWatcher(t, b, Options{EmitScreenReads: true})
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	if ev := recvEvent(t, w.Events()); ev.Kind != SessionAdded || ev.Session.StatusKnown || ev.Session.Status != agent.StatusWorking {
+		t.Fatalf("title-detected add must carry the placeholder, got %+v", ev)
+	}
+
+	w.pollOnce(ctx)
+	evs := drain(w.Events())
+	if len(evs) != 2 || evs[0].Kind != ScreenRead || evs[1].Kind != StatusKnown {
+		t.Fatalf("expected ScreenRead then StatusKnown, got %+v", evs)
+	}
+	if known := evs[1]; known.Session.Status != agent.StatusNeedsInput || !known.Session.StatusKnown || known.MatchLine != "Do you want to proceed?" {
+		t.Fatalf("StatusKnown = %+v", known)
+	}
+
+	// Later changes are ordinary StatusChanged events from a read status.
+	b.setScreen("s1", "done\n❯ ")
+	clock.Advance(time.Second)
+	w.pollOnce(ctx)
+	evs = drain(w.Events())
+	if len(evs) != 2 || evs[1].Kind != StatusChanged || evs[1].From != agent.StatusNeedsInput || evs[1].To != agent.StatusIdle {
+		t.Fatalf("expected StatusChanged after StatusKnown, got %+v", evs)
+	}
+}
+
+func TestIdentifyReadIsStatusKnownAtAdd(t *testing.T) {
+	b := newFake()
+	b.setVar("s1", "path", "/home/me/projects/app")
+	// The title names no agent, so Identify reads the screen to type it.
+	b.setScreen("s1", "Claude Code v2.0\nDo you want to proceed?\n")
+	b.setSessions(terminal.Session{ID: "s1", Name: "zsh", Source: "pty"})
+	w, clock := newWatcher(t, b, Options{})
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	evs := drain(w.Events())
+	if len(evs) != 2 || evs[0].Kind != SessionAdded || evs[1].Kind != StatusKnown {
+		t.Fatalf("expected SessionAdded then StatusKnown, got %+v", evs)
+	}
+	if !evs[0].Session.StatusKnown || evs[1].Session.Status != agent.StatusNeedsInput || evs[1].MatchLine != "Do you want to proceed?" {
+		t.Fatalf("events = %+v", evs)
+	}
+
+	// The poll that follows is not a second first read.
+	clock.Advance(time.Second)
+	w.pollOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("expected no events from a stale read, got %+v", evs)
 	}
 }
 
@@ -324,11 +383,13 @@ func TestStyledScreensReadOnceAndCarryBell(t *testing.T) {
 func TestPlainPathCarriesBellInText(t *testing.T) {
 	b := newFake()
 	b.setSessions(claudeSession(b, "s1"))
-	w, _ := newWatcher(t, b, Options{})
+	w, clock := newWatcher(t, b, Options{})
 	ctx := context.Background()
 	w.discoverOnce(ctx)
+	w.pollOnce(ctx) // first read: StatusKnown{working}
 	drain(w.Events())
 	b.setScreen("s1", "\x07still working\n")
+	clock.Advance(time.Second)
 	w.pollOnce(ctx)
 	ev := recvEvent(t, w.Events())
 	if ev.Kind != StatusChanged || ev.To != agent.StatusNeedsInput {
@@ -394,7 +455,7 @@ func TestRunLifecycleWithFakeClock(t *testing.T) {
 	b.setScreen("s1", "❯ ")
 	clock.Advance(time.Second) // poll fires
 	ev = recvEvent(t, w.Events())
-	if ev.Kind != StatusChanged || ev.To != agent.StatusIdle {
+	if ev.Kind != StatusKnown || ev.Session.Status != agent.StatusIdle {
 		t.Fatalf("poll event = %+v", ev)
 	}
 
@@ -529,7 +590,8 @@ func TestOrphanRemovalDoesNotReaddInSamePass(t *testing.T) {
 	}
 	// The next pass may identify it afresh.
 	w.discoverOnce(ctx)
-	if evs := drain(w.Events()); len(evs) != 1 || evs[0].Kind != SessionAdded || evs[0].Session.Type != agent.Codex {
+	// Identify read the screen to type it, so StatusKnown follows the add.
+	if evs := drain(w.Events()); len(evs) != 2 || evs[0].Kind != SessionAdded || evs[0].Session.Type != agent.Codex || evs[1].Kind != StatusKnown {
 		t.Fatalf("expected a fresh add on the following pass, got %+v", evs)
 	}
 }
