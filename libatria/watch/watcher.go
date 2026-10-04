@@ -84,6 +84,11 @@ type Watcher struct {
 	tracked     map[string]*tracked
 	ruledOut    map[string]ruledOut
 	projectDirs []string
+
+	// Baseline state; see markBaseline.
+	listed    bool              // a listing has succeeded
+	answering map[string]bool   // sources that have answered since they were last absent
+	pending   map[string]string // baseline sessions Identify hasn't decided yet, by ID, with their source
 }
 
 // ruledOut is what a listed session looked like when Identify last ruled it
@@ -109,6 +114,8 @@ type tracked struct {
 	proc   terminal.Process
 	tr     Tracker
 	screen string // last screen as reported (styled or plain)
+
+	preexisting bool // listed in its source's baseline listing
 }
 
 // Seams for tests: process resolution shells out, and liveness is a signal.
@@ -160,6 +167,9 @@ func New(b terminal.Backend, opts Options) *Watcher {
 		tracked:     make(map[string]*tracked),
 		ruledOut:    make(map[string]ruledOut),
 		projectDirs: append([]string(nil), opts.ProjectDirs...),
+
+		answering: make(map[string]bool),
+		pending:   make(map[string]string),
 	}
 }
 
@@ -241,6 +251,7 @@ func (t *tracked) snapshot() Snapshot {
 		Process:      t.proc,
 		Status:       t.tr.Status,
 		StatusKnown:  t.tr.ScreenChecked,
+		Preexisting:  t.preexisting,
 		Activity:     t.tr.Activity,
 		Attention:    t.tr.Attention,
 		LastActivity: t.tr.LastActivity,
@@ -335,6 +346,7 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 			events = append(events, Event{Kind: ActivityChanged, Time: now, Session: t.snapshot()})
 		}
 	}
+	w.markBaseline(listing, failed, live)
 	// A session removed in this pass is not a candidate in this pass; it can
 	// be identified afresh on the next one if it is still listed. Nor is one
 	// on the TTY of a session kept because its source failed: the composite
@@ -429,10 +441,16 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 			if id.Skip != SkipNone {
 				w.logf("watch: skip %s (%s)", s.ID, id.Skip)
 			}
+			// A ruling that proves nothing leaves a baseline session pending;
+			// any other means an agent found there later is new.
+			if !provesNothing(id) {
+				delete(w.pending, s.ID)
+			}
 			w.ruleOut(s, id, pids, now)
 			continue
 		}
 		if !w.wantsAgent(id.Type) {
+			delete(w.pending, s.ID)
 			w.ruleOut(s, id, pids, now)
 			continue
 		}
@@ -446,6 +464,8 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 			proc: id.Process,
 			tr:   Tracker{Type: id.Type, Source: s.Source, Status: agent.StatusWorking},
 		}
+		_, t.preexisting = w.pending[s.ID]
+		delete(w.pending, s.ID)
 		var first Transition
 		if id.Observed {
 			// Identify already read the screen (and may have consumed a
@@ -486,6 +506,55 @@ func (w *Watcher) list() (terminal.Listing, error) {
 		}
 	}
 	return listing, nil
+}
+
+// markBaseline adds the untracked live sessions of each baseline source to
+// pending. A source's baseline listing is the first one it answers in this
+// Run, or the first after it was absent (neither answered nor failed), as
+// when it is disabled and enabled again. Failing doesn't change that: a
+// source that fails before its first answer still gets a baseline when it
+// answers, and one that fails after answering gets none, because its tracked
+// and pending sessions were kept and a session listed for the first time
+// after it is new. When the listing doesn't name its sources, the first
+// successful listing is the baseline for every session. A pending session
+// missing from the listing keeps its mark only while its source is failing,
+// as a tracked one is kept; an absent source starts over. Caller holds w.mu.
+func (w *Watcher) markBaseline(l terminal.Listing, failed map[string]bool, live map[string]terminal.Session) {
+	for id, src := range w.pending {
+		if _, ok := live[id]; !ok && !failed[src] {
+			delete(w.pending, id)
+		}
+	}
+	first := !w.listed
+	w.listed = true
+	baseline := func(terminal.Session) bool { return first }
+	if l.Sources != nil {
+		fresh := map[string]bool{}
+		for _, src := range l.Sources {
+			if !w.answering[src] {
+				fresh[src] = true
+				w.answering[src] = true
+			}
+		}
+		for src := range w.answering {
+			if !failed[src] && !containsString(l.Sources, src) {
+				delete(w.answering, src) // absent: its next answer is a baseline
+			}
+		}
+		baseline = func(s terminal.Session) bool { return fresh[s.Source] }
+	}
+	for id, s := range live {
+		if _, ok := w.tracked[id]; !ok && baseline(s) {
+			w.pending[id] = s.Source
+		}
+	}
+}
+
+// provesNothing reports an Identify ruling that says nothing about whether
+// the session runs an agent: a failed screen read, or an agent process found
+// before the title or screen names it.
+func provesNothing(id Identity) bool {
+	return id.Skip == SkipScreenReadFailed || (id.Type == "" && id.Process.PID != 0)
 }
 
 // reopened skips unchanged, previously rejected candidates once their settle
@@ -533,7 +602,7 @@ func (w *Watcher) reopened(candidates []terminal.Session, now time.Time) ([]term
 // processes changed since the last ruling, is also identified on every pass
 // for settleWindow. Caller holds w.mu.
 func (w *Watcher) ruleOut(s terminal.Session, id Identity, pids map[string]string, now time.Time) {
-	if w.opts.RecheckInterval < 0 || id.Skip == SkipScreenReadFailed || (id.Type == "" && id.Process.PID != 0) {
+	if w.opts.RecheckInterval < 0 || provesNothing(id) {
 		delete(w.ruledOut, s.ID)
 		return
 	}

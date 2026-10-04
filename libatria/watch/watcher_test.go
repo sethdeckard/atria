@@ -786,10 +786,12 @@ func TestReresolveFollowsProcessCwdWithinGate(t *testing.T) {
 
 // listerFake adds terminal.Lister to fakeBackend. Its FailedSources, from the
 // embedded fake, is left free to disagree with the listing, so a test can
-// tell which one the Watcher trusted.
+// tell which one the Watcher trusted. sources becomes Listing.Sources; nil
+// lists like a backend that doesn't report them.
 type listerFake struct {
 	*fakeBackend
 	failures []*terminal.SourceError
+	sources  []string
 }
 
 func (l *listerFake) List() (terminal.Listing, error) {
@@ -799,7 +801,20 @@ func (l *listerFake) List() (terminal.Listing, error) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return terminal.Listing{Sessions: sessions, Failed: l.failures}, nil
+	return terminal.Listing{Sessions: sessions, Failed: l.failures, Sources: l.sources}, nil
+}
+
+// setListing sets the next listing: the sources that answered, the ones that
+// failed, and the sessions of the answering sources.
+func (l *listerFake) setListing(sources, failed []string, sessions ...terminal.Session) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.sources = append([]string{}, sources...)
+	l.failures = nil
+	for _, src := range failed {
+		l.failures = append(l.failures, &terminal.SourceError{Source: src, Err: errors.New("down")})
+	}
+	l.sessions = sessions
 }
 
 func newListerWatcher(t *testing.T, b *listerFake) *Watcher {
@@ -1142,5 +1157,248 @@ func TestGatedSessionSettlesAfterItsProcessesChange(t *testing.T) {
 	ev := recvEvent(t, w.Events())
 	if ev.Kind != SessionAdded || ev.Session.ID != "%5" {
 		t.Fatalf("want %%5 added within the settle window, got %+v", ev)
+	}
+}
+
+// sourced is a Claude session on src, under the watch dirs, showing screen.
+func sourced(b *listerFake, id, src, screen string) terminal.Session {
+	b.setVar(id, "path", "/home/me/projects/app")
+	b.setScreen(id, screen)
+	return terminal.Session{ID: id, Name: "✳ Fix parser", Source: src}
+}
+
+const promptScreen = "Do you want to proceed?\n"
+
+// added runs one discovery pass and returns the session it added.
+func added(t *testing.T, w *Watcher) Snapshot {
+	t.Helper()
+	w.discoverOnce(context.Background())
+	for _, ev := range drain(w.Events()) {
+		if ev.Kind == SessionAdded {
+			return ev.Session
+		}
+	}
+	t.Fatal("no session added")
+	return Snapshot{}
+}
+
+func TestPreexistingSessionAtStart(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	b.setListing([]string{"pty"}, nil, sourced(b, "s1", "pty", promptScreen))
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+
+	if snap := added(t, w); !snap.Preexisting || snap.StatusKnown || snap.Status != agent.StatusWorking {
+		t.Fatalf("added = %+v, want preexisting with the placeholder", snap)
+	}
+	w.pollOnce(ctx)
+	evs := drain(w.Events())
+	if len(evs) != 1 || evs[0].Kind != StatusKnown || evs[0].Session.Status != agent.StatusNeedsInput || !evs[0].Session.Preexisting {
+		t.Fatalf("expected one StatusKnown{needs_input} on a preexisting session, got %+v", evs)
+	}
+}
+
+func TestSessionAppearingLaterIsNew(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	s1 := sourced(b, "s1", "pty", promptScreen)
+	b.setListing([]string{"pty"}, nil, s1)
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+	added(t, w)
+
+	b.setListing([]string{"pty"}, nil, s1, sourced(b, "s2", "pty", promptScreen))
+	if snap := added(t, w); snap.ID != "s2" || snap.Preexisting {
+		t.Fatalf("added = %+v, want s2 as new", snap)
+	}
+	w.pollOnce(ctx)
+	for _, ev := range drain(w.Events()) {
+		if ev.Session.ID == "s2" && (ev.Kind != StatusKnown || ev.Session.Status != agent.StatusNeedsInput || ev.Session.Preexisting) {
+			t.Fatalf("s2 first read = %+v, want a new session's StatusKnown{needs_input}", ev)
+		}
+	}
+}
+
+func TestBaselinePerSource(t *testing.T) {
+	// pass is one listing: the sources that answered, the ones that failed,
+	// and whether the tmux session t1 is listed.
+	type pass struct {
+		sources, failed []string
+		t1              bool
+	}
+	tests := []struct {
+		name   string
+		passes []pass // t1 is added on the last one
+		want   bool
+	}{
+		{
+			name:   "answered empty, then gained a session",
+			passes: []pass{{sources: []string{"pty", "tmux"}}, {sources: []string{"pty", "tmux"}, t1: true}},
+			want:   false,
+		},
+		{
+			name:   "failed at first, then answered",
+			passes: []pass{{sources: []string{"pty"}, failed: []string{"tmux"}}, {sources: []string{"pty", "tmux"}, t1: true}},
+			want:   true,
+		},
+		{
+			name:   "absent, then enabled",
+			passes: []pass{{sources: []string{"pty"}}, {sources: []string{"pty", "tmux"}, t1: true}},
+			want:   true,
+		},
+		{
+			name:   "answered, failed, then recovered",
+			passes: []pass{{sources: []string{"pty", "tmux"}}, {sources: []string{"pty"}, failed: []string{"tmux"}}, {sources: []string{"pty", "tmux"}, t1: true}},
+			want:   false,
+		},
+		{
+			name:   "disabled, failed on enable, then answered",
+			passes: []pass{{sources: []string{"pty", "tmux"}}, {sources: []string{"pty"}}, {sources: []string{"pty"}, failed: []string{"tmux"}}, {sources: []string{"pty", "tmux"}, t1: true}},
+			want:   true,
+		},
+		{
+			name:   "removed while the rest failed, then re-added",
+			passes: []pass{{sources: []string{"pty", "tmux"}}, {failed: []string{"pty"}}, {sources: []string{"pty", "tmux"}, t1: true}},
+			want:   true,
+		},
+		{
+			name:   "disabled, then enabled again",
+			passes: []pass{{sources: []string{"pty", "tmux"}}, {sources: []string{"pty"}}, {sources: []string{"pty", "tmux"}, t1: true}},
+			want:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &listerFake{fakeBackend: newFake()}
+			p1 := sourced(b, "p1", "pty", "✻ Reading…\n")
+			t1 := sourced(b, "tmux:t1", "tmux", promptScreen)
+			w := newListerWatcher(t, b)
+			ctx := context.Background()
+			var got *Snapshot
+			for _, p := range tt.passes {
+				sessions := []terminal.Session{p1}
+				if p.t1 {
+					sessions = append(sessions, t1)
+				}
+				b.setListing(p.sources, p.failed, sessions...)
+				w.discoverOnce(ctx)
+				for _, ev := range drain(w.Events()) {
+					if ev.Kind == SessionAdded && ev.Session.ID == t1.ID {
+						got = &ev.Session
+					}
+				}
+			}
+			if got == nil {
+				t.Fatal("t1 was not added")
+			}
+			if got.Preexisting != tt.want {
+				t.Fatalf("t1 Preexisting = %v, want %v", got.Preexisting, tt.want)
+			}
+		})
+	}
+}
+
+func TestBaselineShellLaterRunningAgentIsNew(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	b.setVar("s1", "path", "/home/me/projects/app")
+	b.setScreen("s1", "user@host ~ % ")
+	b.setListing([]string{"pty"}, nil, terminal.Session{ID: "s1", Name: "zsh", Source: "pty"})
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("a plain shell must not be added, got %+v", evs)
+	}
+
+	// Claude starts in that shell and retitles the pane.
+	b.setScreen("s1", promptScreen)
+	b.setListing([]string{"pty"}, nil, terminal.Session{ID: "s1", Name: "✳ Fix parser", Source: "pty"})
+	if snap := added(t, w); snap.Preexisting {
+		t.Fatalf("an agent started after the baseline must be new, got %+v", snap)
+	}
+}
+
+func TestBaselineSurvivesFailedScreenRead(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	b.setVar("s1", "path", "/home/me/projects/app")
+	b.readErr["s1"] = errors.New("read failed")
+	b.setListing([]string{"pty"}, nil, terminal.Session{ID: "s1", Name: "zsh", Source: "pty"})
+	w := newListerWatcher(t, b)
+	w.discoverOnce(context.Background())
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("an unreadable session must not be added, got %+v", evs)
+	}
+
+	// The read works on the next pass and finds Claude at a prompt.
+	b.mu.Lock()
+	delete(b.readErr, "s1")
+	b.mu.Unlock()
+	b.setScreen("s1", "Claude Code v2.0\n"+promptScreen)
+	if snap := added(t, w); !snap.Preexisting {
+		t.Fatalf("a baseline session must stay preexisting across a failed read, got %+v", snap)
+	}
+}
+
+func TestBaselineSurvivesSourceFailure(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	b.setVar("s1", "path", "/home/me/projects/app")
+	b.readErr["s1"] = errors.New("read failed")
+	s1 := terminal.Session{ID: "s1", Name: "zsh", Source: "pty"}
+	b.setListing([]string{"pty"}, nil, s1)
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+
+	// The source fails, so s1 isn't listed, then recovers with s1 readable.
+	b.setListing(nil, []string{"pty"})
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 1 || evs[0].Kind != Error {
+		t.Fatalf("expected only the source's Error event, got %+v", evs)
+	}
+	b.mu.Lock()
+	delete(b.readErr, "s1")
+	b.mu.Unlock()
+	b.setScreen("s1", "Claude Code v2.0\n"+promptScreen)
+	b.setListing([]string{"pty"}, nil, s1)
+	if snap := added(t, w); !snap.Preexisting {
+		t.Fatalf("a baseline session must stay preexisting across a source failure, got %+v", snap)
+	}
+}
+
+func TestBaselineDroppedWhenSourceAbsent(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	b.setVar("s1", "path", "/home/me/projects/app")
+	b.readErr["s1"] = errors.New("read failed")
+	b.setListing([]string{"pty"}, nil, terminal.Session{ID: "s1", Name: "zsh", Source: "pty"})
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	w.mu.Lock()
+	_, waiting := w.pending["s1"]
+	w.mu.Unlock()
+	if !waiting {
+		t.Fatal("s1 should wait on Identify after a failed read")
+	}
+
+	// The source is disabled: absent, not failed. Its waiting entry goes.
+	b.setListing(nil, nil)
+	w.discoverOnce(ctx)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.pending) != 0 || w.answering["pty"] {
+		t.Fatalf("an absent source must start over, pending = %v, answering = %v", w.pending, w.answering)
+	}
+}
+
+func TestBaselineWithoutSourcesIsFirstListing(t *testing.T) {
+	b := newFake()
+	s1 := claudeSession(b, "s1")
+	b.setSessions(s1)
+	w, _ := newWatcher(t, b, Options{})
+	if snap := added(t, w); !snap.Preexisting {
+		t.Fatalf("first listing = %+v, want preexisting", snap)
+	}
+	b.setSessions(s1, claudeSession(b, "s2"))
+	if snap := added(t, w); snap.ID != "s2" || snap.Preexisting {
+		t.Fatalf("later listing = %+v, want s2 as new", snap)
 	}
 }

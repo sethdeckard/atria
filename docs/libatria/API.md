@@ -63,7 +63,7 @@ w := watch.New(b, watch.Options{WatchDirs: []string{"/Users/me/projects"}})
 go w.Run(ctx)
 for ev := range w.Events() {
     needsInput := (ev.Kind == watch.StatusChanged && ev.To == agent.StatusNeedsInput) ||
-        (ev.Kind == watch.StatusKnown && ev.Session.Status == agent.StatusNeedsInput)
+        (ev.Kind == watch.StatusKnown && !ev.Session.Preexisting && ev.Session.Status == agent.StatusNeedsInput)
     if needsInput {
         notify(ev.Session.ID, ev.MatchLine)
     }
@@ -139,6 +139,7 @@ type BellSource interface{ ConsumeBell(sessionID string) bool }
 type Listing struct {
     Sessions []Session
     Failed   []*SourceError
+    Sources  []string
 }
 func (l Listing) FailedSources() []string
 
@@ -154,6 +155,8 @@ type SourceError struct {
 `FailedSources` names the integrations that failed on the composite's most recent listing whose primary answered. Any caller's listing replaces it, so if more than one part of your program lists, the failures you read can belong to a different listing than the sessions you hold.
 
 `List` returns the sessions and the failures of one listing together. Each failure is a `*SourceError` naming its source, with `Primary` set for the primary. A failed primary doesn't stop the integrations from being listed, and the composite's `List` never returns an error. `CachedBackend` keeps a listing's failures with it, but doesn't cache a listing whose primary failed, so the next call retries.
+
+`Sources` names every source that answered, including one with no sessions, so an empty terminal can be told from an absent one. It's nil from a backend that doesn't report it, such as a `CachedBackend` over a plain backend.
 
 `ConsumeBell` reports whether the session rang its bell since the last time anyone asked, and clears the flag. Only the PTY client has bell state; the other terminals don't include BEL in captured text. The PTY's plain `ReadScreen` already consumes the flag and prepends `"\x07"` to its output, which is how the classifier sees a bell today. Its styled read doesn't touch the flag, because a BEL in display output would ring the viewer's own terminal. `ConsumeBell` exists so a caller that reads only the styled screen can still get the bell; see `StyledScreens` in the `watch` package. The composite and cache route it and return false when the owning backend has no bell state.
 
@@ -484,6 +487,7 @@ type Snapshot struct {
     Process      terminal.Process
     Status       agent.Status
     StatusKnown  bool
+    Preexisting  bool
     Activity     string
     Attention    string
     LastActivity time.Time
@@ -515,6 +519,16 @@ func (w *Watcher) Session(id string) (Snapshot, bool)
 A session's first screen read is reported as `StatusKnown`, not as a `StatusChanged` from that placeholder. It comes right after `SessionAdded` when `Identify` read the screen to type the session, and from the first successful poll otherwise. A first read that matches no pattern leaves the status working, and a session removed before any read succeeds gets no `StatusKnown`.
 
 Handle both kinds when you act on a status. A session that's already sitting at a prompt reports needs_input in its `StatusKnown`, never in a `StatusChanged`.
+
+`Snapshot.Preexisting` says the session was already there when its terminal was listed, rather than appearing while you watched. Take a preexisting session's `StatusKnown` as its starting state, and a new session's as a change: a new tab whose agent is already asking reports needs_input in a `StatusKnown` with `Preexisting` false.
+
+A source's baseline is its first answer in a `Run`, or its first after being absent, as when `Stack.Disable` then `Enable` takes it out of the listing and puts it back. A terminal that answers late, such as iTerm2 waiting on its credential dialog, gets its baseline then, so there's no moment to wait for.
+
+A failure doesn't move the baseline. A source that fails before answering, including one that was re-enabled and failed its first listing, gets its baseline when it does answer. One that fails after answering gets none when it recovers. Its tracked sessions and the ones still waiting on `Identify` keep their place, and a session it lists for the first time afterwards is new.
+
+A baseline pane that `Identify` rules out, such as a plain shell, loses the mark, so an agent started in it later is new. A failed screen read doesn't, so `Identify` tries again on the next pass. The mark goes if the session leaves the listing while its source isn't failing.
+
+With a backend that doesn't report `Listing.Sources`, the first successful listing is the baseline for every session.
 
 `WatchDirs` is passed to `Identify` and decides its mode: with directories, only sessions under them are added; with none, directory filtering is off and every agent session the backend lists is a candidate. `Filter` runs on every listed session before anything else; `Agents` limits which types are added.
 

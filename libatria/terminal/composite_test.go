@@ -928,6 +928,9 @@ func TestComposite_ListKeepsIntegrationsWhenPrimaryFails(t *testing.T) {
 	if len(l.Failed) != 1 || l.Failed[0].Source != "tmux" || !l.Failed[0].Primary {
 		t.Fatalf("Failed = %+v, want the tmux primary", l.Failed)
 	}
+	if len(l.Sources) != 1 || l.Sources[0] != "iterm" {
+		t.Fatalf("Sources = %v, want [iterm]", l.Sources)
+	}
 	if !errors.Is(l.Failed[0], ErrUnavailable) {
 		t.Fatalf("failure %v should unwrap to ErrUnavailable", l.Failed[0])
 	}
@@ -968,6 +971,34 @@ func TestComposite_PrimaryFailureLeavesFailedSourcesReport(t *testing.T) {
 	}
 	if got := comp.FailedSources(); len(got) != 1 || got[0] != "iterm" {
 		t.Fatalf("FailedSources = %v, want [iterm]", got)
+	}
+}
+
+func TestComposite_ListSourcesIncludeEmptyAndOmitFailed(t *testing.T) {
+	primary := &trackingBackend{mockBackend: mockBackend{sessions: []Session{{ID: "pty-0"}}}}
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "tmux:", Source: "tmux", Backend: &trackingBackend{}},
+		{Prefix: "iterm:", Source: "iterm", Backend: &trackingBackend{listErr: errors.New("socket closed")}},
+	})
+	l, err := comp.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Sources) != 2 || l.Sources[0] != "pty" || l.Sources[1] != "tmux" {
+		t.Fatalf("Sources = %v, want [pty tmux]", l.Sources)
+	}
+}
+
+func TestComposite_ListSourcesEmptyWhenAllFail(t *testing.T) {
+	comp := NewCompositeBackend(&trackingBackend{listErr: errors.New("boom")}, "pty", []Integration{
+		{Prefix: "iterm:", Source: "iterm", Backend: &trackingBackend{listErr: errors.New("socket closed")}},
+	})
+	l, err := comp.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Sources == nil || len(l.Sources) != 0 {
+		t.Fatalf("Sources = %#v, want empty and non-nil: the composite reports sources even when none answered", l.Sources)
 	}
 }
 

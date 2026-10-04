@@ -80,6 +80,7 @@ type Snapshot struct {
 	Process      terminal.Process // zero until resolved; re-resolved on retype and when the PID dies
 	Status       agent.Status
 	StatusKnown  bool // Status was read from the screen at least once; until then it is the working placeholder
+	Preexisting  bool // already listed when its source started answering, rather than appearing while watched
 	Activity     string
 	Attention    string
 	LastActivity time.Time

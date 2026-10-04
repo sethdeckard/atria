@@ -116,6 +116,11 @@ func (e *SourceError) Unwrap() error { return e.Err }
 type Listing struct {
 	Sessions []Session
 	Failed   []*SourceError
+	// Sources names every source that answered, including one with no
+	// sessions, so an empty source can be told from an absent one. It is
+	// nil when the backend doesn't report it, and empty when it does and
+	// no source answered.
+	Sources []string
 }
 
 // FailedSources returns the Source of each failure, in order.

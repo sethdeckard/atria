@@ -90,7 +90,9 @@ func (c *CompositeBackend) List() (Listing, error) {
 	copy(integrations, c.integrations)
 	c.mu.RUnlock()
 
-	var l Listing
+	// Sources is non-nil even when nothing answers, because nil means a
+	// backend that doesn't report sources.
+	l := Listing{Sources: []string{}}
 	// Track TTYs for deduplication; the primary is listed first, so it wins.
 	seenTTY := make(map[string]bool)
 	add := func(sessions []Session, prefix, source string) {
@@ -114,6 +116,7 @@ func (c *CompositeBackend) List() (Listing, error) {
 		l.Failed = append(l.Failed, &SourceError{Source: primarySource, Primary: true, Err: err})
 	} else {
 		add(sessions, "", primarySource)
+		l.Sources = append(l.Sources, primarySource)
 	}
 	for _, integ := range integrations {
 		sessions, err := integ.Backend.ListSessions()
@@ -122,6 +125,7 @@ func (c *CompositeBackend) List() (Listing, error) {
 			continue
 		}
 		add(sessions, integ.Prefix, integ.Source)
+		l.Sources = append(l.Sources, integ.Source)
 	}
 
 	if l.primaryFailure() == nil {

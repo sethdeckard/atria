@@ -236,6 +236,9 @@ func TestCachedBackendListKeepsItsOwnFailures(t *testing.T) {
 	if len(again.Sessions) != 1 || len(again.Failed) != 1 || again.Failed[0].Source != "iterm" {
 		t.Fatalf("cached listing = %+v, want pty-0 with the iterm failure", again)
 	}
+	if len(again.Sources) != 1 || again.Sources[0] != "pty" {
+		t.Fatalf("cached Sources = %v, want [pty]", again.Sources)
+	}
 	if got := cached.FailedSources(); len(got) != 1 || got[0] != "iterm" {
 		t.Fatalf("cached FailedSources = %v, want [iterm]", got)
 	}
@@ -265,6 +268,9 @@ func TestCachedBackendWrapsPlainFailureReporter(t *testing.T) {
 	}
 	if len(l.Failed) != 1 || l.Failed[0].Source != "iterm" || l.Failed[0].Err == nil {
 		t.Fatalf("Failed = %+v, want iterm with an error", l.Failed)
+	}
+	if l.Sources != nil {
+		t.Fatalf("Sources = %v, want nil from a backend that doesn't report them", l.Sources)
 	}
 }
 
