@@ -20,6 +20,19 @@ func PatternsFor(t Type) *Patterns {
 	return registry[t]
 }
 
+// hintPatterns holds the NeedsInput patterns that match a row below a
+// dialog's question, such as its footer or button row, rather than the
+// question itself. PromptText looks above them for the question.
+var hintPatterns = map[*regexp.Regexp]bool{}
+
+// hint compiles a NeedsInput pattern that matches a hint row and records it
+// in hintPatterns.
+func hint(expr string) *regexp.Regexp {
+	re := regexp.MustCompile(expr)
+	hintPatterns[re] = true
+	return re
+}
+
 // Per-agent pattern definitions. Each comment names the screen the pattern
 // matches; classify_test.go has a sample line for most of them.
 
@@ -28,7 +41,7 @@ var claudePatterns = &Patterns{
 		regexp.MustCompile(`Do you want to proceed`),    // permission dialog question
 		regexp.MustCompile(`Would you like to proceed`), // plan-mode approval; its ❯ cursor also matches idle
 		regexp.MustCompile(`Allow .+\?`),                // "Allow file edit?" and similar
-		regexp.MustCompile(`Esc to cancel`),             // permission dialog footer
+		hint(`Esc to cancel`),                           // permission dialog footer
 	},
 	Working: []*regexp.Regexp{
 		// Spinner glyph, then the activity word ("✶ Doodling…", "* Germinating...").
@@ -51,15 +64,15 @@ var claudePatterns = &Patterns{
 
 var codexPatterns = &Patterns{
 	NeedsInput: []*regexp.Regexp{
-		regexp.MustCompile(`Waiting for .+ input`),   // "Waiting for user input"
-		regexp.MustCompile(`Would you like to run`),  // command approval
-		regexp.MustCompile(`Press enter to confirm`), // command approval footer
-		regexp.MustCompile(`Question \d+/\d+`),       // plan-question banner
-		regexp.MustCompile(`None of the above`),      // plan-question fallback option
-		regexp.MustCompile(`Trust this folder\?`),    // folder-trust screen question
+		regexp.MustCompile(`Waiting for .+ input`),  // "Waiting for user input"
+		regexp.MustCompile(`Would you like to run`), // command approval
+		hint(`Press enter to confirm`),              // command approval footer
+		regexp.MustCompile(`Question \d+/\d+`),      // plan-question banner
+		hint(`None of the above`),                   // plan-question fallback option
+		regexp.MustCompile(`Trust this folder\?`),   // folder-trust screen question
 		// Folder-trust footer. On a narrow pane the explanation wraps and
 		// pushes the question out of the bottom region; this still matches.
-		regexp.MustCompile(`enter continue · esc back`),
+		hint(`enter continue · esc back`),
 	},
 	Working: []*regexp.Regexp{
 		regexp.MustCompile(`[•●] Working`),         // "• Working (30s • esc to interrupt)"
@@ -79,7 +92,7 @@ var codexPatterns = &Patterns{
 var openCodePatterns = &Patterns{
 	NeedsInput: []*regexp.Regexp{
 		regexp.MustCompile(`Permission required`), // "△ Permission required" dialog
-		regexp.MustCompile(`Allow once`),          // the dialog's button row
+		hint(`Allow once`),                        // the dialog's button row
 	},
 	Working: []*regexp.Regexp{
 		regexp.MustCompile(`esc\s+interrupt`), // "esc interrupt", with no "to"
@@ -98,7 +111,7 @@ var copilotPatterns = &Patterns{
 	NeedsInput: []*regexp.Regexp{
 		regexp.MustCompile(`Do you trust the files in this folder`), // folder-trust prompt
 		regexp.MustCompile(`Permission request`),                    // permission dialog
-		regexp.MustCompile(`Enter to (?:confirm|select)`),           // selection footer
+		hint(`Enter to (?:confirm|select)`),                         // selection footer
 	},
 	Working: []*regexp.Regexp{
 		regexp.MustCompile(`[○◎●] Thinking`), // spinner glyph and "Thinking"

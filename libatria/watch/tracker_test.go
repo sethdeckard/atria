@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -336,5 +337,21 @@ func TestRefreshGlyphChangeIsNotActivityChange(t *testing.T) {
 		if tr.Activity != "Fix parser" {
 			t.Errorf("Refresh(%q): Activity = %q, want %q", name, tr.Activity, "Fix parser")
 		}
+	}
+}
+
+func TestObserveAttentionIsTheDialogQuestion(t *testing.T) {
+	// A real Codex approval captured in a 60-column pane.
+	raw, err := os.ReadFile("../agent/testdata/codex-approval-60col.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := Tracker{Type: agent.Codex, Status: agent.StatusWorking}
+	got := tr.Observe(string(raw), t0)
+	if got.To != agent.StatusNeedsInput || got.MatchLine != "Press enter to confirm or esc to cancel" {
+		t.Fatalf("transition = %+v, want needs_input matched on the footer", got)
+	}
+	if want := "Reason: May I create /Users/Shared/atria-capture-test.txt outside the workspace as requested so the inventory export check has the marker file it needs to verify that its shared output location is available?"; tr.Attention != want {
+		t.Fatalf("Attention = %q, want %q", tr.Attention, want)
 	}
 }

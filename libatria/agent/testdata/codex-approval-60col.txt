@@ -1,0 +1,30 @@
+› Run exactly this shell command: touch /Users/Shared/
+  atria-capture-test.txt . It is outside the workspace, so
+  request escalated permission, and give a long
+  justification of at least 150 characters explaining why
+  the file is needed for an inventory export check. Do
+  nothing else.
+
+
+• Running touch /Users/Shared/atria-capture-test.txt
+
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason: May I create
+  /Users/Shared/atria-capture-test.txt outside the
+  workspace as requested so the inventory export check has
+  the marker file it needs to verify that its shared
+  output location is available?
+
+  $ touch /Users/Shared/atria-capture-test.txt
+
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with
+     `touch /Users/Shared/atria-capture-test.txt` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

@@ -1,0 +1,28 @@
+❯ Use the AskUserQuestion tool to ask me exactly one
+  question. Make the question text long, at least 150
+  characters, about choosing a database for a small
+  inventory service, ending with a question mark. Give
+  three options with short descriptions. Do nothing else.
+────────────────────────────────────────────────────────────
+ ☐ Database
+
+│ For the small inventory service we're building, which
+│ tracks products, stock levels, and warehouse locations
+│ with modest traffic and a small team maintaining it, which
+│ database would you prefer to use as the primary data
+│ store going forward?
+
+❯ 1. PostgreSQL
+     Robust relational DB with strong consistency and rich
+     querying.
+  2. SQLite
+     Embedded, zero-ops file database; simplest for small
+     scale.
+  3. MongoDB
+     Document store with flexible schemas for evolving
+     product data.
+  4. Type something.
+────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

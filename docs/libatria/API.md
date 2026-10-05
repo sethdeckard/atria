@@ -304,6 +304,7 @@ func Detect(name string) Type
 func ExtractActivity(name, job string) string
 func ClassifyOutput(line string, t Type) Status
 func ClassifyScreen(screen string, t Type) (Status, string)
+func PromptText(screen string, t Type) string
 func HasScreen(screen string, t Type) bool
 func InferFromScreen(screen string) Type
 
@@ -326,6 +327,16 @@ const LaunchSettle = 300 * time.Millisecond
 A `Type`'s string value is the agent's CLI binary name, and `Installed` reports which of them `exec.LookPath` can find.
 
 `Detect` reads a session title and returns `""` when it isn't an agent. `ClassifyScreen` returns the highest-priority status found and the line that matched; `""` means nothing matched, which the `watch` package treats as a signal in its own right. `HasScreen` reports whether the agent's UI is present in the bottom region of a screen. `InferFromScreen` identifies the agent from product text first (when several products match, which one wins is unspecified) and otherwise from agent-specific patterns, returning `""` when the patterns leave more than one agent plausible. The classification rules move from `internal/terminal/monitor.go` and `patterns.go` without behaviour change, including the per-agent pattern registry, bottom-region anchoring, and Claude's todo-footer anchor.
+
+`PromptText` returns the text to show for a needs_input screen: the dialog's question rather than its key hints. Some dialogs are detected by a row below the question, such as Claude's `Esc to cancel` footer or Codex's `Press enter to confirm`. For those it looks upward from that row for the nearest line ending in `?`, with box-drawing borders and cursor glyphs removed, and falls back to the matched line when there isn't one. It returns `""` when the screen isn't needs_input, and `ClassifyScreen` is unaffected.
+
+A question that wrapped onto several rows is joined back together where the rows show the wrap. A row above joins it when the next row's first word wouldn't have fit on it, judged against the widest row on the screen, so a row that stops short before a long path still counts. Joining stops at a blank row, a border, a tab bar, or a numbered option, and above a row that ends a sentence when the row below starts with a capital, so a question that wrapped right after a full stop comes back from the next sentence on.
+
+Both the search and the joining read at most 25 rows above the matched row, the shortest screen atria reads. When the dialog has numbered options, the question must sit above option `1.`, so an option or a description ending in `?` is never taken, and within 8 rows of it, which leaves room for the command Codex shows between its question and its options.
+
+Above the options, a text row that runs straight into the row below it is the dialog's title or subtitle, and the search stops there. So a picker such as Claude's `/model`, which asks no question, reads the matched line rather than a question from the conversation. Codex's command and `Environment:` rows each end at a blank row, so the search passes over them, and so does a row that only wraps into the next. The search also stops at a conversation row, which starts at column 0 with Claude Code's `❯` or `⏺` or Codex's `›` or `•` (an option cursor is followed by its number), and it won't take a question whose first row is one.
+
+A dialog without numbered options, like Claude's folder-trust screen, gets the nearest `?` line within the 25 rows. OpenCode's permission dialog has no `?` line, so it reads whichever of its rows matched: `Permission required`, or `Allow once` when the title is above the bottom eight rows.
 
 `ExtractActivity` returns the activity text in a title, or `""` when the title is only a product name. It strips a leading agent glyph, including the braille spinner frame (U+2800 to U+28FF) that Codex puts on its title while a turn runs, so the text doesn't change from frame to frame.
 
@@ -407,7 +418,7 @@ func PollInterval(s agent.Status, active, idle time.Duration) time.Duration
 | none | no | working | counter++; apply idle at 3, or at 2 if the screen is all blank |
 | none | no | other | counter++; no-op |
 
-When a status is applied, `LastActivity` is stamped, `Attention` becomes `MatchLine` on entering or staying in needs_input, and `Attention` clears on leaving it. `Matched` and `MatchLine` always carry the raw `ClassifyScreen` result, applied or not, so a debug log can show what the classifier saw.
+When a status is applied, `LastActivity` is stamped, `Attention` becomes `PromptText` of the screen on entering or staying in needs_input, and `Attention` clears on leaving it. `Matched` and `MatchLine` always carry the raw `ClassifyScreen` result, applied or not, so a debug log can show what the classifier saw.
 
 The counter only advances on identical reads. A screen that keeps changing without matching any pattern is an agent producing output the patterns don't know, and it stays working.
 

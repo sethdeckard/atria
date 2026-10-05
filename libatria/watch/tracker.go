@@ -34,7 +34,7 @@ type Tracker struct {
 
 	Status       agent.Status
 	Activity     string    // from the title; informational only
-	Attention    string    // the matched prompt line while Status is needs_input
+	Attention    string    // while Status is needs_input, the prompt's question (agent.PromptText), or the matched line when PromptText finds none
 	LastActivity time.Time // last status assignment or non-empty activity change
 
 	ScreenChecked  bool      // at least one successful Observe
@@ -111,7 +111,7 @@ type RefreshResult struct {
 // becomes working, and an unchanged unmatched screen while working becomes
 // idle after StableUnmatchedReads reads, or after BlankReads reads when the
 // screen is blank. Anything else changes nothing. When a status is applied,
-// LastActivity is stamped, Attention is set to the matched line on entering
+// LastActivity is stamped, Attention is set to agent.PromptText on entering
 // or staying in needs_input, and cleared on leaving it.
 func (t *Tracker) Observe(screen string, now time.Time) Transition {
 	t.ScreenChecked = true
@@ -165,7 +165,7 @@ func (t *Tracker) Observe(screen string, now time.Time) Transition {
 	t.Status = status
 	t.LastActivity = now
 	if status == agent.StatusNeedsInput {
-		t.Attention = line
+		t.Attention = agent.PromptText(screen, t.Type)
 	}
 	if tr.From == agent.StatusNeedsInput && status != agent.StatusNeedsInput {
 		t.Attention = ""

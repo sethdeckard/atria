@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -538,5 +539,318 @@ func TestClassifyScreenBellAnywhereIsNeedsInput(t *testing.T) {
 	// Without the bell the same screen is idle.
 	if status, _ := ClassifyScreen(body+"❯ ", Claude); status != StatusIdle {
 		t.Fatalf("status without bell = %q, want idle", status)
+	}
+}
+
+// Dialog screens for PromptText. The fixture text is generic; only the
+// layout follows what each agent draws.
+const (
+	claudeQuestionDialog = "earlier output\n" +
+		"←  ☐ First topic  ☐ Second topic  ✔ Submit  →\n" +
+		"│ A refused request returns an empty result. How should the plan handle it?\n" +
+		"❯ 1. Fix it in code (Recommended)\n" +
+		"     The first unit also makes a refused request fail loudly.\n" +
+		"  2. Narrow the prose only\n" +
+		"     Leave the code alone and document the behaviour.\n" +
+		"  3. Type something.\n" +
+		"────────────────────────────────\n" +
+		"  4. Chat about this\n" +
+		"Enter to select · Tab/Arrow keys to navigate · Esc to cancel\n"
+	codexApprovalWithQuestion = "  Would you like to run the following command?\n" +
+		"  Environment: local\n" +
+		"  Reason: Allow creating /Users/example/notes.txt outside the workspace?\n" +
+		"  $ touch /Users/example/notes.txt\n" +
+		"› 1. Yes, proceed (y)\n" +
+		"  2. Yes, and don't ask again for this command (p)\n" +
+		"  3. No, and tell Codex what to do differently (esc)\n" +
+		"  Press enter to confirm or esc to cancel\n"
+)
+
+func TestPromptText(t *testing.T) {
+	tests := []struct {
+		name   string
+		screen string
+		agent  Type
+		want   string
+	}{
+		{"claude question above a footer", claudeQuestionDialog, Claude,
+			"A refused request returns an empty result. How should the plan handle it?"},
+		{"codex question pattern in view", codexApprovalWithQuestion, Codex,
+			"Would you like to run the following command?"},
+		{"single blank lines inside a dialog don't stop the search",
+			"  Reason: Allow creating /Users/example/notes.txt outside the workspace?\n\n" +
+				"  $ touch /Users/example/notes.txt\n\n› 1. Yes, proceed (y)\n  2. No (esc)\n\n" +
+				"  Press enter to confirm or esc to cancel\n", Codex,
+			"Reason: Allow creating /Users/example/notes.txt outside the workspace?"},
+		{"no question falls back to the footer",
+			" Select a model\n ❯ 1. Default\n   2. Fast\n Enter to select · Esc to cancel\n", Claude,
+			"Enter to select · Esc to cancel"},
+		{"a dialog's title stops the search before the conversation",
+			"> Can you check the parser?\n\n\n Select a model\n ❯ 1. Default\n Enter to select · Esc to cancel\n", Claude,
+			"Enter to select · Esc to cancel"},
+		{"a question more than 25 rows up isn't taken",
+			"> Can you check the parser?\n" + strings.Repeat("output\n", 24) + " Select a model\n ❯ 1. Default\n Enter to select · Esc to cancel\n", Claude,
+			"Enter to select · Esc to cancel"},
+		{"boxed question loses its borders",
+			"╭──────────────────────────────────────────────╮\n" +
+				"│ Do you want to make this edit to parser.go? │\n" +
+				"│ ❯ 1. Yes                                     │\n" +
+				"│   2. No                                      │\n" +
+				"╰──────────────────────────────────────────────╯\n" +
+				"   Esc to cancel\n", Claude,
+			"Do you want to make this edit to parser.go?"},
+		{"a question pattern match is kept",
+			"Do you want to proceed?\n ❯ 1. Yes\n   2. No\n Esc to cancel · Tab to amend\n", Claude,
+			"Do you want to proceed?"},
+		{"not needs_input", "some output\n✻ Reading…\n", Claude, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := PromptText(tt.screen, tt.agent); got != tt.want {
+				t.Errorf("PromptText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPromptTextLeavesClassificationAlone(t *testing.T) {
+	tests := []struct {
+		name     string
+		screen   string
+		agent    Type
+		wantLine string
+	}{
+		{"claude dialog", claudeQuestionDialog, Claude, "Enter to select · Tab/Arrow keys to navigate · Esc to cancel"},
+		{"codex approval", codexApprovalWithoutReasonRows(t), Codex, "Press enter to confirm or esc to cancel"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, line := ClassifyScreen(tt.screen, tt.agent)
+			if status != StatusNeedsInput || line != tt.wantLine {
+				t.Errorf("ClassifyScreen() = %q, %q, want needs_input, %q", status, line, tt.wantLine)
+			}
+		})
+	}
+}
+
+// TestPromptTextCaptured runs PromptText on real captures from a 60-column
+// tmux pane (tmux capture-pane -p, without -J), cropped at the top only.
+// Claude Code 2.1.289 repeats its │ border on each wrapped row; Codex 0.160.0
+// wraps at 58 columns, and its Reason row stops short before a long path.
+func TestPromptTextCaptured(t *testing.T) {
+	tests := []struct {
+		file  string
+		agent Type
+		want  string
+	}{
+		{"claude-question-60col.txt", Claude,
+			"For the small inventory service we're building, which tracks products, stock levels, and warehouse locations with modest traffic and a small team maintaining it, which database would you prefer to use as the primary data store going forward?"},
+		{"codex-approval-60col.txt", Codex,
+			"Reason: May I create /Users/Shared/atria-capture-test.txt outside the workspace as requested so the inventory export check has the marker file it needs to verify that its shared output location is available?"},
+		// No row ends in "?": the question runs on into "(Like your own code…".
+		{"claude-trust-60col.txt", Claude, "Enter to confirm · Esc to cancel"},
+		// /model: the search stops at the subtitle above option 1, so the
+		// conversation's "❯ /model" never gets a look. The footer wraps, and
+		// the matched row is its second line.
+		{"claude-model-60col.txt", Claude, "Esc to cancel"},
+		// /model after Claude replied with a question: the reply (⏺) and the
+		// wrapped prompt above it stay out of the dialog's text.
+		{"claude-model-after-reply-60col.txt", Claude, "Esc to cancel"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.file, func(t *testing.T) {
+			screen, err := os.ReadFile("testdata/" + tt.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := PromptText(string(screen), tt.agent); got != tt.want {
+				t.Errorf("PromptText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPromptTextJoinsWrappedRows(t *testing.T) {
+	// A 30-column rule sets the width the rows are measured against.
+	const rule = "──────────────────────────────\n"
+	tests := []struct {
+		name, screen, want string
+	}{
+		{"wrap before a capitalized word",
+			rule + "Which backend should we use for\nTypeScript?\n❯ 1. Node\nEnter to select · Esc to cancel\n",
+			"Which backend should we use for TypeScript?"},
+		{"wrap before a path",
+			rule + "Can I write to\n/Users/Shared/some-long-name.txt?\n❯ 1. Yes\nEnter to select · Esc to cancel\n",
+			"Can I write to /Users/Shared/some-long-name.txt?"},
+		{"a short row above is its own line",
+			rule + "Pick a backend.\nWhich one should we use?\n❯ 1. Node\nEnter to select · Esc to cancel\n",
+			"Which one should we use?"},
+		{"a long row ending a sentence isn't a wrap into a capital",
+			rule + "This sentence runs to the edge.\nWhich one should we use?\n❯ 1. Node\nEnter to select · Esc to cancel\n",
+			"Which one should we use?"},
+		{"a tab bar above is never joined",
+			rule + "← ☐ Backend ☐ Database ✔ Submit\nwhich one should we use?\n❯ 1. Node\nEnter to select · Esc to cancel\n",
+			"which one should we use?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := PromptText(tt.screen, Claude); got != tt.want {
+				t.Errorf("PromptText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPromptTextNoQuestionInCodexApproval pins what a dialog with no question
+// shows: the real Codex capture with its "Would you like to run…?" row and
+// its wrapped "Reason: …?" rows taken out. Nothing within questionGap rows
+// above option 1 ends in "?", so it keeps the footer rather than reaching
+// into the conversation.
+func TestPromptTextNoQuestionInCodexApproval(t *testing.T) {
+	screen := codexApprovalWithoutReasonRows(t)
+	if got, want := PromptText(screen, Codex), "Press enter to confirm or esc to cancel"; got != want {
+		t.Errorf("PromptText() = %q, want %q", got, want)
+	}
+}
+
+// codexApprovalWithoutReasonRows is the real Codex approval capture with its
+// "Would you like to run…?" row and its wrapped "Reason: …?" rows removed.
+func codexApprovalWithoutReasonRows(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/codex-approval-60col.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	inReason := false
+	for _, row := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(row)
+		switch {
+		case strings.HasPrefix(trimmed, "Would you like to run"):
+			continue
+		case strings.HasPrefix(trimmed, "Reason:"):
+			inReason = true
+		}
+		if inReason {
+			inReason = !strings.HasSuffix(trimmed, "?")
+			continue
+		}
+		kept = append(kept, row)
+	}
+	screen := strings.Join(kept, "\n")
+	if strings.Contains(screen, "Reason:") || strings.Contains(screen, "available?") {
+		t.Fatalf("the question rows weren't all removed:\n%s", screen)
+	}
+	return screen
+}
+
+// TestPromptTextJoinStaysInWindow checks that joining a wrapped question
+// reads no row above the 25-row window the search is bounded by. The
+// options aren't numbered, so the search isn't anchored on them.
+func TestPromptTextJoinStaysInWindow(t *testing.T) {
+	// The question's last row sits exactly 25 rows above the footer, at the
+	// top of the window; the row it wrapped from is one row above that.
+	screen := "──────────────────────────────\n" +
+		"Which backend should we use for\n" +
+		"the new service?\n" +
+		strings.Repeat("  detail\n", 23) +
+		"❯ Node\n" +
+		"Enter to select · Esc to cancel\n"
+	if got, want := PromptText(screen, Claude), "the new service?"; got != want {
+		t.Errorf("PromptText() = %q, want %q", got, want)
+	}
+}
+
+func TestPromptTextSkipsQuestionsInOptions(t *testing.T) {
+	tests := []struct {
+		name, screen, want string
+		agent              Type // Claude when empty
+	}{
+		{"an option label and a description end in ?",
+			"←  ☐ Cache  ✔ Submit  →\n" +
+				"│ Where should the cache live?\n" +
+				"❯ 1. Keep it in memory?\n" +
+				"     Fastest, lost on restart.\n" +
+				"  2. Put it on disk\n" +
+				"     Survives restarts. Should we encrypt it?\n" +
+				"  3. Type something.\n" +
+				"────────────────────────────────\n" +
+				"  4. Chat about this\n" +
+				"Enter to select · Tab/Arrow keys to navigate · Esc to cancel\n",
+			"Where should the cache live?", ""},
+		{"options with only questions fall back to the footer",
+			"│ Pick one.\n" +
+				"❯ 1. Keep it in memory?\n" +
+				"  2. Put it on disk?\n" +
+				"Enter to select · Esc to cancel\n",
+			"Enter to select · Esc to cancel", ""},
+		{"a wrapped command between the question and the options",
+			"──────────────────────────────\n" +
+				"  Reason: May I write the file?\n" +
+				"\n" +
+				"  $ touch /Users/Shared/some/long\n" +
+				"  /path/name.txt\n" +
+				"\n" +
+				"› 1. Yes, proceed (y)\n" +
+				"  Press enter to confirm or esc to cancel\n",
+			"Reason: May I write the file?", Codex},
+		{"a title and a blank row above the options, under a Claude reply",
+			"⏺ Can you check the parser?\n" +
+				"\n" +
+				" Select a model\n" +
+				"\n" +
+				" ❯ 1. Default\n" +
+				" Enter to select · Esc to cancel\n",
+			"Enter to select · Esc to cancel", ""},
+		{"a title and a blank row above the options, under a Codex prompt",
+			"› Can you check the parser?\n" +
+				"\n" +
+				"  Pick one\n" +
+				"\n" +
+				"› 1. Yes, proceed (y)\n" +
+				"  Press enter to confirm or esc to cancel\n",
+			"Press enter to confirm or esc to cancel", Codex},
+		{"a reply without a question stops the search before older output",
+			"  ⎿  Is the cache warm?\n" +
+				"\n" +
+				"⏺ Done.\n" +
+				"\n" +
+				" Select a model\n" +
+				"\n" +
+				" ❯ 1. Default\n" +
+				" Enter to select · Esc to cancel\n",
+			"Enter to select · Esc to cancel", ""},
+		{"a wrapped prompt whose question is on an indented row",
+			"────────────────────────────────────────────────────────────\n" +
+				"❯ Reply with exactly this one line and nothing else: Can\n" +
+				"  you check the parser?\n" +
+				"\n" +
+				" Select a model\n" +
+				"\n" +
+				" ❯ 1. Default\n" +
+				" Enter to select · Esc to cancel\n",
+			"Enter to select · Esc to cancel", ""},
+		{"a numbered list in the conversation above doesn't hide the question",
+			"Two ways to do it:\n" +
+				"1. Keep the cache in memory\n" +
+				"2. Put it on disk\n" +
+				"\n" +
+				"│ Where should the cache live?\n" +
+				"\n" +
+				"❯ 1. Memory\n" +
+				"  2. Disk\n" +
+				"Enter to select · Esc to cancel\n",
+			"Where should the cache live?", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := tt.agent
+			if agent == "" {
+				agent = Claude
+			}
+			if got := PromptText(tt.screen, agent); got != tt.want {
+				t.Errorf("PromptText() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
