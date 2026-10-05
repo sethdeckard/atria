@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.10.1
+
+- Fix a session's attention text showing a dialog's key hints instead of its question: dialogs detected by a footer or button row (Claude's `Esc to cancel`, Codex's `Press enter to confirm`) set `Attention` to that row, in atria's chat view, in `watch.Snapshot.Attention`, and in the `MatchLine` of needs_input events. It's now the question above the dialog's options, joined back together when it wrapped, through the new `agent.PromptText`, and the matched row when no question is found. Status detection is unchanged
+
 ## v0.10.0
 
 - Breaking for library callers: the Watcher reports a session's first screen read as the new `StatusKnown` event, once per session, instead of as a `StatusChanged` from the working placeholder; a session already at a prompt reports needs_input only there, so code that notifies on needs_input has to handle both kinds. `Snapshot.StatusKnown` says whether that read has happened
