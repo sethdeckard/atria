@@ -85,6 +85,8 @@ type Watcher struct {
 	ruledOut    map[string]ruledOut
 	projectDirs []string
 
+	pass uint64 // discovery passes run; only discoverOnce's goroutine touches it
+
 	// Baseline state; see markBaseline.
 	listed    bool              // a listing has succeeded
 	answering map[string]bool   // sources that have answered since they were last absent
@@ -99,6 +101,8 @@ type ruledOut struct {
 	pids           string // the TTY's process IDs, from terminal.PIDsByTTY
 	at             time.Time
 	settleUntil    time.Time // identify on every pass until then
+	adoptPIDs      bool      // pids not read yet; reopened takes them in pass cooledIn
+	cooledIn       uint64    // the discovery pass that removed the session as an orphan
 }
 
 // settleWindow is how long a session stays under watch after it first
@@ -282,6 +286,7 @@ func (w *Watcher) logf(format string, args ...any) {
 
 // discoverOnce runs one discovery pass. It reports false when ctx ended.
 func (w *Watcher) discoverOnce(ctx context.Context) bool {
+	w.pass++
 	now := w.clock.Now()
 	listing, err := w.list()
 	if err != nil {
@@ -331,6 +336,7 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 			delete(w.tracked, id)
 			removed[id] = true
 			events = append(events, Event{Kind: SessionRemoved, Time: now, Session: t.snapshot(), Reason: RemovedOrphan})
+			w.coolDown(sess, now)
 			continue
 		}
 		// Settle the process before taking any snapshot, so an event never
@@ -560,27 +566,50 @@ func provesNothing(id Identity) bool {
 // reopened skips unchanged, previously rejected candidates once their settle
 // window ends, until RecheckInterval expires. It returns the candidates to
 // identify and the process lists it read, which also record what a new
-// ruling saw. The process lists come from one ps run, made only
-// when a candidate has a TTY; if it fails, candidates with a TTY are all
-// identified.
+// ruling saw. The process lists come from one ps run, made only when a
+// candidate has a TTY or a session cooled down in this pass needs a
+// baseline; if it fails, candidates with a TTY are all identified.
 func (w *Watcher) reopened(candidates []terminal.Session, now time.Time) ([]terminal.Session, map[string]string) {
 	if w.opts.RecheckInterval < 0 {
 		return candidates, nil
 	}
-	var pids map[string]string
+	needPIDs := false
 	for _, s := range candidates {
 		if s.TTY != "" {
-			var err error
-			if pids, err = pidsByTTY(); err != nil {
-				w.logf("watch: process list: %v", err)
-				pids = nil
-			}
+			needPIDs = true
 			break
+		}
+	}
+	w.mu.Lock()
+	for _, r := range w.ruledOut {
+		if r.adoptPIDs && r.cooledIn == w.pass && r.tty != "" {
+			needPIDs = true
+			break
+		}
+	}
+	w.mu.Unlock()
+	var pids map[string]string
+	if needPIDs {
+		var err error
+		if pids, err = pidsByTTY(); err != nil {
+			w.logf("watch: process list: %v", err)
+			pids = nil
 		}
 	}
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	// A session cooled down in this pass takes this pass's processes as its
+	// baseline, so an agent that starts before the next pass is a change.
+	// One whose baseline couldn't be read keeps an empty process list, so a
+	// later pass identifies it when its TTY has processes or when ps fails
+	// again.
+	for id, r := range w.ruledOut {
+		if r.adoptPIDs && r.cooledIn == w.pass && (r.tty == "" || pids != nil) {
+			r.pids, r.adoptPIDs = ttyPIDs(pids, r.tty), false
+			w.ruledOut[id] = r
+		}
+	}
 	var keep []terminal.Session
 	for _, s := range candidates {
 		r, ok := w.ruledOut[s.ID]
@@ -615,6 +644,22 @@ func (w *Watcher) ruleOut(s terminal.Session, id Identity, pids map[string]strin
 		r.settleUntil = prev.settleUntil
 	}
 	w.ruledOut[s.ID] = r
+}
+
+// coolDown remembers a session just removed as an orphan, so it isn't
+// identified again while its title, job, TTY, and TTY processes stay the
+// same, until RecheckInterval passes. A pass whose process list can't be
+// read identifies it anyway, as for any ruled-out session, and a negative
+// RecheckInterval turns this off. Without it, a pane whose scrollback still
+// shows an agent banner is identified again on the next pass and removed
+// again a few passes later. The TTY's processes haven't been read yet in
+// this pass; reopened reads them later in the same pass and takes them as
+// the baseline. Caller holds w.mu.
+func (w *Watcher) coolDown(s terminal.Session, now time.Time) {
+	if w.opts.RecheckInterval < 0 {
+		return
+	}
+	w.ruledOut[s.ID] = ruledOut{name: s.Name, job: s.Job, tty: s.TTY, at: now, adoptPIDs: true, cooledIn: w.pass}
 }
 
 // ttyPIDs looks up a session's TTY ("/dev/ttys003" or "ttys003") in a

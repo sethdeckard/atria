@@ -564,7 +564,7 @@ func TestRetypeEmitsTypeChanged(t *testing.T) {
 func TestOrphanRemovalDoesNotReaddInSamePass(t *testing.T) {
 	b := newFake()
 	b.setSessions(claudeSession(b, "s1"))
-	w, _ := newWatcher(t, b, Options{})
+	w, clock := newWatcher(t, b, Options{})
 	ctx := context.Background()
 	w.discoverOnce(ctx)
 	drain(w.Events())
@@ -588,11 +588,163 @@ func TestOrphanRemovalDoesNotReaddInSamePass(t *testing.T) {
 	if _, ok := w.Session("s1"); ok {
 		t.Fatal("s1 must not be tracked after removal in the same pass")
 	}
-	// The next pass may identify it afresh.
+	// The pane still shows an agent, but nothing about it has changed, so
+	// the next pass leaves it alone instead of adding it back.
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("an orphan must not be re-added while nothing changed, got %+v", evs)
+	}
+	// Once RecheckInterval passes it is identified afresh.
+	clock.Advance(DefaultRecheckInterval)
 	w.discoverOnce(ctx)
 	// Identify read the screen to type it, so StatusKnown follows the add.
 	if evs := drain(w.Events()); len(evs) != 2 || evs[0].Kind != SessionAdded || evs[0].Session.Type != agent.Codex || evs[1].Kind != StatusKnown {
-		t.Fatalf("expected a fresh add on the following pass, got %+v", evs)
+		t.Fatalf("expected a fresh add after RecheckInterval, got %+v", evs)
+	}
+}
+
+// orphanOnNextRefresh makes a tracked session look orphaned to the next
+// discovery pass while its screen would still identify it.
+func orphanOnNextRefresh(w *Watcher, id string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	tr := &w.tracked[id].tr
+	tr.Status = agent.StatusIdle
+	tr.ScreenChecked = true
+	tr.LastScreen = "user@host ~ %"
+	tr.OrphanTicks = 1
+}
+
+func TestOrphanCooldownEndsOnTitleChange(t *testing.T) {
+	b := newFake()
+	b.setSessions(claudeSession(b, "s1"))
+	w, _ := newWatcher(t, b, Options{})
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	drain(w.Events())
+
+	orphanOnNextRefresh(w, "s1")
+	b.setSessions(terminal.Session{ID: "s1", Name: "zsh", Source: "pty"})
+	b.setScreen("s1", codexScreen)
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 1 || evs[0].Reason != RemovedOrphan {
+		t.Fatalf("expected the orphan removal, got %+v", evs)
+	}
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 0 {
+		t.Fatalf("expected no re-add while the title is unchanged, got %+v", evs)
+	}
+
+	// An agent retitles the pane: that's a change, so it's identified.
+	b.setSessions(terminal.Session{ID: "s1", Name: "codex", Source: "pty"})
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) == 0 || evs[0].Kind != SessionAdded {
+		t.Fatalf("expected a re-add after the title changed, got %+v", evs)
+	}
+}
+
+func TestOrphanCooldownSeesAgentStartedBeforeNextPass(t *testing.T) {
+	b := newFake()
+	s := claudeSession(b, "s1")
+	s.TTY = "/dev/ttys009"
+	b.setSessions(s)
+	w, _ := newWatcher(t, b, Options{})
+	pids := map[string]string{"ttys009": "100"}
+	prev := pidsByTTY
+	pidsByTTY = func() (map[string]string, error) { return pids, nil }
+	t.Cleanup(func() { pidsByTTY = prev })
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	drain(w.Events())
+
+	orphanOnNextRefresh(w, "s1")
+	b.setSessions(terminal.Session{ID: "s1", Name: "zsh", TTY: "/dev/ttys009", Source: "pty"})
+	b.setScreen("s1", codexScreen)
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) != 1 || evs[0].Reason != RemovedOrphan {
+		t.Fatalf("expected the orphan removal, got %+v", evs)
+	}
+
+	// An agent starts between the removal and the next pass. The baseline
+	// was taken in the removal pass, so this is a change.
+	pids = map[string]string{"ttys009": "100 200"}
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) == 0 || evs[0].Kind != SessionAdded {
+		t.Fatalf("expected the new agent to be picked up, got %+v", evs)
+	}
+}
+
+func TestOrphanCooldownWithoutBaselineIdentifies(t *testing.T) {
+	b := newFake()
+	s := claudeSession(b, "s1")
+	s.TTY = "/dev/ttys009"
+	b.setSessions(s)
+	w, _ := newWatcher(t, b, Options{})
+	psFails := false
+	prev := pidsByTTY
+	pidsByTTY = func() (map[string]string, error) {
+		if psFails {
+			return nil, errors.New("ps failed")
+		}
+		return map[string]string{"ttys009": "100"}, nil
+	}
+	t.Cleanup(func() { pidsByTTY = prev })
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	drain(w.Events())
+
+	// ps fails in the removal pass, so no baseline is taken.
+	orphanOnNextRefresh(w, "s1")
+	b.setSessions(terminal.Session{ID: "s1", Name: "zsh", TTY: "/dev/ttys009", Source: "pty"})
+	b.setScreen("s1", codexScreen)
+	psFails = true
+	w.discoverOnce(ctx)
+	drain(w.Events())
+
+	// The next pass identifies it rather than adopting a baseline it never
+	// compared against.
+	psFails = false
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) == 0 || evs[0].Kind != SessionAdded {
+		t.Fatalf("expected the session to be identified, got %+v", evs)
+	}
+}
+
+func TestOrphanCooldownEndsWhenTTYProcessesChange(t *testing.T) {
+	b := newFake()
+	s := claudeSession(b, "s1")
+	s.TTY = "/dev/ttys009"
+	b.setSessions(s)
+	w, _ := newWatcher(t, b, Options{})
+	pids := map[string]string{"ttys009": "100"}
+	prev := pidsByTTY
+	pidsByTTY = func() (map[string]string, error) { return pids, nil }
+	t.Cleanup(func() { pidsByTTY = prev })
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	drain(w.Events())
+
+	orphanOnNextRefresh(w, "s1")
+	shell := terminal.Session{ID: "s1", Name: "zsh", TTY: "/dev/ttys009", Source: "pty"}
+	b.setSessions(shell)
+	b.setScreen("s1", codexScreen)
+	w.discoverOnce(ctx)
+	drain(w.Events())
+
+	// Both passes match the baseline taken in the removal pass, so neither
+	// identifies the session.
+	for range 2 {
+		w.discoverOnce(ctx)
+		if evs := drain(w.Events()); len(evs) != 0 {
+			t.Fatalf("expected no re-add while the TTY's processes are unchanged, got %+v", evs)
+		}
+	}
+
+	// A new process on the TTY, as when an agent starts, ends the cooldown.
+	pids = map[string]string{"ttys009": "100 200"}
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) == 0 || evs[0].Kind != SessionAdded {
+		t.Fatalf("expected a re-add after the TTY's processes changed, got %+v", evs)
 	}
 }
 
