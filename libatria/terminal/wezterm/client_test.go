@@ -225,3 +225,37 @@ exit 0
 		t.Fatalf("send-text should pass text on stdin, log:\n%s", logData)
 	}
 }
+
+func TestStripLogPrefix(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"wezterm's log line", "22:12:41.878  ERROR  wezterm > failed to connect to /tmp/sock", "wezterm > failed to connect to /tmp/sock"},
+		{"every line", "22:12:41.878  ERROR  one\n22:12:41.901  WARN   two", "one\ntwo"},
+		{"no prefix", "pane 9 not found", "pane 9 not found"},
+		{"a time later in the line stays", "failed at 22:12:41.878 ERROR here", "failed at 22:12:41.878 ERROR here"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stripLogPrefix(tt.in); got != tt.want {
+				t.Errorf("stripLogPrefix(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUnavailableReasonIgnoresLogTimestamp(t *testing.T) {
+	countPath := filepath.Join(t.TempDir(), "count")
+	wez := writeFakeWezterm(t, `
+n=$(cat "`+countPath+`" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "`+countPath+`"
+echo "22:12:4$n.878  ERROR  wezterm > failed to connect to /tmp/wezterm/gui-sock: Connection refused" >&2
+exit 1
+`)
+	c := NewClient(Options{Path: wez, CommandTimeout: time.Second})
+	_, first := c.ListSessions()
+	_, second := c.ListSessions()
+	if !errors.Is(first, terminal.ErrUnavailable) || first.Error() != second.Error() {
+		t.Fatalf("reasons differ between runs: %q and %q", first, second)
+	}
+	if strings.Contains(first.Error(), "22:12") {
+		t.Fatalf("reason kept wezterm's timestamp: %q", first)
+	}
+}

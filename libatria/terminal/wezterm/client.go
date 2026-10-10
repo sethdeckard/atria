@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -70,13 +71,24 @@ func (c *Client) runWithStdin(stdin io.Reader, args ...string) ([]byte, error) {
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		msg := strings.TrimSpace(stderr.String())
+		msg := strings.TrimSpace(stripLogPrefix(stderr.String()))
 		if isConnectMessage(msg) {
 			return nil, terminal.Unavailable(op, errors.New(msg))
 		}
 		return nil, fmt.Errorf("%s failed: %s", op, msg)
 	}
 	return nil, terminal.Unavailable(op, err)
+}
+
+// logPrefix is the timestamp and level wezterm puts in front of each line it
+// logs to stderr, as in "22:12:41.878  ERROR  wezterm > failed to connect".
+var logPrefix = regexp.MustCompile(`(?m)^\d{2}:\d{2}:\d{2}\.\d+\s+[A-Z]+\s+`)
+
+// stripLogPrefix removes logPrefix from each line, so the same failure gives
+// the same message every time; a caller that logs only when a reason
+// changes would otherwise log it on every attempt.
+func stripLogPrefix(s string) string {
+	return logPrefix.ReplaceAllString(s, "")
 }
 
 func verb(args []string) string {
