@@ -212,12 +212,67 @@ func TestIdentifyUngatedNonShellKeepsScreenFallback(t *testing.T) {
 	}
 }
 
-func TestIdentifyKnownTitleIgnoresShellOnly(t *testing.T) {
-	b := newFake()
-	stubLookup(t, processLookup{Procs: procs("-zsh"), Seen: true})
-	id := Identify(b, terminal.Session{ID: "s1", Name: "✳ Fix parser"}, IdentifyOptions{})
-	if !id.OK() || id.Type != agent.Claude {
-		t.Fatalf("known title identity = %+v", id)
+func TestIdentifyNeedsAnAgentProcess(t *testing.T) {
+	banner := "Claude Code v2.0\n❯ \n"
+	tests := []struct {
+		name     string
+		title    string
+		lookup   processLookup
+		gated    bool
+		wantOK   bool
+		wantSkip SkipReason
+		wantRead bool // a screen read was spent
+	}{
+		{"agent title, shell only", "✳ Fix parser",
+			processLookup{Procs: procs("login", "-zsh"), Seen: true}, false, false, SkipShellOnly, false},
+		{"agent title, a non-agent program", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "bin/inventoryd"), Seen: true}, false, false, SkipNoAgentProcess, false},
+		{"banner on screen, a non-agent program", "bin/inventoryd (inventoryd)",
+			processLookup{Procs: procs("-zsh", "bin/inventoryd"), Seen: true}, false, false, SkipNoAgentProcess, false},
+		{"gated: agent title, a non-agent program", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "bin/inventoryd"), Seen: true}, true, false, SkipNoAgentProcess, false},
+		{"gated: banner on screen, a non-agent program", "bin/inventoryd (inventoryd)",
+			processLookup{Procs: procs("-zsh", "bin/inventoryd"), Seen: true}, true, false, SkipNoAgentProcess, false},
+		{"agent title, the agent running", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "claude"), Proc: terminal.Process{PID: 101, Argv: []string{"claude"}}, Type: agent.Claude, Seen: true}, false, true, SkipNone, false},
+		{"agent title behind ssh", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "ssh devbox"), Seen: true}, false, true, SkipNone, false},
+		{"agent title behind tmux attach", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "tmux attach"), Seen: true}, false, true, SkipNone, false},
+		{"agent title behind docker exec", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "docker exec -it dev claude"), Seen: true}, false, true, SkipNone, false},
+		{"agent title, node running an unrecognized entry point", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "node /usr/local/lib/cli.js"), Seen: true}, false, true, SkipNone, false},
+		{"agent title, node with a preload before the agent", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "node --require preload.js /usr/local/bin/claude"), Seen: true}, false, true, SkipNone, false},
+		{"gated: agent title behind kubectl exec", "✳ Fix parser",
+			processLookup{Procs: procs("-zsh", "kubectl exec -it pod -- claude"), Seen: true}, true, true, SkipNone, false},
+		{"agent title, TTY not seen", "✳ Fix parser",
+			processLookup{}, false, true, SkipNone, false},
+		{"banner on screen, TTY not seen", "bin/inventoryd (inventoryd)",
+			processLookup{}, false, true, SkipNone, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := newFake()
+			b.setScreen("s1", banner)
+			b.setVar("s1", "path", "/home/me/projects/app")
+			stubLookup(t, tt.lookup)
+			opts := IdentifyOptions{}
+			if tt.gated {
+				opts.WatchDirs = []string{"/home/me/projects"}
+			}
+			id := Identify(b, terminal.Session{ID: "s1", Name: tt.title}, opts)
+			if id.OK() != tt.wantOK || id.Skip != tt.wantSkip {
+				t.Fatalf("Identify = %+v, want OK %v, skip %v", id, tt.wantOK, tt.wantSkip)
+			}
+			b.mu.Lock()
+			read := len(b.reads) > 0
+			b.mu.Unlock()
+			if read != tt.wantRead {
+				t.Errorf("screen read = %v, want %v", read, tt.wantRead)
+			}
+		})
 	}
 }
 

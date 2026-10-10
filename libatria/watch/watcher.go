@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -383,7 +384,7 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 	// calls already in flight.
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].ID < candidates[j].ID })
 	identities := make([]Identity, len(candidates))
-	procs := make([]terminal.Process, len(reresolve))
+	lookups := make([]processLookup, len(reresolve))
 	sem := make(chan struct{}, w.opts.Parallelism)
 	var wg sync.WaitGroup
 	for i, s := range candidates {
@@ -407,7 +408,7 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 				return
 			}
 			defer func() { <-sem }()
-			procs[i] = resolveProcess(w.backend, sess).Proc
+			lookups[i] = resolveProcess(w.backend, sess)
 		}(i, t.sess)
 	}
 	wg.Wait()
@@ -420,13 +421,29 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 		if _, still := w.tracked[t.sess.ID]; !still {
 			continue
 		}
-		t.proc = procs[i]
+		// The title or screen said agent, but the TTY now runs none: the
+		// agent exited and the pane runs a shell or another program.
+		if lookups[i].noAgent() {
+			w.logf("watch: %s removed: no agent process on the tty", t.sess.ID)
+			delete(w.tracked, t.sess.ID)
+			removed[t.sess.ID] = true
+			events = append(events, Event{Kind: SessionRemoved, Time: now, Session: t.snapshot(), Reason: RemovedOrphan})
+			w.coolDown(t.sess, now)
+			// reopened has run for this pass, so take the baseline from the
+			// lookup, which just listed the TTY's processes.
+			if r, ok := w.ruledOut[t.sess.ID]; ok {
+				r.pids, r.adoptPIDs = pidList(lookups[i].Procs), false
+				w.ruledOut[t.sess.ID] = r
+			}
+			continue
+		}
+		t.proc = lookups[i].Proc
 		// A replacement agent may run in another project: follow its cwd.
 		// In gated mode a cwd outside the watch list means the pane now runs
 		// an agent out of scope, so the session is dropped rather than kept
 		// under a directory that is no longer true. It is identified afresh
 		// if a later listing finds it in scope.
-		cwd := procs[i].Cwd
+		cwd := lookups[i].Proc.Cwd
 		if cwd == "" || cwd == t.dir {
 			continue
 		}
@@ -660,6 +677,21 @@ func (w *Watcher) coolDown(s terminal.Session, now time.Time) {
 		return
 	}
 	w.ruledOut[s.ID] = ruledOut{name: s.Name, job: s.Job, tty: s.TTY, at: now, adoptPIDs: true, cooledIn: w.pass}
+}
+
+// pidList formats processes' IDs as terminal.PIDsByTTY does for one TTY:
+// sorted and comma-separated.
+func pidList(procs []terminal.Process) string {
+	ids := make([]int, len(procs))
+	for i, p := range procs {
+		ids[i] = p.PID
+	}
+	sort.Ints(ids)
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.Itoa(id)
+	}
+	return strings.Join(parts, ",")
 }
 
 // ttyPIDs looks up a session's TTY ("/dev/ttys003" or "ttys003") in a

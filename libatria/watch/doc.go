@@ -35,5 +35,8 @@
 // Known limitations. Process liveness is checked with kill(pid, 0), which
 // reports a zombie or a reused PID as alive; a batched ps per tick would be
 // more accurate. A screen-read failure during Identify is logged, not
-// emitted as an Error event.
+// emitted as an Error event. An iTerm2 tab attached to a tmux session is
+// listed twice when the tmux integration is enabled: as the tab, which its
+// title identifies because the tmux client can't confirm the agent, and as
+// the tmux pane.
 package watch

@@ -35,6 +35,9 @@ func TestProcessesOnTTYParsesPSAndFillsCwd(t *testing.T) {
 			if len(args) < 2 || args[0] != "-t" || args[1] != "ttys003" {
 				t.Errorf("ps args = %v", args)
 			}
+			if args[len(args)-1] == "pid=,comm=" {
+				return []byte(" 4242 /bin/zsh\n 4300 claude\n"), nil
+			}
 			return []byte(" 4242  4200 /bin/zsh -l\n 4300  4242 claude --resume abc\n\nbogus line\n"), nil
 		case "lsof":
 			// args: -a -d cwd -p <pid> -F n
@@ -60,6 +63,68 @@ func TestProcessesOnTTYParsesPSAndFillsCwd(t *testing.T) {
 	}
 	if procs[1].PID != 4300 || len(procs[1].Argv) != 3 || procs[1].Argv[0] != "claude" || procs[1].Cwd != "/Users/me/projects/app" {
 		t.Errorf("procs[1] = %+v", procs[1])
+	}
+}
+
+func TestProcessesOnTTYKeepsSpacesInExecutable(t *testing.T) {
+	withFakeRunner(t, func(name string, args ...string) ([]byte, error) {
+		if name != "ps" {
+			return nil, errors.New("no lsof")
+		}
+		if args[len(args)-1] == "pid=,comm=" {
+			return []byte(" 4242 -zsh\n 4300 /Users/me/Agent Tools/codex\n 4400 Web Content\n"), nil
+		}
+		return []byte(" 4242  4200 -zsh\n 4300  4242 /Users/me/Agent Tools/codex resume abc\n 4400  4242 /usr/lib/browser -contentproc\n"), nil
+	})
+	procs, err := ProcessesOnTTY("ttys003")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"-zsh"},
+		{"/Users/me/Agent Tools/codex", "resume", "abc"},
+		{"/usr/lib/browser", "-contentproc"}, // comm doesn't spell its args, so they stand
+	}
+	for i, w := range want {
+		if strings.Join(procs[i].Argv, "|") != strings.Join(w, "|") {
+			t.Errorf("procs[%d].Argv = %q, want %q", i, procs[i].Argv, w)
+		}
+	}
+}
+
+func TestProcessesOnTTYFailsWithoutComm(t *testing.T) {
+	withFakeRunner(t, func(name string, args ...string) ([]byte, error) {
+		if name == "ps" && args[len(args)-1] == "pid=,ppid=,args=" {
+			return []byte(" 4300  4242 /Users/me/Agent Tools/codex\n"), nil
+		}
+		return nil, errors.New("unavailable")
+	})
+	if procs, err := ProcessesOnTTY("ttys003"); err == nil {
+		t.Fatalf("a failed comm read must fail the listing rather than return a split path, got %+v", procs)
+	}
+}
+
+func TestJoinExecutable(t *testing.T) {
+	tests := []struct {
+		name, args, comm, want string // args and want fields joined by "|"
+	}{
+		{"macOS path with a space", "/Users/me/Agent|Tools/codex|resume", "/Users/me/Agent Tools/codex", "/Users/me/Agent Tools/codex|resume"},
+		{"Linux name for a path with a space", "/home/me/Agent|Tools/codex|resume", "codex", "/home/me/Agent Tools/codex|resume"},
+		{"Linux name truncated to 15", "/opt/My|Apps/claude-code-wrapper", "claude-code-wra", "/opt/My Apps/claude-code-wrapper"},
+		{"not split", "claude|--resume", "claude", "claude|--resume"},
+		{"an interpreter keeps its script separate", "node|/usr/local/lib/cli.js", "node", "node|/usr/local/lib/cli.js"},
+		{"an argument named like an agent", "vim|/tmp/codex", "vim", "vim|/tmp/codex"},
+		{"a login shell", "-zsh", "zsh", "-zsh"},
+		{"comm that matches nothing", "/usr/lib/browser|-contentproc", "Web Content", "/usr/lib/browser|-contentproc"},
+		{"no comm", "/Users/me/Agent|Tools/codex", "", "/Users/me/Agent|Tools/codex"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := strings.Join(joinExecutable(strings.Split(tt.args, "|"), tt.comm), "|")
+			if got != tt.want {
+				t.Errorf("joinExecutable = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

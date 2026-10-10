@@ -56,7 +56,7 @@ type RemoveReason int
 // Remove reasons.
 const (
 	RemovedGone       RemoveReason = iota // absent from the filtered listing, unless its source failed
-	RemovedOrphan                         // Tracker.Refresh reached the orphan threshold; see Refresh for the detection rules
+	RemovedOrphan                         // the agent is gone: Tracker.Refresh reached the orphan threshold (see Refresh), or the TTY no longer runs an agent process
 	RemovedOutOfScope                     // gated mode: the pane's replacement agent runs outside the watch directories
 )
 

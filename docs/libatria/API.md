@@ -209,6 +209,8 @@ func PIDsByTTY() (map[string]string, error)
 
 `ProcessesOnTTY` runs `ps -t <tty>` and fills `Cwd` the way `DiscoverCWD`'s TTY strategy does today (`lsof -a -d cwd`), adding `/proc/<pid>/cwd` on Linux, which the PTY client already uses for its own child. `Cwd` is best-effort and may be empty. `terminal` doesn't know which of those processes is the agent; `agent.FindProcess` does that. `DiscoverCWD` is rebuilt on these two functions with no change in result.
 
+`Argv` is split on whitespace from `ps`'s args column, so an argument containing a space comes back in pieces. The executable's path is rejoined: a second `ps` read gives its comm (the path on macOS, the name on Linux), and the leading fields that end in that name are joined back, so `/Users/me/Agent Tools/codex` stays one element. Fields that never end in it stay split. If that read fails, `ProcessesOnTTY` returns an error rather than a list with a path it may have split.
+
 `PIDsByTTY` runs `ps` once for the whole machine and returns each terminal's process IDs as a sorted, comma-separated string, keyed by the TTY name without `/dev/` (`ttys003`, `pts/0`). Processes with no terminal are left out. It resolves no cwds, so it's cheap enough to run every pass, and a change in a TTY's list means something started or exited there.
 
 ### Terminal Loss
@@ -350,7 +352,7 @@ An empty `dir` skips the `cd` in both `LaunchCommand` and `Launch`, so pass the 
 
 `SendPrompt` sends the text, waits `SubmitDelay`, then sends a carriage return as a separate write, because the raw-mode TUIs these agents run drop a trailing newline that arrives in the same write. Copilot gets its own path: newlines are flattened to spaces (its input treats Enter as newline, not submit), and the text goes one rune per write with `CopilotRuneDelay` between them.
 
-`FindProcess` returns the first process whose `argv[0]` basename is a known agent binary.
+`FindProcess` returns the first process whose `argv[0]` basename is a known agent binary. For `node`, `bun`, and `deno` it checks the first argument that isn't a flag instead, which is how an npm install runs (`node /opt/homebrew/bin/claude`).
 
 ## Package watch
 
@@ -429,7 +431,7 @@ The counter only advances on identical reads. A screen that keeps changing witho
 ### Identify
 
 ```go
-type SkipReason int // SkipNone, SkipUnknownTitleNoDir, SkipScreenReadFailed, SkipUnknownTitleAndScreen, SkipOutsideWatchDirs, SkipShellOnly
+type SkipReason int // SkipNone, SkipUnknownTitleNoDir, SkipScreenReadFailed, SkipUnknownTitleAndScreen, SkipOutsideWatchDirs, SkipShellOnly, SkipNoAgentProcess
 func (r SkipReason) String() string
 
 type IdentifyOptions struct {
@@ -454,13 +456,15 @@ func ResolveProcess(b terminal.Backend, sess terminal.Session) (terminal.Process
 
 `Identify` runs in one of two modes, decided by whether `WatchDirs` is empty.
 
-With watch directories (atria's mode), it resolves the directory with `DiscoverCWD` and then checks the result against `WatchDirs` itself, skipping with `SkipOutsideWatchDirs` when the path isn't under one of them. That second check matters because `DiscoverCWD`'s last strategy matches project basenames in the title against `ProjectDirs`, and a `ProjectDirs` entry needn't be under any watch directory; without the check, the gate would leak. Then it reads the agent from the title. When the title is unknown and a directory was found, it looks at the session's processes first: a TTY running nothing but shells and `login` is `SkipShellOnly` and costs no screen read. Otherwise it reads the screen and calls `InferFromScreen`; a read failure sets `SkipScreenReadFailed` and `Err`. An unknown title with no directory is `SkipUnknownTitleNoDir` and costs no screen read. A known title with no directory is not a skip; `OK()` is false and the caller decides.
+With watch directories (atria's mode), it resolves the directory with `DiscoverCWD` and then checks the result against `WatchDirs` itself, skipping with `SkipOutsideWatchDirs` when the path isn't under one of them. That second check matters because `DiscoverCWD`'s last strategy matches project basenames in the title against `ProjectDirs`, and a `ProjectDirs` entry needn't be under any watch directory; without the check, the gate would leak. Then it reads the agent from the title. It checks the session's processes before trusting either, under the agent-process rule below, so a known title can be skipped too, and an unknown title costs a screen read only when the processes don't rule the session out. Otherwise it reads the screen and calls `InferFromScreen`; a read failure sets `SkipScreenReadFailed` and `Err`. An unknown title with no directory is `SkipUnknownTitleNoDir` and costs no screen read. A known title with no directory isn't skipped for the missing directory, unless the process check rules it out first; `OK()` is false and the caller decides.
 
-With no watch directories (a daemon's mode), nothing is gated. `Dir` comes from the agent process's cwd when `ResolveProcess` finds one, else from `GetVar("path")`, and it may be empty. An unknown title gets a screen read unless the TTY runs only shells and `login` (`SkipShellOnly`); the Watcher remembers sessions it ruled out, so it doesn't pay that on every pass. `OK()` needs only `Type`, so any agent session the backend lists qualifies. `DiscoverCWD` itself is unchanged: with an empty watch list its two path-validating strategies match nothing, and only the title-to-`ProjectDirs` name match can still return a directory. The ungated behaviour is `Identify`'s alone, so atria's discovery doesn't change.
+With no watch directories (a daemon's mode), nothing is gated. `Dir` comes from the agent process's cwd when `ResolveProcess` finds one, else from `GetVar("path")`, and it may be empty. It checks the session's processes first, under the same rule, and an unknown title gets a screen read only when they don't rule the session out; the Watcher remembers sessions it ruled out, so it doesn't pay that on every pass. `OK()` needs only `Type`, so any agent session the backend lists qualifies. `DiscoverCWD` itself is unchanged: with an empty watch list its two path-validating strategies match nothing, and only the title-to-`ProjectDirs` name match can still return a directory. The ungated behaviour is `Identify`'s alone, so atria's discovery doesn't change.
 
-The shell-only rule exists because a plain shell can still show an agent's text, in log output or in scrollback an exited agent left behind. It applies only when the processes were listed. A backend with no TTY or pid, a failed lookup, or anything besides shells on the TTY (ssh, `tmux attach`, an agent started through `node`) leaves the screen as the fallback, so a foreground program that prints agent-like text can still be identified as an agent.
+In both modes, a title or screen that names an agent only makes the session a candidate; an agent process on its TTY confirms it. A tab can keep an agent's title and scrollback after the agent exits, as iTerm2's restored tabs do. When the lookup lists the TTY's processes and none is an agent, the session is skipped whatever its title or screen says, with no screen read: `SkipShellOnly` when only shells and `login` run there, `SkipNoAgentProcess` otherwise.
 
-`ResolveProcess` finds the agent process for a session: `ProcessesOnTTY` on the session's TTY, or on the TTY of the pid `GetVar("pid")` returns when the backend reports none, then `FindProcess`. It returns the zero `Process` and `""` when nothing matches. `Identify` uses the same lookup, and `ResolveProcess` is exported so a consumer that hears about a session from a hook can refresh the process on demand. The lookup is best-effort. `Identify` uses what it finds in two skip decisions: an agent process whose cwd is outside the watch directories (`SkipOutsideWatchDirs`), and a TTY with only shells on it (`SkipShellOnly`). `ResolveProcess`'s own result can't tell "no agent on the TTY" from "couldn't look".
+Some processes can host an agent the lookup can't see, so they leave the title and screen to decide: ssh, mosh, et, tmux, screen, zellij, docker, podman, kubectl, and nerdctl clients, and `node`, `bun`, or `deno` running a script `FindProcess` doesn't recognize. A lookup that couldn't list the TTY does the same. A wrapper that isn't on that list but runs the agent on the same TTY, like `nix develop -c claude`, is still confirmed, because the agent shows up there. A non-agent program running under node can still be misidentified from a banner in its scrollback.
+
+`ResolveProcess` finds the agent process for a session: `ProcessesOnTTY` on the session's TTY, or on the TTY of the pid `GetVar("pid")` returns when the backend reports none, then `FindProcess`. It returns the zero `Process` and `""` when nothing matches. `Identify` uses the same lookup, and `ResolveProcess` is exported so a consumer that hears about a session from a hook can refresh the process on demand. The lookup is best-effort. `Identify` uses what it finds in two skip decisions: an agent process whose cwd is outside the watch directories (`SkipOutsideWatchDirs`), and a TTY with no agent process on it (`SkipShellOnly`, `SkipNoAgentProcess`). `ResolveProcess`'s own result can't tell "no agent on the TTY" from "couldn't look".
 
 ### Watcher
 
@@ -544,6 +548,8 @@ With a backend that doesn't report `Listing.Sources`, the first successful listi
 `WatchDirs` is passed to `Identify` and decides its mode: with directories, only sessions under them are added; with none, directory filtering is off and every agent session the backend lists is a candidate. `Filter` runs on every listed session before anything else; `Agents` limits which types are added.
 
 A session `Identify` ruled out isn't identified again until its title, foreground job, TTY, or the processes on its TTY change, or `RecheckInterval` passes. The process lists come from one `ps` run per pass, made only when a candidate has a TTY. A change of directory alone waits for the interval: in gated mode, an agent that moves into a watch directory is checked again on the first discovery pass at least `RecheckInterval` after it was last ruled out.
+
+A tracked session leaves as `RemovedOrphan` when its agent process exits and its TTY runs no agent, under the same rule. Where the process can't be confirmed, the screen-and-title orphan rule in `Tracker.Refresh` still decides.
 
 A session removed as an orphan waits the same way, so a pane whose scrollback still shows an agent's banner isn't added back on the next pass and removed again a few passes later. That holds while process lists can be read: a pass whose `ps` fails identifies it anyway, and a negative `RecheckInterval` turns the wait off. Its TTY's processes are read in the pass that removed it, so an agent that starts there afterwards counts as a change and gets the session identified.
 

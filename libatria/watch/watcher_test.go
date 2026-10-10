@@ -1554,3 +1554,112 @@ func TestBaselineWithoutSourcesIsFirstListing(t *testing.T) {
 		t.Fatalf("later listing = %+v, want s2 as new", snap)
 	}
 }
+
+// fakeTTY is one terminal's process list, served to both process lookups
+// and terminal.PIDsByTTY, so a test can start and stop programs on it.
+type fakeTTY struct {
+	name  string // "ttys009"
+	procs []terminal.Process
+}
+
+func (f *fakeTTY) run(argvs ...string) {
+	f.procs = procs(argvs...)
+}
+
+// stubTTY routes the Watcher's process lookups and PID lists to f. Call it
+// after newWatcher, which stubs process resolution to nothing.
+func stubTTY(t *testing.T, f *fakeTTY) {
+	t.Helper()
+	prevR, prevP := resolveProcess, pidsByTTY
+	resolveProcess = func(terminal.Backend, terminal.Session) processLookup {
+		l := processLookup{Procs: f.procs, Seen: true}
+		if p, typ, ok := agent.FindProcess(f.procs); ok {
+			l.Proc, l.Type = p, typ
+		}
+		return l
+	}
+	pidsByTTY = func() (map[string]string, error) {
+		return map[string]string{f.name: pidList(f.procs)}, nil
+	}
+	t.Cleanup(func() { resolveProcess, pidsByTTY = prevR, prevP })
+}
+
+// tab is a restored terminal tab under the watch dirs, showing a Claude
+// banner left in its scrollback.
+func tab(b *fakeBackend, title string) terminal.Session {
+	b.setVar("s1", "path", "/home/me/projects/app")
+	b.setScreen("s1", "Claude Code v2.0\n❯ \n")
+	return terminal.Session{ID: "s1", Name: title, TTY: "/dev/ttys009", Source: "iterm"}
+}
+
+func TestRestoredTabWithoutAgentIsNotTracked(t *testing.T) {
+	for _, tt := range []struct {
+		name, title string
+		running     []string
+	}{
+		{"agent title, shell only", "✳ Fix parser", []string{"login", "-zsh"}},
+		{"banner, a non-agent program", "bin/inventoryd (inventoryd)", []string{"login", "-zsh", "bin/inventoryd"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			b := newFake()
+			b.setSessions(tab(b, tt.title))
+			w, clock := newWatcher(t, b, Options{})
+			tty := &fakeTTY{name: "ttys009"}
+			tty.run(tt.running...)
+			stubTTY(t, tty)
+			ctx := context.Background()
+			for range 5 {
+				w.discoverOnce(ctx)
+				if evs := drain(w.Events()); len(evs) != 0 {
+					t.Fatalf("a tab with no agent process must not be tracked, got %+v", evs)
+				}
+				clock.Advance(DefaultDiscoveryInterval)
+			}
+
+			// An agent starts in the tab: the TTY's processes change, and
+			// the agent confirms the session.
+			tty.run(append(tt.running, "claude")...)
+			w.discoverOnce(ctx)
+			evs := drain(w.Events())
+			if len(evs) == 0 || evs[0].Kind != SessionAdded || evs[0].Session.Process.PID == 0 {
+				t.Fatalf("expected the new agent to be tracked with its process, got %+v", evs)
+			}
+		})
+	}
+}
+
+func TestAgentExitingLeavesNoSession(t *testing.T) {
+	b := newFake()
+	b.setSessions(tab(b, "✳ Fix parser"))
+	w, clock := newWatcher(t, b, Options{})
+	tty := &fakeTTY{name: "ttys009"}
+	tty.run("login", "-zsh", "claude")
+	stubTTY(t, tty)
+	alive := true
+	prevA := processAlive
+	processAlive = func(int) bool { return alive }
+	t.Cleanup(func() { processAlive = prevA })
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	if evs := drain(w.Events()); len(evs) == 0 || evs[0].Kind != SessionAdded {
+		t.Fatalf("expected the agent to be tracked, got %+v", evs)
+	}
+
+	// Claude exits and a non-agent program runs in its place; the title
+	// and screen still say Claude.
+	alive = false
+	tty.run("login", "-zsh", "bin/inventoryd")
+	clock.Advance(DefaultDiscoveryInterval)
+	w.discoverOnce(ctx)
+	evs := drain(w.Events())
+	if last := evs[len(evs)-1]; last.Kind != SessionRemoved || last.Reason != RemovedOrphan {
+		t.Fatalf("expected an orphan removal, got %+v", evs)
+	}
+	for range 3 {
+		clock.Advance(DefaultDiscoveryInterval)
+		w.discoverOnce(ctx)
+		if evs := drain(w.Events()); len(evs) != 0 {
+			t.Fatalf("expected the session to stay gone, got %+v", evs)
+		}
+	}
+}

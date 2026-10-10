@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,7 +16,7 @@ import (
 type Process struct {
 	PID  int
 	PPID int
-	Argv []string // whitespace-split from ps's args column; original boundaries are lost, so a path containing a space is split
+	Argv []string // whitespace-split from ps's args column; leading fields are rejoined when they match ps's comm column, and other argument boundaries are lost
 	Cwd  string   // best-effort; "" when the lookup failed
 }
 
@@ -41,10 +42,10 @@ var runCommand = func(name string, args ...string) ([]byte, error) {
 
 // ProcessesOnTTY lists every process whose controlling terminal is tty
 // ("/dev/ttys003" or "ttys003"), with each Cwd filled in by ProcessCWD where
-// that succeeds. It runs ps once, then resolves each process's cwd in turn
-// through /proc or lsof, so latency grows with the process count and each
-// lsof can take up to its own timeout. An empty tty is an error; a TTY with
-// no processes returns an empty slice.
+// that succeeds. It runs ps twice, for args and comm, then resolves each
+// process's cwd in turn through /proc or lsof, so latency grows with the
+// process count and each lsof can take up to its own timeout. An empty tty
+// is an error; a TTY with no processes returns an empty slice.
 func ProcessesOnTTY(tty string) ([]Process, error) {
 	if tty == "" {
 		return nil, errors.New("no tty")
@@ -55,12 +56,69 @@ func ProcessesOnTTY(tty string) ([]Process, error) {
 		return nil, fmt.Errorf("ps -t %s: %w", short, err)
 	}
 	procs := parsePS(out)
+	// args can't say where a path with a space in it ends; comm, alone at
+	// the end of its own row, can. Without it a split path would read as
+	// some other program, so a failed read fails the whole listing.
+	comms, err := commByPID(short)
+	if err != nil {
+		return nil, err
+	}
+	for i := range procs {
+		procs[i].Argv = joinExecutable(procs[i].Argv, comms[procs[i].PID])
+	}
 	for i := range procs {
 		if cwd, err := ProcessCWD(procs[i].PID); err == nil {
 			procs[i].Cwd = cwd
 		}
 	}
 	return procs, nil
+}
+
+// commByPID runs ps once more for each process's executable on the TTY, as
+// ps's comm column, keyed by PID: the full path on macOS, the name
+// (truncated to 15 characters) on Linux.
+func commByPID(short string) (map[int]string, error) {
+	out, err := runCommand("ps", "-t", short, "-o", "pid=,comm=")
+	if err != nil {
+		return nil, fmt.Errorf("ps -t %s comm: %w", short, err)
+	}
+	comms := map[int]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		pidField, comm, ok := strings.Cut(strings.TrimSpace(line), " ")
+		pid, err := strconv.Atoi(pidField)
+		if !ok || err != nil {
+			continue
+		}
+		if comm = strings.TrimSpace(comm); comm != "" {
+			comms[pid] = comm
+		}
+	}
+	return comms, nil
+}
+
+// commTruncated is the length at which Linux truncates comm.
+const commTruncated = 15
+
+// joinExecutable rebuilds argv's executable when whitespace split its path.
+// It takes the shortest run of leading fields whose joined path has comm's
+// basename (or, for a comm Linux truncated, starts with it) and makes that
+// run one element. argv is returned unchanged when its first field already
+// has comm's basename, or when no run of fields does.
+func joinExecutable(argv []string, comm string) []string {
+	name := filepath.Base(comm)
+	if comm == "" || name == "" {
+		return argv
+	}
+	for n := 1; n <= len(argv); n++ {
+		base := filepath.Base(strings.Join(argv[:n], " "))
+		if base == name || (len(name) == commTruncated && strings.HasPrefix(base, name)) {
+			if n == 1 {
+				return argv
+			}
+			return append([]string{strings.Join(argv[:n], " ")}, argv[n:]...)
+		}
+	}
+	return argv
 }
 
 // parsePS parses "pid ppid args..." rows as printed by ps -o pid=,ppid=,args=.
