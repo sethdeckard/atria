@@ -184,23 +184,41 @@ func (c *fakeClock) AwaitTimers(t *testing.T, n int) {
 	t.Fatalf("timed out waiting for %d timers", n)
 }
 
-// recvEvent reads one event or fails after a second.
+// recvEvent skips PanesChanged and returns the next event, failing if
+// no event arrives for a second.
 func recvEvent(t *testing.T, ch <-chan Event) Event {
 	t.Helper()
-	select {
-	case ev, ok := <-ch:
-		if !ok {
-			t.Fatal("events channel closed")
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				t.Fatal("events channel closed")
+			}
+			if ev.Kind == PanesChanged {
+				continue // see drain
+			}
+			return ev
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for an event")
 		}
-		return ev
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for an event")
 	}
-	return Event{}
 }
 
-// drain collects every event currently buffered.
+// drain collects every event currently buffered except PanesChanged,
+// which a pass that changes the panes ends with and only the pane tests
+// look at; they use drainAll.
 func drain(ch <-chan Event) []Event {
+	var out []Event
+	for _, ev := range drainAll(ch) {
+		if ev.Kind != PanesChanged {
+			out = append(out, ev)
+		}
+	}
+	return out
+}
+
+// drainAll collects every event currently buffered.
+func drainAll(ch <-chan Event) []Event {
 	var out []Event
 	for {
 		select {

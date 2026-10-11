@@ -133,3 +133,23 @@ func TestExtractActivitySameAcrossSpinnerFrames(t *testing.T) {
 		}
 	}
 }
+
+func TestTrimSpinner(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"✳ Fix parser", "Fix parser"},
+		{"✶ Fix parser", "Fix parser"},
+		{"◐ Fix parser (claude)", "Fix parser (claude)"},
+		{"✳Claude Code", "Claude Code"},
+		{"⠋ refactor | atria", "refactor | atria"},
+		{"⠙  refactor | atria", "refactor | atria"},
+		{"claude", "claude"},
+		{"OC | build (opencode)", "OC | build (opencode)"},
+		{"vim main.go", "vim main.go"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := TrimSpinner(tt.in); got != tt.want {
+			t.Errorf("TrimSpinner(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

@@ -25,7 +25,7 @@ func newWatcher(t *testing.T, b *fakeBackend, opts Options) (*Watcher, *fakeCloc
 }
 
 // ungatedMarker lets a test ask for no watch dirs explicitly.
-func (o Options) ungatedMarker() bool { return o.EventBuffer == 1 && o.Parallelism == 1 }
+func (o Options) ungatedMarker() bool { return o.EventBuffer == 17 && o.Parallelism == 1 }
 
 func claudeSession(b *fakeBackend, id string) terminal.Session {
 	b.setVar(id, "path", "/home/me/projects/app")
@@ -311,8 +311,8 @@ func TestUngatedDiscoveryAdmitsSessionsWithoutDir(t *testing.T) {
 	b := newFake()
 	b.setScreen("s1", "✻ Reading…\n")
 	b.setSessions(terminal.Session{ID: "s1", Name: "claude"})
-	// EventBuffer 1 + Parallelism 1 is the test marker for "no WatchDirs".
-	w, _ := newWatcher(t, b, Options{EventBuffer: 1, Parallelism: 1})
+	// EventBuffer 17 + Parallelism 1 is the test marker for "no WatchDirs".
+	w, _ := newWatcher(t, b, Options{EventBuffer: 17, Parallelism: 1})
 	if len(w.opts.WatchDirs) != 0 {
 		t.Fatal("test setup: expected ungated options")
 	}
@@ -1661,5 +1661,240 @@ func TestAgentExitingLeavesNoSession(t *testing.T) {
 		if evs := drain(w.Events()); len(evs) != 0 {
 			t.Fatalf("expected the session to stay gone, got %+v", evs)
 		}
+	}
+}
+
+// panesChanged counts the PanesChanged events buffered, draining the rest.
+func panesChanged(w *Watcher) int {
+	n := 0
+	for _, ev := range drainAll(w.Events()) {
+		if ev.Kind == PanesChanged {
+			n++
+		}
+	}
+	return n
+}
+
+func TestPanesListsEveryPane(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	agentPane := claudeSession(b.fakeBackend, "iterm:s1")
+	agentPane.Source = "iterm"
+	shell := terminal.Session{ID: "iterm:s2", Name: "zsh", Job: "zsh", Source: "iterm"}
+	b.setListing([]string{"iterm"}, nil, agentPane, shell)
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+
+	if got := w.Panes(); got != nil {
+		t.Fatalf("Panes before a pass = %+v, want nil", got)
+	}
+	w.discoverOnce(ctx)
+	got := w.Panes()
+	if len(got) != 2 || got[0] != agentPane || got[1] != shell {
+		t.Fatalf("Panes = %+v, want the agent and the shell in listing order", got)
+	}
+	if n := panesChanged(w); n != 1 {
+		t.Fatalf("first pass: %d PanesChanged, want 1", n)
+	}
+	if len(w.Sessions()) != 1 {
+		t.Fatalf("only the agent pane is a session, got %+v", w.Sessions())
+	}
+
+	got[0].Name = "changed by the caller"
+	if w.Panes()[0] != agentPane {
+		t.Fatal("Panes must return a copy")
+	}
+
+	w.discoverOnce(ctx)
+	if n := panesChanged(w); n != 0 {
+		t.Fatalf("identical pass: %d PanesChanged, want 0", n)
+	}
+}
+
+func TestPanesFirstEmptyPassIsQuiet(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	b.setListing([]string{"iterm"}, nil)
+	w := newListerWatcher(t, b)
+	w.discoverOnce(context.Background())
+	if got := w.Panes(); got == nil || len(got) != 0 {
+		t.Fatalf("Panes after an empty pass = %#v, want empty and non-nil", got)
+	}
+	if n := panesChanged(w); n != 0 {
+		t.Fatalf("%d PanesChanged for an empty listing, want 0", n)
+	}
+}
+
+func TestPanesKeepFailedSource(t *testing.T) {
+	b := &listerFake{fakeBackend: newFake()}
+	tab := terminal.Session{ID: "iterm:s1", Name: "zsh", TTY: "/dev/ttys001", Source: "iterm"}
+	pane := terminal.Session{ID: "%1", Name: "vim", TTY: "/dev/ttys002", Source: "tmux"}
+	b.setListing([]string{"iterm", "tmux"}, nil, tab, pane)
+	// A path under the watch dirs keeps Identify off lsof.
+	for _, id := range []string{"iterm:s1", "%1", "pty:p1"} {
+		b.setVar(id, "path", "/home/me/projects/app")
+	}
+	stubPIDs(t, func() (map[string]string, error) { return map[string]string{}, nil })
+	w := newListerWatcher(t, b)
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	panesChanged(w)
+
+	// iTerm2 fails. Another source lists its pane under its own ID, which
+	// the composite would have dropped had iTerm2 answered.
+	mirror := terminal.Session{ID: "pty:p1", Name: "zsh", TTY: "/dev/ttys001", Source: "pty"}
+	b.setListing([]string{"tmux", "pty"}, []string{"iterm"}, pane, mirror)
+	w.discoverOnce(ctx)
+	got := w.Panes()
+	if len(got) != 2 || got[0] != pane || got[1] != tab {
+		t.Fatalf("Panes = %+v, want tmux's pane and iTerm2's kept tab", got)
+	}
+	if n := panesChanged(w); n != 0 {
+		t.Fatalf("%d PanesChanged while a source fails, want 0", n)
+	}
+
+	// The whole listing fails: everything is kept.
+	b.mu.Lock()
+	b.listErr = errors.New("down")
+	b.mu.Unlock()
+	w.discoverOnce(ctx)
+	if got := w.Panes(); len(got) != 2 || got[0] != pane || got[1] != tab {
+		t.Fatalf("Panes after a failed listing = %+v", got)
+	}
+	if n := panesChanged(w); n != 0 {
+		t.Fatalf("%d PanesChanged after a failed listing, want 0", n)
+	}
+}
+
+func TestTabMoveUpdatesSessionAndFiresPanesChanged(t *testing.T) {
+	b := newFake()
+	s := claudeSession(b, "s1")
+	s.Window = terminal.Place{ID: "w1", Index: 0}
+	s.Tab = terminal.Place{ID: "t1", Title: "✳ Editing main.go", Index: 2}
+	b.setSessions(s)
+	w, _ := newWatcher(t, b, Options{})
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	w.discoverOnce(ctx) // the first Refresh reports activity; settle it
+	drainAll(w.Events())
+
+	// Dragged into another window, where it's the only tab.
+	s.Window = terminal.Place{ID: "w2", Index: 1}
+	s.Tab.Index = 0
+	b.setSessions(s)
+	w.discoverOnce(ctx)
+	evs := drainAll(w.Events())
+	if len(evs) != 1 || evs[0].Kind != PanesChanged {
+		t.Fatalf("want one PanesChanged, got %+v", evs)
+	}
+	snap, ok := w.Session("s1")
+	if !ok || snap.Window != s.Window || snap.Tab != s.Tab {
+		t.Fatalf("snapshot placement = %+v %+v, want %+v %+v", snap.Window, snap.Tab, s.Window, s.Tab)
+	}
+}
+
+func TestSamePanes(t *testing.T) {
+	base := []terminal.Session{
+		{ID: "a", Name: "✳ Fix parser", Job: "claude", Source: "iterm", TTY: "/dev/ttys001",
+			Window: terminal.Place{ID: "w1", Title: "✳ Fix parser", Index: 0},
+			Tab:    terminal.Place{ID: "t1", Title: "✳ Fix parser (claude)", Index: 0}},
+		{ID: "b", Name: "⠋ refactor | atria", Job: "codex", Source: "iterm", TTY: "/dev/ttys002",
+			Window: terminal.Place{ID: "w1", Title: "✳ Fix parser", Index: 0},
+			Tab:    terminal.Place{ID: "t2", Title: "⠋ refactor | atria", Index: 1}},
+	}
+	edit := func(f func(p []terminal.Session) []terminal.Session) []terminal.Session {
+		return f(append([]terminal.Session{}, base...))
+	}
+	tests := []struct {
+		name string
+		next []terminal.Session
+		same bool
+	}{
+		{"identical", edit(func(p []terminal.Session) []terminal.Session { return p }), true},
+		{"reordered", edit(func(p []terminal.Session) []terminal.Session { return []terminal.Session{p[1], p[0]} }), true},
+		{"claude spinner glyph", edit(func(p []terminal.Session) []terminal.Session {
+			p[0].Name, p[0].Tab.Title = "✶ Fix parser", "✶ Fix parser (claude)"
+			return p
+		}), true},
+		{"codex spinner frame", edit(func(p []terminal.Session) []terminal.Session {
+			p[1].Name, p[1].Tab.Title = "⠙ refactor | atria", "⠙ refactor | atria"
+			return p
+		}), true},
+		{"window title follows the selected tab", edit(func(p []terminal.Session) []terminal.Session {
+			p[0].Window.Title, p[1].Window.Title = "⠋ refactor | atria", "⠋ refactor | atria"
+			return p
+		}), true},
+		{"pane added", edit(func(p []terminal.Session) []terminal.Session {
+			return append(p, terminal.Session{ID: "c", Name: "zsh"})
+		}), false},
+		{"pane removed", edit(func(p []terminal.Session) []terminal.Session { return p[:1] }), false},
+		{"pane replaced", edit(func(p []terminal.Session) []terminal.Session {
+			p[1].ID = "c"
+			return p
+		}), false},
+		{"retitled", edit(func(p []terminal.Session) []terminal.Session {
+			p[0].Name = "✳ Write tests"
+			return p
+		}), false},
+		{"tab retitled", edit(func(p []terminal.Session) []terminal.Session {
+			p[1].Tab.Title = "logs"
+			return p
+		}), false},
+		{"job changed", edit(func(p []terminal.Session) []terminal.Session {
+			p[1].Job = "zsh"
+			return p
+		}), false},
+		{"moved to another window", edit(func(p []terminal.Session) []terminal.Session {
+			p[1].Window = terminal.Place{ID: "w2", Index: 1}
+			return p
+		}), false},
+		{"tab reordered", edit(func(p []terminal.Session) []terminal.Session {
+			p[0].Tab.Index, p[1].Tab.Index = 1, 0
+			return p
+		}), false},
+		{"tty changed", edit(func(p []terminal.Session) []terminal.Session {
+			p[0].TTY = "/dev/ttys009"
+			return p
+		}), false},
+	}
+	for _, tt := range tests {
+		if got := samePanes(base, tt.next); got != tt.same {
+			t.Errorf("%s: samePanes = %v, want %v", tt.name, got, tt.same)
+		}
+	}
+}
+
+func TestSamePanesSeesRenamesBeyondTheSpinner(t *testing.T) {
+	// Only the animated glyph is ignored. Renames ExtractActivity would
+	// hide (a bare product name, an agent-binary suffix) still count.
+	tests := []struct {
+		name     string
+		from, to terminal.Session
+	}{
+		{"product name to product name",
+			terminal.Session{ID: "a", Name: "claude"}, terminal.Session{ID: "a", Name: "codex"}},
+		{"agent suffix dropped",
+			terminal.Session{ID: "a", Name: "Fix parser (claude)", Job: "claude"}, terminal.Session{ID: "a", Name: "Fix parser", Job: "claude"}},
+		{"tab between product names",
+			terminal.Session{ID: "a", Tab: terminal.Place{ID: "t1", Title: "✳ Claude Code"}},
+			terminal.Session{ID: "a", Tab: terminal.Place{ID: "t1", Title: "✳ Codex"}}},
+	}
+	for _, tt := range tests {
+		if samePanes([]terminal.Session{tt.from}, []terminal.Session{tt.to}) {
+			t.Errorf("%s: %q -> %q compared equal", tt.name, tt.from.Name+tt.from.Tab.Title, tt.to.Name+tt.to.Tab.Title)
+		}
+	}
+}
+
+func TestSamePanesRepeatedID(t *testing.T) {
+	// A tmux window linked into two sessions lists its pane under each.
+	linked := []terminal.Session{
+		{ID: "%1", Source: "tmux", Window: terminal.Place{ID: "$0", Index: 0}, Tab: terminal.Place{ID: "@1", Index: 1}},
+		{ID: "%1", Source: "tmux", Window: terminal.Place{ID: "$1", Index: 1}, Tab: terminal.Place{ID: "@1", Index: 2}},
+	}
+	if !samePanes(linked, append([]terminal.Session{}, linked...)) {
+		t.Fatal("identical rows under one ID should compare equal")
+	}
+	unlinked := []terminal.Session{linked[0], linked[0]}
+	if samePanes(linked, unlinked) {
+		t.Fatal("a row under a repeated ID changing should compare unequal")
 	}
 }

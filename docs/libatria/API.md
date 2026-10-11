@@ -329,6 +329,7 @@ func Installed() []Type
 
 func Detect(name string) Type
 func ExtractActivity(name, job string) string
+func TrimSpinner(title string) string
 func ClassifyOutput(line string, t Type) Status
 func ClassifyScreen(screen string, t Type) (Status, string)
 func PromptText(screen string, t Type) string
@@ -368,6 +369,8 @@ A dialog without numbered options, like Claude's folder-trust screen, gets the n
 `ExtractActivity` returns the activity text in a title, or `""` when the title is only a product name. It strips a leading agent glyph, including the braille spinner frame (U+2800 to U+28FF) that Codex puts on its title while a turn runs, so the text doesn't change from frame to frame.
 
 Some terminals, iTerm2 among them, append the foreground job to the title, so a trailing parenthetical is stripped only when it names `job` or an agent binary. Pass the session's `Job` as `job`, or `""` when the terminal doesn't report one. A title's own parenthetical, as in `✳ Fix parser (phase 2)`, is kept.
+
+`TrimSpinner` strips only the leading glyph an agent animates: Claude Code's glyph (`✳` while idle, a spinner glyph while it works), then a Codex braille frame, and the spaces after it. Compare titles with it when you want to ignore the animation but still see a rename; `ExtractActivity` also drops product names and job suffixes, so `claude` and `codex` both come back `""` from it.
 
 `PatternsFor` returns the registry's own entry; don't modify the struct, its slices, or the regular expressions. There's no way to register a new agent type in this version.
 
@@ -517,7 +520,7 @@ type Options struct {
     Logf              func(format string, args ...any)
 }
 
-type EventKind int    // SessionAdded, SessionRemoved, StatusChanged, ActivityChanged, TypeChanged, ScreenRead, Error, StatusKnown
+type EventKind int    // SessionAdded, SessionRemoved, StatusChanged, ActivityChanged, TypeChanged, ScreenRead, Error, StatusKnown, PanesChanged
 type RemoveReason int // RemovedGone, RemovedOrphan, RemovedOutOfScope
 
 type Snapshot struct {
@@ -552,6 +555,7 @@ func (w *Watcher) Run(ctx context.Context) error
 func (w *Watcher) Events() <-chan Event
 func (w *Watcher) Sessions() []Snapshot
 func (w *Watcher) Session(id string) (Snapshot, bool)
+func (w *Watcher) Panes() []terminal.Session
 ```
 
 `Run` blocks until the context is cancelled and closes `Events` on return. Calling it twice returns `ErrAlreadyRunning`. On each discovery tick it lists sessions, refreshes tracked ones, identifies new ones, and removes sessions that are gone or orphaned. On each poll tick it reads the screen of every session whose interval has elapsed, `ActiveInterval` for working, needs_input, and error, `IdleInterval` otherwise. New sessions start as working, matching what atria does, with `Snapshot.StatusKnown` false until the first successful screen read. That read sets it even when it matches no pattern.
@@ -580,7 +584,7 @@ A session removed as an orphan waits the same way, so a pane whose scrollback st
 
 An agent that starts in a plain shell changes the title or the process list, and from then on the session is identified on every pass for about 10 seconds, because a new agent may not have drawn anything recognisable yet. A new session gets the same window. In ungated mode, where `Identify` resolves the agent process, a session whose process is an agent but whose title and screen don't say so yet isn't remembered at all. Neither is a failed screen read.
 
-Events for one session arrive in causal order, with `SessionAdded` first, `StatusKnown` before any `StatusChanged`, and `SessionRemoved` last. Sends block when the buffer is full. Nothing is dropped while `Run` is live, and a slow consumer pauses polling until it catches up. Backpressure was chosen over dropping because a lost needs_input event leaves an agent waiting until someone notices. Every send also selects on the context, so cancelling it unblocks delivery even with a full buffer and a consumer that has stopped reading, and `Run` returns once in-flight backend calls finish. A send racing with cancellation may still succeed, and events already buffered stay readable after `Run` closes the channel. Events are sent outside the Watcher's lock, so `Sessions()` and `Session()` never wait on a blocked send.
+Events for one session arrive in causal order, with `SessionAdded` first, `StatusKnown` before any `StatusChanged`, and `SessionRemoved` last. Sends block when the buffer is full. Nothing is dropped while `Run` is live, and a slow consumer pauses polling until it catches up. Backpressure was chosen over dropping because a lost needs_input event leaves an agent waiting until someone notices. Every send also selects on the context, so cancelling it unblocks delivery even with a full buffer and a consumer that has stopped reading, and `Run` returns once in-flight backend calls finish. A send racing with cancellation may still succeed, and events already buffered stay readable after `Run` closes the channel. Events are sent outside the Watcher's lock, so `Sessions()`, `Session()`, and `Panes()` never wait on a blocked send.
 
 `ScreenRead` events are off by default because they fire on every poll. `Parallelism` bounds concurrent `ReadScreen` and `Identify` calls; every non-PTY backend spends a subprocess or a socket round trip per read, so unbounded fan-out across many sessions is process pressure you can feel.
 
@@ -590,9 +594,15 @@ Bell delivery is the same on both paths. The plain path gets the bell inside the
 
 `Snapshot.Process` is resolved when the session is added and again whenever it might have gone stale: when `Refresh` reports the session was retyped (the user quit one agent and started another in the same pane) and when the recorded PID no longer exists. The stale value is cleared first, so a `Process` with a non-zero `PID` is one the Watcher has seen alive. Call `ResolveProcess` yourself when you can't wait for the next tick.
 
-Terminal loss: with a `terminal.Lister` backend (the composite and the cache are both), every failed source keeps its sessions while the rest proceed, the primary included. Each gets one `Error` event per pass with a zero `Session`, and `errors.As` into a `*terminal.SourceError` names it.
+`Panes` returns every pane from the last successful discovery pass in listing order, agent sessions or not: what the backend listed, after the composite's filters and `Filter`. Use it for a view of all tabs, without listing the terminals again. It's nil before the first pass.
 
-Other backends fall back to `FailureReporter`, whose failed sources keep their sessions without an event, and a failed `ListSessions` emits one `Error` and leaves every tracked session as it was. A failed `ReadScreen` emits `Error` for that session and changes nothing. Check `errors.Is(ev.Err, terminal.ErrUnavailable)` to tell a lost terminal from an ordinary read error. When the terminal comes back, retained sessions resume on the next successful tick, and sessions that really ended are removed as `RemovedGone`.
+`PanesChanged` says when to read `Panes` again. It's the last event of a discovery pass whose panes differ from the previous pass's: a pane added or removed, or one's title, job, TTY, window, or tab changed. It carries only `Time`. A tab dragged to another window fires it, and the session's snapshot shows the new `Window` and `Tab`; there's no per-session event for a move.
+
+A title that changes only its agent spinner glyph doesn't count, or every working agent would fire it on every pass. Window titles aren't compared at all, because iTerm2 and WezTerm report the selected tab's title there, so a renamed tmux session shows up with the next change that does fire it.
+
+Terminal loss: with a `terminal.Lister` backend (the composite and the cache are both), every failed source keeps its sessions, and its panes in `Panes`, while the rest proceed, the primary included. Each gets one `Error` event per pass with a zero `Session`, and `errors.As` into a `*terminal.SourceError` names it.
+
+Other backends fall back to `FailureReporter`, whose failed sources keep their sessions without an event, and a failed `ListSessions` emits one `Error` and leaves every tracked session, and `Panes`, as it was. A failed `ReadScreen` emits `Error` for that session and changes nothing. Check `errors.Is(ev.Err, terminal.ErrUnavailable)` to tell a lost terminal from an ordinary read error. When the terminal comes back, retained sessions resume on the next successful tick, and sessions that really ended are removed as `RemovedGone`.
 
 The Watcher tolerates the backend changing under it. `Stack.Enable`, `Disable`, and `Reprobe` can run while it polls; sessions whose IDs change role are removed and rediscovered under the new ID.
 

@@ -92,6 +92,8 @@ type Watcher struct {
 	listed    bool              // a listing has succeeded
 	answering map[string]bool   // sources that have answered since they were last absent
 	pending   map[string]string // baseline sessions Identify hasn't decided yet, by ID, with their source
+
+	panes []terminal.Session // every pane of the last successful listing; see updatePanes
 }
 
 // ruledOut is what a listed session looked like when Identify last ruled it
@@ -239,6 +241,20 @@ func (w *Watcher) Session(id string) (Snapshot, bool) {
 	return t.snapshot(), true
 }
 
+// Panes returns every pane from the last successful discovery pass, agent
+// sessions or not, in listing order: what the backend listed after the
+// composite's filters and Options.Filter. A source that failed in that pass
+// keeps the panes it had. Panes is nil before the first successful pass.
+// A PanesChanged event says when to read it again.
+func (w *Watcher) Panes() []terminal.Session {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.panes == nil {
+		return nil
+	}
+	return append([]terminal.Session{}, w.panes...)
+}
+
 // statusKnown builds the StatusKnown event for a session's first screen
 // read; line is that read's Transition.MatchLine.
 func (t *tracked) statusKnown(now time.Time, line string) Event {
@@ -305,12 +321,14 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 	}
 
 	live := make(map[string]terminal.Session, len(listing.Sessions))
+	listed := make([]terminal.Session, 0, len(listing.Sessions))
 	var candidates []terminal.Session
 	for _, s := range listing.Sessions {
 		if w.opts.Filter != nil && !w.opts.Filter(s) {
 			continue
 		}
 		live[s.ID] = s
+		listed = append(listed, s)
 	}
 
 	var reresolve []*tracked
@@ -354,6 +372,7 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 		}
 	}
 	w.markBaseline(listing, failed, live)
+	panesChanged := w.updatePanes(listed, failed)
 	// A session removed in this pass is not a candidate in this pass; it can
 	// be identified afresh on the next one if it is still listed. Nor is one
 	// on the TTY of a session kept because its source failed: the composite
@@ -506,7 +525,89 @@ func (w *Watcher) discoverOnce(ctx context.Context) bool {
 		}
 	}
 	w.mu.Unlock()
+	if panesChanged {
+		events = append(events, Event{Kind: PanesChanged, Time: now})
+	}
 	return w.emit(ctx, events)
+}
+
+// updatePanes replaces w.panes with this pass's listed panes and reports
+// whether they differ from the last pass's (see paneKey). A failed source
+// keeps its previous panes, as it keeps its tracked sessions, and a pane
+// another source lists on one of their TTYs is dropped: the composite dedups
+// by TTY only within a listing. Caller holds w.mu.
+func (w *Watcher) updatePanes(listed []terminal.Session, failed map[string]bool) bool {
+	var kept []terminal.Session
+	keptTTY := map[string]bool{}
+	for _, p := range w.panes {
+		if failed[p.Source] {
+			kept = append(kept, p)
+			if p.TTY != "" {
+				keptTTY[p.TTY] = true
+			}
+		}
+	}
+	panes := make([]terminal.Session, 0, len(listed)+len(kept))
+	for _, s := range listed {
+		if s.TTY == "" || !keptTTY[s.TTY] {
+			panes = append(panes, s)
+		}
+	}
+	panes = append(panes, kept...)
+	changed := !samePanes(w.panes, panes)
+	w.panes = panes
+	return changed
+}
+
+// paneKey is what PanesChanged compares for one pane. Titles are compared
+// after agent.TrimSpinner, without Claude's glyph or Codex's spinner frame,
+// or a working agent would fire it on every pass; tab titles too, because
+// iTerm2 and WezTerm derive them from the active pane's title. Nothing else
+// is stripped, so any other rename counts.
+// Window titles are left out: most terminals report the selected tab's
+// title there, which changes on every tab switch. A renamed tmux session
+// (its window title) therefore shows up with the next change that fires the
+// event, not on its own.
+type paneKey struct {
+	source, tty, job, name string
+	windowID, tabID        string
+	windowIndex, tabIndex  int
+	tabTitle               string
+}
+
+func keyOf(s terminal.Session) paneKey {
+	return paneKey{
+		source:      s.Source,
+		tty:         s.TTY,
+		job:         s.Job,
+		name:        agent.TrimSpinner(s.Name),
+		windowID:    s.Window.ID,
+		tabID:       s.Tab.ID,
+		windowIndex: s.Window.Index,
+		tabIndex:    s.Tab.Index,
+		tabTitle:    agent.TrimSpinner(s.Tab.Title),
+	}
+}
+
+// samePanes reports whether two listings hold the same panes by ID and
+// paneKey, whatever their order. An ID listed more than once (a tmux window
+// linked into several sessions) compares its rows in listing order.
+func samePanes(a, b []terminal.Session) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	keys := make(map[string][]paneKey, len(a))
+	for _, s := range a {
+		keys[s.ID] = append(keys[s.ID], keyOf(s))
+	}
+	for _, s := range b {
+		k := keys[s.ID]
+		if len(k) == 0 || k[0] != keyOf(s) {
+			return false
+		}
+		keys[s.ID] = k[1:]
+	}
+	return true
 }
 
 // list returns one listing and the sources that failed while producing it.

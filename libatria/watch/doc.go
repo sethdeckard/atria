@@ -30,7 +30,9 @@
 //
 // Watcher's accessors are safe for concurrent use with Run, and the backend
 // may change underneath it (integrations enabled, disabled, or re-probed)
-// between ticks.
+// between ticks. Sessions returns the agent sessions it tracks; Panes
+// returns every pane of the last listing, agent or not, and a PanesChanged
+// event says when that listing changed.
 //
 // Known limitations. Process liveness is checked with kill(pid, 0), which
 // reports a zombie or a reused PID as alive; a batched ps per tick would be

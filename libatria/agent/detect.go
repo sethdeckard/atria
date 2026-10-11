@@ -48,15 +48,7 @@ func Detect(name string) Type {
 // informational; Claude Code updates its title while idle, so a change here
 // says nothing about status.
 func ExtractActivity(name, job string) string {
-	s := name
-
-	// Strip the Claude prefix glyph (with optional trailing space).
-	if prefix := claudePrefix(s); prefix != "" {
-		s = strings.TrimPrefix(s, prefix)
-		s = strings.TrimLeft(s, " ")
-	}
-
-	s = trimSpinnerFrame(s)
+	s := TrimSpinner(name)
 
 	// Strip "OC | " prefix for OpenCode sessions.
 	s = strings.TrimPrefix(s, "OC | ")
@@ -100,6 +92,19 @@ func namesJob(suffix, job string) bool {
 		}
 	}
 	return false
+}
+
+// TrimSpinner strips the leading glyph an agent animates in its title, and
+// the spaces after it: Claude Code's glyph (✳ while idle, a spinner glyph
+// while it works), then a Codex braille spinner frame. Nothing else in the
+// title changes, so two titles that differ only in that frame compare equal
+// after it, while any other rename still shows.
+func TrimSpinner(title string) string {
+	s := title
+	if prefix := claudePrefix(s); prefix != "" {
+		s = strings.TrimLeft(strings.TrimPrefix(s, prefix), " ")
+	}
+	return trimSpinnerFrame(s)
 }
 
 // trimSpinnerFrame strips one leading braille character (U+2800–U+28FF) and
