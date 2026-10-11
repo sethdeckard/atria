@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0
+
+- Fix a tab that kept an agent's title or scrollback after the agent exited, as iTerm2's restored tabs do, being tracked as an agent, in atria and in the library: an agent process on the TTY now confirms a session. When the TTY's processes can be listed and none is an agent, `watch.Identify` skips the session with the new `SkipNoAgentProcess` (`SkipShellOnly` for a shell). ssh, mosh, et, tmux, screen, zellij, docker, podman, kubectl, and nerdctl clients, and `node`, `bun`, or `deno` running a script that isn't named after the agent, still leave it to the title and screen
+- The library's Watcher removes a tracked session as `RemovedOrphan` once its TTY no longer runs an agent; a tab running a long-lived program over an old agent banner used to stay tracked, because its output kept it working and the orphan rule waits for idle
+- Fix the library's Watcher adding a pane back on the pass after removing it as an orphan, then removing it again a few passes later, so callers saw `SessionAdded` and `SessionRemoved` every ~10 seconds; it now waits, as for any ruled-out session, until the pane's title, job, TTY, or TTY processes change, or `RecheckInterval` passes
+- `agent.FindProcess` recognizes an agent run under `node`, `bun`, or `deno`, as an npm install runs (`node /opt/homebrew/bin/claude`), and `terminal.ProcessesOnTTY` keeps an executable path containing spaces in one piece; when the second `ps` read that does this fails, `ProcessesOnTTY` returns an error
+- Fix WezTerm's unavailable reason including WezTerm's own log timestamp, which made it change on every reprobe
+- Requires Go 1.26.9
+
 ## v0.10.1
 
 - Fix a session's attention text showing a dialog's key hints instead of its question: dialogs detected by a footer or button row (Claude's `Esc to cancel`, Codex's `Press enter to confirm`) set `Attention` to that row, in atria's chat view, in `watch.Snapshot.Attention`, and in the `MatchLine` of needs_input events. It's now the question above the dialog's options, joined back together when it wrapped, through the new `agent.PromptText`, and the matched row when no question is found. Status detection is unchanged
