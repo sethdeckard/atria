@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.12.0
+
+- Add `Window` and `Tab` to `terminal.Session`, each a `terminal.Place` (ID, title, and position among its siblings), so a caller can group a listing by terminal, window, and tab. iTerm2, tmux (session as window, window as tab), DeviceTerm, WezTerm, and kitty fill them in; split panes share a tab, and the zero `Place` means the terminal can't say. A window's title is often whatever its selected tab shows, so label windows by position and treat the title as a hint. iTerm2 makes one more request per window and per tab for their titles
+- Add `Watcher.Panes` to the library: every pane of the last listing, agent sessions or not, so a view of all tabs doesn't have to list the terminals again; a source that fails keeps its panes, as it keeps its sessions
+- Add the `PanesChanged` event, sent at the end of a discovery pass whose panes differ from the last one's: a pane added or removed, or one's title, job, TTY, window, or tab changed. A tab dragged to another window sends it, and the session's snapshot shows the new window. A title that changes only its spinner glyph doesn't count, and window titles aren't compared, so a renamed tmux session shows up with the next change that does. Callers that switch on `EventKind` will see this new kind
+- Add `agent.TrimSpinner`, which strips only the leading glyph Claude Code and Codex animate in their titles; `ExtractActivity` uses it, and its results are unchanged
+
 ## v0.11.0
 
 - Fix a tab that kept an agent's title or scrollback after the agent exited, as iTerm2's restored tabs do, being tracked as an agent, in atria and in the library: an agent process on the TTY now confirms a session. When the TTY's processes can be listed and none is an agent, `watch.Identify` skips the session with the new `SkipNoAgentProcess` (`SkipShellOnly` for a shell). ssh, mosh, et, tmux, screen, zellij, docker, podman, kubectl, and nerdctl clients, and `node`, `bun`, or `deno` running a script that isn't named after the agent, still leave it to the title and screen
