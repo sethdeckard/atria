@@ -110,6 +110,54 @@ func TestParseListOutput(t *testing.T) {
 	}
 }
 
+func TestSessionsFromEntriesFillsPlacement(t *testing.T) {
+	// Window 0 holds a split tab without its own title and a titled tab;
+	// window 3 holds one tab.
+	data := `[
+	  {"window_id":0,"tab_id":0,"pane_id":0,"title":"✳ Claude Code","tty_name":"/dev/ttys001","window_title":"✳ Claude Code","tab_title":"","is_active":false},
+	  {"window_id":0,"tab_id":0,"pane_id":1,"title":"zsh","tty_name":"/dev/ttys002","window_title":"✳ Claude Code","tab_title":"","is_active":true},
+	  {"window_id":0,"tab_id":4,"pane_id":5,"title":"htop","tty_name":"/dev/ttys003","window_title":"✳ Claude Code","tab_title":"monitor","is_active":true},
+	  {"window_id":3,"tab_id":7,"pane_id":8,"title":"vim","tty_name":"/dev/ttys004","window_title":"vim","tab_title":"","is_active":true}
+	]`
+	entries, err := parseListOutput([]byte(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := sessionsFromEntries(entries)
+
+	w0 := terminal.Place{ID: "0", Title: "✳ Claude Code", Index: 0}
+	split := terminal.Place{ID: "0", Title: "zsh", Index: 0}
+	want := []struct {
+		id          string
+		window, tab terminal.Place
+	}{
+		{"0", w0, split},
+		{"1", w0, split},
+		{"5", w0, terminal.Place{ID: "4", Title: "monitor", Index: 1}},
+		{"8", terminal.Place{ID: "3", Title: "vim", Index: 1}, terminal.Place{ID: "7", Title: "vim", Index: 0}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d sessions, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].ID != w.id || got[i].Window != w.window || got[i].Tab != w.tab {
+			t.Errorf("session %d = %s %+v %+v, want %s %+v %+v", i, got[i].ID, got[i].Window, got[i].Tab, w.id, w.window, w.tab)
+		}
+	}
+}
+
+func TestSessionsFromEntriesOlderWezTerm(t *testing.T) {
+	// Before window_title, tab_title, and is_active: ids and order only.
+	entries, err := parseListOutput([]byte(`[{"window_id":2,"tab_id":5,"pane_id":9,"title":"zsh"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := sessionsFromEntries(entries)
+	if len(got) != 1 || got[0].Window != (terminal.Place{ID: "2"}) || got[0].Tab != (terminal.Place{ID: "5"}) {
+		t.Fatalf("got %+v, want untitled window 2 and tab 5", got)
+	}
+}
+
 func TestParseListOutputInvalidJSON(t *testing.T) {
 	_, err := parseListOutput([]byte("not json"))
 	if err == nil {

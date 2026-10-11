@@ -297,11 +297,15 @@ func (c *Client) Available() error {
 
 // workspacePane is the subset of a WorkspacePane row Atria reads. Exactly one
 // of the kind-specific objects is present; only terminal panes are sessions.
-// Row context fields (tabId, tabTitle, windowId, focused, …) are ignored.
+// Of the row context fields, the window and tab are read and the rest
+// (focused, capabilities, …) are ignored.
 type workspacePane struct {
 	ID       string        `json:"id"`
 	Name     string        `json:"name"`
 	Kind     string        `json:"kind"`
+	WindowID string        `json:"windowId"`
+	TabID    string        `json:"tabId"`
+	TabTitle string        `json:"tabTitle"`
 	Terminal *paneTerminal `json:"terminal"`
 }
 
@@ -329,17 +333,37 @@ func parsePaneList(data []byte) ([]workspacePane, error) {
 // sessionsFromPanes maps terminal panes to sessions and collects their
 // working directories. Each pane carries its own title and tty, so the
 // composite's TTY-based self filter and dedup apply without help from here.
+// Windows and tabs are numbered in order of first appearance over every row,
+// so a tab of simulators still holds its position. DeviceTerm reports no
+// window title.
 func sessionsFromPanes(panes []workspacePane) ([]terminal.Session, map[string]string) {
 	var sessions []terminal.Session
 	cwd := make(map[string]string)
+	windows := map[string]int{}  // window id -> index
+	tabs := map[string]int{}     // tab id -> index within its window
+	tabCount := map[string]int{} // window id -> tabs seen
 	for _, p := range panes {
+		var win, tab terminal.Place
+		if p.WindowID != "" && p.TabID != "" {
+			if _, ok := windows[p.WindowID]; !ok {
+				windows[p.WindowID] = len(windows)
+			}
+			if _, ok := tabs[p.TabID]; !ok {
+				tabs[p.TabID] = tabCount[p.WindowID]
+				tabCount[p.WindowID]++
+			}
+			win = terminal.Place{ID: p.WindowID, Index: windows[p.WindowID]}
+			tab = terminal.Place{ID: p.TabID, Title: p.TabTitle, Index: tabs[p.TabID]}
+		}
 		if p.Kind != "terminal" || p.Terminal == nil || p.ID == "" {
 			continue
 		}
 		sessions = append(sessions, terminal.Session{
-			ID:   p.ID,
-			Name: p.Terminal.Title,
-			TTY:  p.Terminal.TTY,
+			ID:     p.ID,
+			Name:   p.Terminal.Title,
+			TTY:    p.Terminal.TTY,
+			Window: win,
+			Tab:    tab,
 		})
 		cwd[p.ID] = p.Terminal.CWD
 	}

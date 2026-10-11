@@ -7,6 +7,20 @@ type Session struct {
 	TTY    string
 	Job    string
 	Source string // "pty", "iterm", "tmux" — set by composite backend
+	Window Place  // the window holding the pane; zero when the backend can't say
+	Tab    Place  // the tab within that window, shared by its split panes; zero when the backend can't say
+}
+
+// Place is a window or tab as a terminal lists it. The zero Place means the
+// backend can't say; Index is meaningful only when ID is set.
+//
+// A window's Title is often whatever its selected tab or active pane shows
+// (iTerm2, WezTerm), so it changes with them: label windows by Index and
+// treat the title as a hint. For tmux it is the session name.
+type Place struct {
+	ID    string // stable while it exists, unique among its Source's windows (or tabs)
+	Title string // as the terminal reports it; may be empty
+	Index int    // 0-based position among its siblings, in listing order
 }
 
 // Backend defines the interface for interacting with a terminal multiplexer.

@@ -91,7 +91,7 @@ func TestGrantState(t *testing.T) {
 
 // paneListMixed is a `pane list --all --json` payload: a split tab holding
 // Claude and Codex, a tab whose terminal has no tty yet, a simulator, a
-// device, and an unknown kind. Row context fields are present and ignored.
+// device, and an unknown kind, with the row context fields DeviceTerm sends.
 const paneListMixed = `[
   {"id":"p-claude","shortId":"a1b2c3","kind":"terminal","tabId":"t1","tabTitle":"✳ Claude Code","windowId":"w1",
    "current":false,"focused":true,"capabilities":["sendInput","captureText"],
@@ -168,6 +168,48 @@ func TestSessionsFromPanes(t *testing.T) {
 	}
 	if _, ok := cwd["p-sim"]; ok {
 		t.Errorf("simulator pane should not be in cwd map")
+	}
+}
+
+// paneListPlaced has a split tab and a second tab in w1, then w2 with a
+// simulator tab ahead of a terminal tab.
+const paneListPlaced = `[
+  {"id":"p-a","kind":"terminal","tabId":"t1","tabTitle":"✳ Claude Code","windowId":"w1","terminal":{"title":"✳ Claude Code","tty":"/dev/ttys004"}},
+  {"id":"p-b","kind":"terminal","tabId":"t1","tabTitle":"✳ Claude Code","windowId":"w1","terminal":{"title":"zsh","tty":"/dev/ttys005"}},
+  {"id":"p-c","kind":"terminal","tabId":"t2","tabTitle":"logs","windowId":"w1","terminal":{"title":"tail","tty":"/dev/ttys006"}},
+  {"id":"p-sim","kind":"simulator","tabId":"t3","tabTitle":"iPhone 17","windowId":"w2","simulator":{"udid":"abc"}},
+  {"id":"p-d","kind":"terminal","tabId":"t4","tabTitle":"shell","windowId":"w2","terminal":{"title":"zsh","tty":"/dev/ttys007"}},
+  {"id":"p-e","kind":"terminal","terminal":{"title":"loose","tty":"/dev/ttys008"}}
+]`
+
+func TestSessionsFromPanesFillsPlacement(t *testing.T) {
+	panes, err := parsePaneList([]byte(paneListPlaced))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions, _ := sessionsFromPanes(panes)
+
+	w1 := terminal.Place{ID: "w1", Index: 0}
+	w2 := terminal.Place{ID: "w2", Index: 1}
+	split := terminal.Place{ID: "t1", Title: "✳ Claude Code", Index: 0}
+	want := []struct {
+		id          string
+		window, tab terminal.Place
+	}{
+		{"p-a", w1, split},
+		{"p-b", w1, split},
+		{"p-c", w1, terminal.Place{ID: "t2", Title: "logs", Index: 1}},
+		{"p-d", w2, terminal.Place{ID: "t4", Title: "shell", Index: 1}},
+		{"p-e", terminal.Place{}, terminal.Place{}},
+	}
+	if len(sessions) != len(want) {
+		t.Fatalf("len(sessions) = %d, want %d: %+v", len(sessions), len(want), sessions)
+	}
+	for i, w := range want {
+		s := sessions[i]
+		if s.ID != w.id || s.Window != w.window || s.Tab != w.tab {
+			t.Errorf("sessions[%d] = %s %+v %+v, want %s %+v %+v", i, s.ID, s.Window, s.Tab, w.id, w.window, w.tab)
+		}
 	}
 }
 

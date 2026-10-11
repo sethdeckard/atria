@@ -117,6 +117,12 @@ type listEntry struct {
 	Title     string `json:"title"`
 	CWD       string `json:"cwd"`
 	TTYName   string `json:"tty_name"`
+	// WindowTitle, TabTitle, and IsActive are absent from older WezTerm
+	// releases and decode empty. TabTitle is empty too unless the tab was
+	// given a title of its own.
+	WindowTitle string `json:"window_title"`
+	TabTitle    string `json:"tab_title"`
+	IsActive    bool   `json:"is_active"`
 }
 
 // parseListOutput parses the flat JSON array from wezterm cli list.
@@ -169,15 +175,46 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	return sessionsFromEntries(entries), nil
+}
+
+// sessionsFromEntries maps list entries to sessions. Windows and tabs are
+// numbered in order of first appearance, which is WezTerm's own order. A tab
+// without a title of its own takes its active pane's title, as WezTerm's tab
+// bar shows it, when the listing marks a pane active; otherwise its title
+// stays empty.
+func sessionsFromEntries(entries []listEntry) []terminal.Session {
+	activeTitle := map[int]string{} // tab id -> its active pane's title
+	for _, e := range entries {
+		if e.IsActive {
+			activeTitle[e.TabID] = e.Title
+		}
+	}
+	windows := map[int]int{}  // window id -> index
+	tabs := map[int]int{}     // tab id -> index within its window
+	tabCount := map[int]int{} // window id -> tabs seen
 	sessions := make([]terminal.Session, 0, len(entries))
 	for _, e := range entries {
+		if _, ok := windows[e.WindowID]; !ok {
+			windows[e.WindowID] = len(windows)
+		}
+		if _, ok := tabs[e.TabID]; !ok {
+			tabs[e.TabID] = tabCount[e.WindowID]
+			tabCount[e.WindowID]++
+		}
+		tabTitle := e.TabTitle
+		if tabTitle == "" {
+			tabTitle = activeTitle[e.TabID]
+		}
 		sessions = append(sessions, terminal.Session{
-			ID:   strconv.Itoa(e.PaneID),
-			Name: e.Title,
-			TTY:  e.TTYName,
+			ID:     strconv.Itoa(e.PaneID),
+			Name:   e.Title,
+			TTY:    e.TTYName,
+			Window: terminal.Place{ID: strconv.Itoa(e.WindowID), Title: e.WindowTitle, Index: windows[e.WindowID]},
+			Tab:    terminal.Place{ID: strconv.Itoa(e.TabID), Title: tabTitle, Index: tabs[e.TabID]},
 		})
 	}
-	return sessions, nil
+	return sessions
 }
 
 // NewSession launches a new window in WezTerm and returns its pane ID.

@@ -113,11 +113,12 @@ func (c *Client) Available() error {
 	return nil
 }
 
-// ListSessions returns all panes in the tmux server as terminal sessions.
+// ListSessions returns all panes in the tmux server as terminal sessions,
+// each with its tmux session as the Window and its tmux window as the Tab.
 // Returns an empty list when no tmux server is running.
 func (c *Client) ListSessions() ([]terminal.Session, error) {
 	out, err := c.run("list-panes", "-a",
-		"-F", "#{pane_id}\t#{pane_title}\t#{window_name}\t#{pane_tty}")
+		"-F", paneFormat)
 	if err != nil {
 		if isNoServerError(err) {
 			return nil, nil
@@ -211,14 +212,26 @@ func chooseSessionName(paneTitle, windowName string) string {
 	}
 }
 
+// paneFormat is the list-panes format parsePaneList reads. Fields added
+// later go at the end, so older fields keep their positions.
+const paneFormat = "#{pane_id}\t#{pane_title}\t#{window_name}\t#{pane_tty}" +
+	"\t#{session_id}\t#{session_name}\t#{window_id}"
+
 // parsePaneList parses tab-separated list-panes output into terminal sessions.
+// Window and tab indexes are positions in order of first appearance, which
+// follows tmux's own order: sessions by name, windows by index. A window
+// linked into several sessions is listed under each, with its position in
+// that session.
 func parsePaneList(output string) []terminal.Session {
 	var sessions []terminal.Session
+	windows := map[string]int{}  // tmux session id -> index
+	tabs := map[[2]string]int{}  // tmux session and window id -> index within that session
+	tabCount := map[string]int{} // tmux session id -> tabs seen
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		if line == "" {
 			continue
 		}
-		fields := strings.SplitN(line, "\t", 4)
+		fields := strings.SplitN(line, "\t", 7)
 		if len(fields) < 1 {
 			continue
 		}
@@ -233,6 +246,19 @@ func parsePaneList(output string) []terminal.Session {
 		s.Name = chooseSessionName(paneTitle, windowName)
 		if len(fields) >= 4 {
 			s.TTY = fields[3]
+		}
+		if len(fields) == 7 && fields[4] != "" && fields[6] != "" {
+			sessionID, windowID := fields[4], fields[6]
+			if _, ok := windows[sessionID]; !ok {
+				windows[sessionID] = len(windows)
+			}
+			key := [2]string{sessionID, windowID}
+			if _, ok := tabs[key]; !ok {
+				tabs[key] = tabCount[sessionID]
+				tabCount[sessionID]++
+			}
+			s.Window = terminal.Place{ID: sessionID, Title: fields[5], Index: windows[sessionID]}
+			s.Tab = terminal.Place{ID: windowID, Title: windowName, Index: tabs[key]}
 		}
 		sessions = append(sessions, s)
 	}

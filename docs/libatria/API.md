@@ -83,6 +83,14 @@ type Session struct {
     TTY    string // controlling terminal device, "" when unknown
     Job    string // foreground job name when the backend reports one (iTerm2)
     Source string // "pty", "iterm", "tmux", "kitty", "wezterm", "deviceterm"; set by the composite
+    Window Place  // the window holding the pane; zero when the backend can't say
+    Tab    Place  // the tab within that window, shared by its split panes; zero when the backend can't say
+}
+
+type Place struct {
+    ID    string // stable while it exists, unique among its Source's windows (or tabs)
+    Title string // as the terminal reports it; may be empty
+    Index int    // 0-based position among its siblings, in listing order
 }
 
 type Backend interface {
@@ -121,6 +129,23 @@ func HasBell(text string) bool
 `GetVar` supports `"path"` everywhere and `"pid"` on pty, tmux, and kitty. `MonitorOutput` returns an error from every backend today; it stays on the interface so a consumer that wants log-based monitoring has a place to implement it. `NewCachedBackend` takes a `time.Duration` instead of the current int seconds.
 
 A composite prefixes every integration session's ID with its source and a colon, and leaves the primary's sessions unprefixed. An ID is stable for the life of the session unless the backend changes role (primary to integration or back). `libatria.Stack` reports that as a `RoleChange` so you can rewrite the IDs you hold.
+
+`Window` and `Tab` say where a pane sits, so you can group a listing by terminal, then window, then tab. The zero `Place` means the backend can't say, and `Index` means nothing without an `ID`. Place IDs aren't prefixed; `Source` scopes them.
+
+| Source | Window | Tab |
+|---|---|---|
+| iterm | window: id, title | tab: id, title |
+| tmux | tmux session: id (`$1`), name | tmux window: id (`@3`), name |
+| deviceterm | window: id, no title | tab: id, title |
+| wezterm | window: id, title | tab: id, its own title or else its active pane's |
+| kitty | OS window: id, no title | tab: id, title |
+| pty | zero | zero |
+
+Label windows by `Index` and use the title as a hint. iTerm2 and WezTerm report a window's title as whatever its selected tab or active pane shows, so it changes with them; tmux's is the session name.
+
+iTerm2 asks for each window's and tab's title separately, one request apiece per listing, on top of the one request per session it already makes. A failed request leaves that title empty rather than failing the listing.
+
+A tmux window linked into several sessions is listed under each, with its position in that session, and its panes appear once per session under the same pane ID.
 
 ### Optional Interfaces
 

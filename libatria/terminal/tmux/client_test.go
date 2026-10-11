@@ -128,6 +128,71 @@ func TestParsePaneList(t *testing.T) {
 	}
 }
 
+// Captured from a tmux server with sessions "beta" (windows "one" and a
+// split "two") and "alpha" (window "solo"), created in that order: tmux
+// lists sessions by name.
+const twoSessionPanes = "%3\thost.local\tsolo\t/dev/ttys065\t$1\talpha\t@2\n" +
+	"%0\thost.local\tone\t/dev/ttys061\t$0\tbeta\t@0\n" +
+	"%1\thost.local\ttwo\t/dev/ttys063\t$0\tbeta\t@1\n" +
+	"%2\thost.local\ttwo\t/dev/ttys064\t$0\tbeta\t@1\n"
+
+func TestParsePaneListFillsPlacement(t *testing.T) {
+	alpha := terminal.Place{ID: "$1", Title: "alpha", Index: 0}
+	beta := terminal.Place{ID: "$0", Title: "beta", Index: 1}
+	two := terminal.Place{ID: "@1", Title: "two", Index: 1}
+	want := []struct {
+		id          string
+		window, tab terminal.Place
+	}{
+		{"%3", alpha, terminal.Place{ID: "@2", Title: "solo", Index: 0}},
+		{"%0", beta, terminal.Place{ID: "@0", Title: "one", Index: 0}},
+		{"%1", beta, two},
+		{"%2", beta, two},
+	}
+	got := parsePaneList(twoSessionPanes)
+	if len(got) != len(want) {
+		t.Fatalf("got %d sessions, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].ID != w.id || got[i].Window != w.window || got[i].Tab != w.tab {
+			t.Errorf("pane %d = %s %+v %+v, want %s %+v %+v", i, got[i].ID, got[i].Window, got[i].Tab, w.id, w.window, w.tab)
+		}
+	}
+}
+
+func TestParsePaneListLinkedWindow(t *testing.T) {
+	// Captured after linking alpha's window a2 (@1) into beta at index 5:
+	// tmux lists its pane under both sessions.
+	out := "%0\t\ta1\t/dev/ttys001\t$0\talpha\t@0\n" +
+		"%1\t\ta2\t/dev/ttys002\t$0\talpha\t@1\n" +
+		"%2\t\tb1\t/dev/ttys003\t$1\tbeta\t@2\n" +
+		"%3\t\tb2\t/dev/ttys004\t$1\tbeta\t@3\n" +
+		"%1\t\ta2\t/dev/ttys002\t$1\tbeta\t@1\n"
+	want := []terminal.Place{
+		{ID: "@0", Title: "a1", Index: 0},
+		{ID: "@1", Title: "a2", Index: 1},
+		{ID: "@2", Title: "b1", Index: 0},
+		{ID: "@3", Title: "b2", Index: 1},
+		{ID: "@1", Title: "a2", Index: 2},
+	}
+	got := parsePaneList(out)
+	if len(got) != len(want) {
+		t.Fatalf("got %d sessions, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].Tab != w {
+			t.Errorf("row %d tab = %+v, want %+v", i, got[i].Tab, w)
+		}
+	}
+}
+
+func TestParsePaneListWithoutPlacementFields(t *testing.T) {
+	got := parsePaneList("%0\ttitle\twin\t/dev/ttys000\n")
+	if len(got) != 1 || got[0].Window != (terminal.Place{}) || got[0].Tab != (terminal.Place{}) {
+		t.Fatalf("got %+v, want zero placement", got)
+	}
+}
+
 func writeFakeTmux(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()

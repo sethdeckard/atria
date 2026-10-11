@@ -134,7 +134,8 @@ func (c *Client) Available() error {
 type lsOutput struct {
 	ID   int `json:"id"`
 	Tabs []struct {
-		ID      int `json:"id"`
+		ID      int    `json:"id"`
+		Title   string `json:"title"`
 		Windows []struct {
 			ID        int    `json:"id"`
 			Title     string `json:"title"`
@@ -151,6 +152,9 @@ type kittyWindow struct {
 	Title string
 	CWD   string
 	PID   int
+	// OSWindow and Tab place the window. kitty's ls gives an OS window no
+	// title, so OSWindow.Title stays empty.
+	OSWindow, Tab terminal.Place
 }
 
 // parseLSOutput flattens the nested kitten @ ls JSON into kitty windows.
@@ -160,14 +164,18 @@ func parseLSOutput(data []byte) ([]kittyWindow, error) {
 		return nil, fmt.Errorf("parse kitten @ ls: %w", err)
 	}
 	var windows []kittyWindow
-	for _, osWin := range osWindows {
-		for _, tab := range osWin.Tabs {
+	for oi, osWin := range osWindows {
+		osPlace := terminal.Place{ID: strconv.Itoa(osWin.ID), Index: oi}
+		for ti, tab := range osWin.Tabs {
+			tabPlace := terminal.Place{ID: strconv.Itoa(tab.ID), Title: tab.Title, Index: ti}
 			for _, win := range tab.Windows {
 				windows = append(windows, kittyWindow{
-					ID:    win.ID,
-					Title: win.Title,
-					CWD:   win.CWD,
-					PID:   win.PID,
+					ID:       win.ID,
+					Title:    win.Title,
+					CWD:      win.CWD,
+					PID:      win.PID,
+					OSWindow: osPlace,
+					Tab:      tabPlace,
 				})
 			}
 		}
@@ -175,7 +183,8 @@ func parseLSOutput(data []byte) ([]kittyWindow, error) {
 	return windows, nil
 }
 
-// ListSessions returns all Kitty windows as terminal sessions.
+// ListSessions returns all Kitty windows as terminal sessions, each with
+// its OS window as the Window and its tab as the Tab.
 // TTY is resolved from the window's PID so DiscoverCWD's lsof fallback works.
 func (c *Client) ListSessions() ([]terminal.Session, error) {
 	out, err := c.run("ls")
@@ -189,9 +198,11 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 	sessions := make([]terminal.Session, 0, len(windows))
 	for _, w := range windows {
 		sessions = append(sessions, terminal.Session{
-			ID:   strconv.Itoa(w.ID),
-			Name: w.Title,
-			TTY:  c.ttyForPID(w.PID),
+			ID:     strconv.Itoa(w.ID),
+			Name:   w.Title,
+			TTY:    c.ttyForPID(w.PID),
+			Window: w.OSWindow,
+			Tab:    w.Tab,
 		})
 	}
 	return sessions, nil

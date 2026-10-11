@@ -225,7 +225,10 @@ func collectSessions(node *pb.SplitTreeNode) []*pb.SessionSummary {
 	return sessions
 }
 
-// ListSessions returns all iTerm2 sessions (panes), including those in splits.
+// ListSessions returns all iTerm2 sessions (panes), including those in
+// splits, with the window and tab holding each. Besides the listing it makes
+// one variable request per session (TTY and job) and one per window and per
+// tab (title).
 func (c *Client) ListSessions() ([]terminal.Session, error) {
 	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
 		Submessage: &pb.ClientOriginatedMessage_ListSessionsRequest{
@@ -241,21 +244,69 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 		return nil, fmt.Errorf("unexpected response type")
 	}
 
+	return sessionsFromWindows(lsr.GetWindows(), c.sessionTTYAndJob, c.title), nil
+}
+
+// sessionsFromWindows flattens a listing's windows, tabs, and split trees
+// into sessions, numbering windows and tabs in listing order. ttyAndJob
+// fills in each session; title returns a window's or tab's title by scope.
+func sessionsFromWindows(
+	windows []*pb.ListSessionsResponse_Window,
+	ttyAndJob func(sessionID string) (tty, job string),
+	title func(scope *pb.VariableRequest) string,
+) []terminal.Session {
 	var sessions []terminal.Session
-	for _, w := range lsr.GetWindows() {
-		for _, tab := range w.GetTabs() {
+	for wi, w := range windows {
+		win := terminal.Place{
+			ID:    w.GetWindowId(),
+			Title: title(&pb.VariableRequest{Scope: &pb.VariableRequest_WindowId{WindowId: w.GetWindowId()}}),
+			Index: wi,
+		}
+		for ti, tab := range w.GetTabs() {
+			t := terminal.Place{
+				ID:    tab.GetTabId(),
+				Title: title(&pb.VariableRequest{Scope: &pb.VariableRequest_TabId{TabId: tab.GetTabId()}}),
+				Index: ti,
+			}
 			for _, ss := range collectSessions(tab.GetRoot()) {
-				tty, job := c.sessionTTYAndJob(ss.GetUniqueIdentifier())
+				tty, job := ttyAndJob(ss.GetUniqueIdentifier())
 				sessions = append(sessions, terminal.Session{
-					ID:   ss.GetUniqueIdentifier(),
-					Name: unquoteJSON(ss.GetTitle()),
-					TTY:  tty,
-					Job:  job,
+					ID:     ss.GetUniqueIdentifier(),
+					Name:   unquoteJSON(ss.GetTitle()),
+					TTY:    tty,
+					Job:    job,
+					Window: win,
+					Tab:    t,
 				})
 			}
 		}
 	}
-	return sessions, nil
+	return sessions
+}
+
+// title gets the title variable of a window or tab; "" when the request
+// fails, so a missing title never fails a listing.
+func (c *Client) title(scope *pb.VariableRequest) string {
+	scope.Get = []string{"title"}
+	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
+		Submessage: &pb.ClientOriginatedMessage_VariableRequest{VariableRequest: scope},
+	})
+	if err != nil {
+		return ""
+	}
+	return titleValue(resp.GetVariableResponse())
+}
+
+// titleValue is the title in a variable response: "" unless the request
+// succeeded with a value, and "" for a JSON null.
+func titleValue(vr *pb.VariableResponse) string {
+	if vr == nil || vr.GetStatus() != pb.VariableResponse_OK || len(vr.GetValues()) == 0 {
+		return ""
+	}
+	if v := vr.GetValues()[0]; v != "null" {
+		return unquoteJSON(v)
+	}
+	return ""
 }
 
 // sessionTTYAndJob gets the TTY and foreground job for a session.

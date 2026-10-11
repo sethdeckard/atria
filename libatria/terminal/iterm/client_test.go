@@ -423,3 +423,76 @@ func rawHeader(h http.Header, name string) string {
 	}
 	return ""
 }
+
+func pane(id, title string) *pb.SplitTreeNode_SplitTreeLink {
+	return &pb.SplitTreeNode_SplitTreeLink{Child: &pb.SplitTreeNode_SplitTreeLink_Session{
+		Session: &pb.SessionSummary{UniqueIdentifier: proto.String(id), Title: proto.String(title)},
+	}}
+}
+
+func TestSessionsFromWindowsFillsPlacement(t *testing.T) {
+	windows := []*pb.ListSessionsResponse_Window{
+		{WindowId: proto.String("w-a"), Tabs: []*pb.ListSessionsResponse_Tab{
+			{TabId: proto.String("1"), Root: &pb.SplitTreeNode{Links: []*pb.SplitTreeNode_SplitTreeLink{
+				pane("left", "✳ Claude Code"), pane("right", "zsh"),
+			}}},
+			{TabId: proto.String("2"), Root: &pb.SplitTreeNode{Links: []*pb.SplitTreeNode_SplitTreeLink{
+				pane("solo", "htop"),
+			}}},
+		}},
+		{WindowId: proto.String("w-b"), Tabs: []*pb.ListSessionsResponse_Tab{
+			{TabId: proto.String("3"), Root: &pb.SplitTreeNode{Links: []*pb.SplitTreeNode_SplitTreeLink{
+				pane("other", "vim"),
+			}}},
+		}},
+	}
+	titles := map[string]string{"w-a": "example@host:~", "w-b": "example@host:~/src", "1": "✳ Claude Code (claude)", "3": "vim"}
+	title := func(scope *pb.VariableRequest) string {
+		if id := scope.GetWindowId(); id != "" {
+			return titles[id]
+		}
+		return titles[scope.GetTabId()] // tab 2's request fails: no title
+	}
+	ttyAndJob := func(id string) (string, string) { return "/dev/" + id, "job-" + id }
+
+	got := sessionsFromWindows(windows, ttyAndJob, title)
+
+	winA := terminal.Place{ID: "w-a", Title: "example@host:~", Index: 0}
+	winB := terminal.Place{ID: "w-b", Title: "example@host:~/src", Index: 1}
+	split := terminal.Place{ID: "1", Title: "✳ Claude Code (claude)", Index: 0}
+	want := []terminal.Session{
+		{ID: "left", Name: "✳ Claude Code", TTY: "/dev/left", Job: "job-left", Window: winA, Tab: split},
+		{ID: "right", Name: "zsh", TTY: "/dev/right", Job: "job-right", Window: winA, Tab: split},
+		{ID: "solo", Name: "htop", TTY: "/dev/solo", Job: "job-solo", Window: winA, Tab: terminal.Place{ID: "2", Index: 1}},
+		{ID: "other", Name: "vim", TTY: "/dev/other", Job: "job-other", Window: winB, Tab: terminal.Place{ID: "3", Title: "vim", Index: 0}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d sessions, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("session %d:\n got %+v\nwant %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestTitleValue(t *testing.T) {
+	ok := pb.VariableResponse_OK
+	missing := pb.VariableResponse_SESSION_NOT_FOUND
+	tests := []struct {
+		name string
+		vr   *pb.VariableResponse
+		want string
+	}{
+		{"quoted", &pb.VariableResponse{Status: &ok, Values: []string{`"~ (-zsh)"`}}, "~ (-zsh)"},
+		{"null", &pb.VariableResponse{Status: &ok, Values: []string{"null"}}, ""},
+		{"not found", &pb.VariableResponse{Status: &missing, Values: []string{`"x"`}}, ""},
+		{"no values", &pb.VariableResponse{Status: &ok}, ""},
+		{"no response", nil, ""},
+	}
+	for _, tt := range tests {
+		if got := titleValue(tt.vr); got != tt.want {
+			t.Errorf("%s: titleValue = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

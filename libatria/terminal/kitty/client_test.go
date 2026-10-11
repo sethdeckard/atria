@@ -116,6 +116,40 @@ func TestParseLSOutput(t *testing.T) {
 	}
 }
 
+func TestParseLSOutputFillsPlacement(t *testing.T) {
+	// OS window 1 holds a split tab and a second tab; OS window 7 holds one.
+	input := `[
+	  {"id":1,"tabs":[
+	    {"id":2,"title":"✳ Claude Code","windows":[{"id":3,"title":"✳ Claude Code"},{"id":4,"title":"zsh"}]},
+	    {"id":5,"title":"logs","windows":[{"id":6,"title":"tail"}]}
+	  ]},
+	  {"id":7,"tabs":[{"id":8,"title":"vim","windows":[{"id":9,"title":"vim"}]}]}
+	]`
+	got, err := parseLSOutput([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	os1 := terminal.Place{ID: "1", Index: 0}
+	split := terminal.Place{ID: "2", Title: "✳ Claude Code", Index: 0}
+	want := []struct {
+		id          int
+		window, tab terminal.Place
+	}{
+		{3, os1, split},
+		{4, os1, split},
+		{6, os1, terminal.Place{ID: "5", Title: "logs", Index: 1}},
+		{9, terminal.Place{ID: "7", Index: 1}, terminal.Place{ID: "8", Title: "vim", Index: 0}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d windows, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].ID != w.id || got[i].OSWindow != w.window || got[i].Tab != w.tab {
+			t.Errorf("window %d = %d %+v %+v, want %d %+v %+v", i, got[i].ID, got[i].OSWindow, got[i].Tab, w.id, w.window, w.tab)
+		}
+	}
+}
+
 func TestListSessionsPopulatesTTY(t *testing.T) {
 	// Verify that parseLSOutput preserves PID so ListSessions can resolve TTY.
 	input := `[{"id": 1, "tabs": [{"id": 1, "windows": [
