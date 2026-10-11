@@ -28,6 +28,9 @@ func TestClassifyOutput(t *testing.T) {
 		{"claude idle prompt with path", "~/projects ❯", Claude, StatusIdle},
 		{"claude shortcuts", "? for shortcuts", Claude, StatusIdle},
 		{"claude done static", "✻", Claude, ""},
+		{"claude spinner frame ✳", "✳ Beaming… (4m 22s · ↓ 5.2k tokens)", Claude, StatusWorking},
+		{"claude ✳ separator mid-line", "~/projects/app ✳  feature/very-lo…", Claude, ""},
+		{"claude · separator mid-line", "foo · Reading…", Claude, ""},
 
 		// Codex patterns
 		{"codex working bullet", "• Working (30s • esc to interrupt)", Codex, StatusWorking},
@@ -269,6 +272,30 @@ func TestClassifyScreen(t *testing.T) {
 			"",
 		},
 		{
+			// A ✳ spinner frame with the prompt box and a status line that
+			// uses ✳ as its separator below it.
+			"claude ✳ spinner frame is working",
+			claudeStatusLineScreen("✳ Beaming… (4m 22s · ↓ 5.2k tokens)", "main"),
+			Claude,
+			StatusWorking,
+			"✳ Beaming…",
+		},
+		{
+			"claude ✳ status line separator is not a spinner",
+			claudeStatusLineScreen("⏺ Done.", "feature/very-lo…"),
+			Claude,
+			StatusIdle,
+			"❯",
+		},
+		{
+			"claude · footer separator is not a spinner",
+			"⏺ Done.\n\n" + strings.Repeat("─", 40) + "\n❯ \n" + strings.Repeat("─", 40) +
+				"\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents · fix-the-very-lo…",
+			Claude,
+			StatusIdle,
+			"❯",
+		},
+		{
 			"cross-agent: claude spinner not detected for codex",
 			"✻ Reading…\n",
 			Codex,
@@ -287,6 +314,16 @@ func TestClassifyScreen(t *testing.T) {
 			}
 		})
 	}
+}
+
+// claudeStatusLineScreen is the bottom of a Claude Code screen: top (a
+// spinner row or a finished reply), the prompt box, and a status line that
+// separates its segments with ✳, showing branch.
+func claudeStatusLineScreen(top, branch string) string {
+	rule := strings.Repeat("─", 40)
+	return top + "\n\n" + rule + " app-plan ─\n❯ \n" + rule +
+		"\n   ~/projects/app ✳  " + branch + " ✳ Opus 5.5 ✳ ctx 87% ✳ 5h:89% 7d:88%" +
+		"\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents"
 }
 
 func TestHasScreen(t *testing.T) {

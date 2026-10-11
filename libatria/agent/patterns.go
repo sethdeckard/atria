@@ -45,8 +45,12 @@ var claudePatterns = &Patterns{
 	},
 	Working: []*regexp.Regexp{
 		// Spinner glyph, then the activity word ("✶ Doodling…", "* Germinating...").
-		// A bare ✻ with no activity means the turn is done.
-		regexp.MustCompile(`(?:[✻✶✽✢·]|\*)\s+\S+(?:…|\.{3})`),
+		// ✳ is one of the frames too. A bare ✻ with no activity means the
+		// turn is done. The spinner row starts its line; the same glyphs
+		// used as separators mid-line (a status line's "✳  main ✳ Opus",
+		// a footer's "· ← for agents") don't count, even before a word
+		// that ends in "…".
+		regexp.MustCompile(`^\s*(?:[✳✻✶✽✢·]|\*)\s+\S+(?:…|\.{3})`),
 		// Status bar while a background shell task runs.
 		regexp.MustCompile(`⏵⏵.*esc\s+to\s+interrupt`),
 		// Waiting on a background task's output.
