@@ -85,6 +85,7 @@ type Session struct {
     Source string // "pty", "iterm", "tmux", "kitty", "wezterm", "deviceterm"; set by the composite
     Window Place  // the window holding the pane; zero when the backend can't say
     Tab    Place  // the tab within that window, shared by its split panes; zero when the backend can't say
+    Cwd    string // the pane's working directory as the terminal reports it; "" when it can't say
 }
 
 type Place struct {
@@ -146,6 +147,8 @@ Label windows by `Index` and use the title as a hint. iTerm2 and WezTerm report 
 iTerm2 asks for each window's and tab's title separately, one request apiece per listing, on top of the one request per session it already makes. A failed request leaves that title empty rather than failing the listing.
 
 A tmux window linked into several sessions is listed under each, with its position in that session, and its panes appear once per session under the same pane ID.
+
+`Cwd` comes from the terminal, in the same calls that list the panes: iTerm2's `path` variable, tmux's `pane_current_path`, and the `cwd` that WezTerm, kitty, and DeviceTerm report. It's best-effort. iTerm2 knows a directory only through shell integration or the OSC 7 escape, so a tab without either reports none, and any terminal can lag a `cd` until the shell reports it. PTY sessions leave it empty, because their only source is the process lookup the listing avoids. It's separate from `watch.Snapshot.Dir`, the directory the Watcher resolved for an agent session: its process's cwd when the lookup finds one, otherwise the discovery fallbacks.
 
 ### Optional Interfaces
 
@@ -596,7 +599,7 @@ Bell delivery is the same on both paths. The plain path gets the bell inside the
 
 `Panes` returns every pane from the last successful discovery pass in listing order, agent sessions or not: what the backend listed, after the composite's filters and `Filter`. Use it for a view of all tabs, without listing the terminals again. It's nil before the first pass.
 
-`PanesChanged` says when to read `Panes` again. It's the last event of a discovery pass whose panes differ from the previous pass's: a pane added or removed, or one's title, job, TTY, window, or tab changed. It carries only `Time`. A tab dragged to another window fires it, and the session's snapshot shows the new `Window` and `Tab`; there's no per-session event for a move.
+`PanesChanged` says when to read `Panes` again. It's the last event of a discovery pass whose panes differ from the previous pass's: a pane added or removed, or one's title, job, TTY, working directory, window, or tab changed. It carries only `Time`. A tab dragged to another window fires it, and the session's snapshot shows the new `Window` and `Tab`; there's no per-session event for a move.
 
 A title that changes only its agent spinner glyph doesn't count, or every working agent would fire it on every pass. Window titles aren't compared at all, because iTerm2 and WezTerm report the selected tab's title there, so a renamed tmux session shows up with the next change that does fire it.
 

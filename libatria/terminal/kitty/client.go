@@ -203,6 +203,7 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 			TTY:    c.ttyForPID(w.PID),
 			Window: w.OSWindow,
 			Tab:    w.Tab,
+			Cwd:    w.CWD,
 		})
 	}
 	return sessions, nil

@@ -563,13 +563,16 @@ func (w *Watcher) updatePanes(listed []terminal.Session, failed map[string]bool)
 // after agent.TrimSpinner, without Claude's glyph or Codex's spinner frame,
 // or a working agent would fire it on every pass; tab titles too, because
 // iTerm2 and WezTerm derive them from the active pane's title. Nothing else
-// is stripped, so any other rename counts.
+// is stripped, so any other rename counts. The working directory is
+// compared as reported, so a cd (or a directory reported late, after
+// none) counts too.
 // Window titles are left out: most terminals report the selected tab's
 // title there, which changes on every tab switch. A renamed tmux session
 // (its window title) therefore shows up with the next change that fires the
 // event, not on its own.
 type paneKey struct {
 	source, tty, job, name string
+	cwd                    string
 	windowID, tabID        string
 	windowIndex, tabIndex  int
 	tabTitle               string
@@ -581,6 +584,7 @@ func keyOf(s terminal.Session) paneKey {
 		tty:         s.TTY,
 		job:         s.Job,
 		name:        agent.TrimSpinner(s.Name),
+		cwd:         s.Cwd,
 		windowID:    s.Window.ID,
 		tabID:       s.Tab.ID,
 		windowIndex: s.Window.Index,

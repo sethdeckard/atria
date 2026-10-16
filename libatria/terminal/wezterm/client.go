@@ -212,6 +212,7 @@ func sessionsFromEntries(entries []listEntry) []terminal.Session {
 			TTY:    e.TTYName,
 			Window: terminal.Place{ID: strconv.Itoa(e.WindowID), Title: e.WindowTitle, Index: windows[e.WindowID]},
 			Tab:    terminal.Place{ID: strconv.Itoa(e.TabID), Title: tabTitle, Index: tabs[e.TabID]},
+			Cwd:    normalizeCWD(e.CWD),
 		})
 	}
 	return sessions

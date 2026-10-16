@@ -307,7 +307,7 @@ exit 0
 		go func() {
 			defer wg.Done()
 			sessions, err := c.ListSessions()
-			if err != nil || len(sessions) != 1 || sessions[0].TTY != "/dev/ttys4242" {
+			if err != nil || len(sessions) != 1 || sessions[0].TTY != "/dev/ttys4242" || sessions[0].Cwd != "/p" {
 				t.Errorf("ListSessions = %+v, %v", sessions, err)
 			}
 		}()

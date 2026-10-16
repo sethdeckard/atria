@@ -453,15 +453,21 @@ func TestSessionsFromWindowsFillsPlacement(t *testing.T) {
 		}
 		return titles[scope.GetTabId()] // tab 2's request fails: no title
 	}
-	ttyAndJob := func(id string) (string, string) { return "/dev/" + id, "job-" + id }
+	vars := func(id string) sessionVars {
+		v := sessionVars{tty: "/dev/" + id, job: "job-" + id}
+		if id == "left" {
+			v.cwd = "/Users/example/app" // no shell integration elsewhere
+		}
+		return v
+	}
 
-	got := sessionsFromWindows(windows, ttyAndJob, title)
+	got := sessionsFromWindows(windows, vars, title)
 
 	winA := terminal.Place{ID: "w-a", Title: "example@host:~", Index: 0}
 	winB := terminal.Place{ID: "w-b", Title: "example@host:~/src", Index: 1}
 	split := terminal.Place{ID: "1", Title: "✳ Claude Code (claude)", Index: 0}
 	want := []terminal.Session{
-		{ID: "left", Name: "✳ Claude Code", TTY: "/dev/left", Job: "job-left", Window: winA, Tab: split},
+		{ID: "left", Name: "✳ Claude Code", TTY: "/dev/left", Job: "job-left", Window: winA, Tab: split, Cwd: "/Users/example/app"},
 		{ID: "right", Name: "zsh", TTY: "/dev/right", Job: "job-right", Window: winA, Tab: split},
 		{ID: "solo", Name: "htop", TTY: "/dev/solo", Job: "job-solo", Window: winA, Tab: terminal.Place{ID: "2", Index: 1}},
 		{ID: "other", Name: "vim", TTY: "/dev/other", Job: "job-other", Window: winB, Tab: terminal.Place{ID: "3", Title: "vim", Index: 0}},
@@ -493,6 +499,30 @@ func TestTitleValue(t *testing.T) {
 	for _, tt := range tests {
 		if got := titleValue(tt.vr); got != tt.want {
 			t.Errorf("%s: titleValue = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestSessionVarsFrom(t *testing.T) {
+	ok := pb.VariableResponse_OK
+	missing := pb.VariableResponse_SESSION_NOT_FOUND
+	tests := []struct {
+		name string
+		vr   *pb.VariableResponse
+		want sessionVars
+	}{
+		{"all three", &pb.VariableResponse{Status: &ok, Values: []string{`"/dev/ttys001"`, `"zsh"`, `"/Users/example/my app"`}},
+			sessionVars{tty: "/dev/ttys001", job: "zsh", cwd: "/Users/example/my app"}},
+		{"no path without shell integration", &pb.VariableResponse{Status: &ok, Values: []string{`"/dev/ttys001"`, `"zsh"`, "null"}},
+			sessionVars{tty: "/dev/ttys001", job: "zsh"}},
+		{"fewer values", &pb.VariableResponse{Status: &ok, Values: []string{`"/dev/ttys001"`}},
+			sessionVars{tty: "/dev/ttys001"}},
+		{"session gone", &pb.VariableResponse{Status: &missing, Values: []string{`"/dev/ttys001"`}}, sessionVars{}},
+		{"no response", nil, sessionVars{}},
+	}
+	for _, tt := range tests {
+		if got := sessionVarsFrom(tt.vr); got != tt.want {
+			t.Errorf("%s: sessionVarsFrom = %+v, want %+v", tt.name, got, tt.want)
 		}
 	}
 }

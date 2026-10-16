@@ -1679,7 +1679,7 @@ func TestPanesListsEveryPane(t *testing.T) {
 	b := &listerFake{fakeBackend: newFake()}
 	agentPane := claudeSession(b.fakeBackend, "iterm:s1")
 	agentPane.Source = "iterm"
-	shell := terminal.Session{ID: "iterm:s2", Name: "zsh", Job: "zsh", Source: "iterm"}
+	shell := terminal.Session{ID: "iterm:s2", Name: "zsh", Job: "zsh", Source: "iterm", Cwd: "/Users/example/notes"}
 	b.setListing([]string{"iterm"}, nil, agentPane, shell)
 	w := newListerWatcher(t, b)
 	ctx := context.Background()
@@ -1796,7 +1796,7 @@ func TestSamePanes(t *testing.T) {
 		{ID: "a", Name: "✳ Fix parser", Job: "claude", Source: "iterm", TTY: "/dev/ttys001",
 			Window: terminal.Place{ID: "w1", Title: "✳ Fix parser", Index: 0},
 			Tab:    terminal.Place{ID: "t1", Title: "✳ Fix parser (claude)", Index: 0}},
-		{ID: "b", Name: "⠋ refactor | atria", Job: "codex", Source: "iterm", TTY: "/dev/ttys002",
+		{ID: "b", Name: "⠋ refactor | atria", Job: "codex", Source: "iterm", TTY: "/dev/ttys002", Cwd: "/Users/example/atria",
 			Window: terminal.Place{ID: "w1", Title: "✳ Fix parser", Index: 0},
 			Tab:    terminal.Place{ID: "t2", Title: "⠋ refactor | atria", Index: 1}},
 	}
@@ -1848,6 +1848,14 @@ func TestSamePanes(t *testing.T) {
 		}), false},
 		{"tab reordered", edit(func(p []terminal.Session) []terminal.Session {
 			p[0].Tab.Index, p[1].Tab.Index = 1, 0
+			return p
+		}), false},
+		{"cd to another directory", edit(func(p []terminal.Session) []terminal.Session {
+			p[1].Cwd = "/Users/example/other"
+			return p
+		}), false},
+		{"directory reported late", edit(func(p []terminal.Session) []terminal.Session {
+			p[0].Cwd = "/Users/example/parser"
 			return p
 		}), false},
 		{"tty changed", edit(func(p []terminal.Session) []terminal.Session {

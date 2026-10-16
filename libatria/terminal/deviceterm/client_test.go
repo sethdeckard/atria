@@ -160,6 +160,9 @@ func TestSessionsFromPanes(t *testing.T) {
 	if sessions[2].ID != "p-fresh" || sessions[2].Name != "scratch" || sessions[2].TTY != "" {
 		t.Errorf("sessions[2] = %+v", sessions[2])
 	}
+	if sessions[0].Cwd != "/Users/test/projects/atria" || sessions[2].Cwd != "" {
+		t.Errorf("Cwd = %q, %q; want p-claude's cwd and none for p-fresh", sessions[0].Cwd, sessions[2].Cwd)
+	}
 	if cwd["p-claude"] != "/Users/test/projects/atria" {
 		t.Errorf("cwd[p-claude] = %q", cwd["p-claude"])
 	}

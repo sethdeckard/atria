@@ -186,6 +186,33 @@ func TestParsePaneListLinkedWindow(t *testing.T) {
 	}
 }
 
+func TestParsePaneListCwd(t *testing.T) {
+	// Captured with pane_current_path last; the second path has a space.
+	out := "%0\thost.local\tone\t/dev/ttys046\t$0\tbeta\t@0\t/private/tmp\n" +
+		"%1\thost.local\ttwo\t/dev/ttys048\t$0\tbeta\t@1\t/Users/example/my app\n" +
+		"%2\thost.local\tthree\t/dev/ttys049\t$0\tbeta\t@2\t\n" +
+		"%3\thost.local\tfour\t/dev/ttys050\t$0\tbeta\t@3\t/tmp/project \n"
+	want := []string{"/private/tmp", "/Users/example/my app", "", "/tmp/project "}
+	got := parsePaneList(out)
+	if len(got) != len(want) {
+		t.Fatalf("got %d sessions, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].Cwd != w {
+			t.Errorf("pane %d Cwd = %q, want %q", i, got[i].Cwd, w)
+		}
+	}
+	if got[1].Tab != (terminal.Place{ID: "@1", Title: "two", Index: 1}) {
+		t.Errorf("placement with the path field = %+v", got[1].Tab)
+	}
+	// Without the path field, as in the placement fixtures, Cwd is empty.
+	for _, s := range parsePaneList(twoSessionPanes) {
+		if s.Cwd != "" {
+			t.Errorf("%s: Cwd = %q without the field, want empty", s.ID, s.Cwd)
+		}
+	}
+}
+
 func TestParsePaneListWithoutPlacementFields(t *testing.T) {
 	got := parsePaneList("%0\ttitle\twin\t/dev/ttys000\n")
 	if len(got) != 1 || got[0].Window != (terminal.Place{}) || got[0].Tab != (terminal.Place{}) {

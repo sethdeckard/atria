@@ -26,11 +26,12 @@ const (
 	// is not also reported as a StatusChanged from the working placeholder.
 	StatusKnown
 	// PanesChanged reports that Watcher.Panes differs from the last pass:
-	// a pane was added or removed, or one's title, job, TTY, window, or tab
-	// changed. It is the last event of its discovery pass and carries only
-	// Time; read Panes for the listing. A title that changes only its agent
-	// spinner glyph doesn't count, and window titles aren't compared,
-	// because most terminals report the selected tab's title there.
+	// a pane was added or removed, or one's title, job, TTY, working
+	// directory, window, or tab changed. It is the last event of its
+	// discovery pass and carries only Time; read Panes for the listing. A
+	// title that changes only its agent spinner glyph doesn't count, and
+	// window titles aren't compared, because most terminals report the
+	// selected tab's title there.
 	PanesChanged
 )
 

@@ -117,7 +117,7 @@ func TestSessionsFromEntriesFillsPlacement(t *testing.T) {
 	  {"window_id":0,"tab_id":0,"pane_id":0,"title":"✳ Claude Code","tty_name":"/dev/ttys001","window_title":"✳ Claude Code","tab_title":"","is_active":false},
 	  {"window_id":0,"tab_id":0,"pane_id":1,"title":"zsh","tty_name":"/dev/ttys002","window_title":"✳ Claude Code","tab_title":"","is_active":true},
 	  {"window_id":0,"tab_id":4,"pane_id":5,"title":"htop","tty_name":"/dev/ttys003","window_title":"✳ Claude Code","tab_title":"monitor","is_active":true},
-	  {"window_id":3,"tab_id":7,"pane_id":8,"title":"vim","tty_name":"/dev/ttys004","window_title":"vim","tab_title":"","is_active":true}
+	  {"window_id":3,"tab_id":7,"pane_id":8,"title":"vim","tty_name":"/dev/ttys004","window_title":"vim","tab_title":"","is_active":true,"cwd":"file://host/Users/example/my%20app"}
 	]`
 	entries, err := parseListOutput([]byte(data))
 	if err != nil {
@@ -143,6 +143,12 @@ func TestSessionsFromEntriesFillsPlacement(t *testing.T) {
 		if got[i].ID != w.id || got[i].Window != w.window || got[i].Tab != w.tab {
 			t.Errorf("session %d = %s %+v %+v, want %s %+v %+v", i, got[i].ID, got[i].Window, got[i].Tab, w.id, w.window, w.tab)
 		}
+	}
+	if got[3].Cwd != "/Users/example/my app" {
+		t.Errorf("Cwd from a file:// URI = %q, want the decoded path", got[3].Cwd)
+	}
+	if got[0].Cwd != "" {
+		t.Errorf("Cwd without a cwd field = %q, want empty", got[0].Cwd)
 	}
 }
 

@@ -364,6 +364,7 @@ func sessionsFromPanes(panes []workspacePane) ([]terminal.Session, map[string]st
 			TTY:    p.Terminal.TTY,
 			Window: win,
 			Tab:    tab,
+			Cwd:    p.Terminal.CWD,
 		})
 		cwd[p.ID] = p.Terminal.CWD
 	}

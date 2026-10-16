@@ -9,6 +9,13 @@ type Session struct {
 	Source string // "pty", "iterm", "tmux" — set by composite backend
 	Window Place  // the window holding the pane; zero when the backend can't say
 	Tab    Place  // the tab within that window, shared by its split panes; zero when the backend can't say
+	// Cwd is the pane's working directory as the terminal reports it:
+	// best-effort, and empty when the terminal can't say. It may lag a cd
+	// until the shell reports it (iTerm2 needs shell integration or OSC 7).
+	// It's separate from watch.Snapshot.Dir, the directory the Watcher
+	// resolved for an agent session: its process's cwd when the lookup
+	// finds one, otherwise the discovery fallbacks.
+	Cwd string
 }
 
 // Place is a window or tab as a terminal lists it. The zero Place means the

@@ -227,8 +227,8 @@ func collectSessions(node *pb.SplitTreeNode) []*pb.SessionSummary {
 
 // ListSessions returns all iTerm2 sessions (panes), including those in
 // splits, with the window and tab holding each. Besides the listing it makes
-// one variable request per session (TTY and job) and one per window and per
-// tab (title).
+// one variable request per session (TTY, job, and working directory) and one
+// per window and per tab (title).
 func (c *Client) ListSessions() ([]terminal.Session, error) {
 	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
 		Submessage: &pb.ClientOriginatedMessage_ListSessionsRequest{
@@ -244,15 +244,15 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 		return nil, fmt.Errorf("unexpected response type")
 	}
 
-	return sessionsFromWindows(lsr.GetWindows(), c.sessionTTYAndJob, c.title), nil
+	return sessionsFromWindows(lsr.GetWindows(), c.sessionVars, c.title), nil
 }
 
 // sessionsFromWindows flattens a listing's windows, tabs, and split trees
-// into sessions, numbering windows and tabs in listing order. ttyAndJob
-// fills in each session; title returns a window's or tab's title by scope.
+// into sessions, numbering windows and tabs in listing order. vars fills in
+// each session; title returns a window's or tab's title by scope.
 func sessionsFromWindows(
 	windows []*pb.ListSessionsResponse_Window,
-	ttyAndJob func(sessionID string) (tty, job string),
+	vars func(sessionID string) sessionVars,
 	title func(scope *pb.VariableRequest) string,
 ) []terminal.Session {
 	var sessions []terminal.Session
@@ -269,14 +269,15 @@ func sessionsFromWindows(
 				Index: ti,
 			}
 			for _, ss := range collectSessions(tab.GetRoot()) {
-				tty, job := ttyAndJob(ss.GetUniqueIdentifier())
+				v := vars(ss.GetUniqueIdentifier())
 				sessions = append(sessions, terminal.Session{
 					ID:     ss.GetUniqueIdentifier(),
 					Name:   unquoteJSON(ss.GetTitle()),
-					TTY:    tty,
-					Job:    job,
+					TTY:    v.tty,
+					Job:    v.job,
 					Window: win,
 					Tab:    t,
+					Cwd:    v.cwd,
 				})
 			}
 		}
@@ -303,34 +304,55 @@ func titleValue(vr *pb.VariableResponse) string {
 	if vr == nil || vr.GetStatus() != pb.VariableResponse_OK || len(vr.GetValues()) == 0 {
 		return ""
 	}
-	if v := vr.GetValues()[0]; v != "null" {
-		return unquoteJSON(v)
-	}
-	return ""
+	return varValue(vr.GetValues()[0])
 }
 
-// sessionTTYAndJob gets the TTY and foreground job for a session.
-func (c *Client) sessionTTYAndJob(sessionID string) (tty, job string) {
+// varValue decodes one variable value: JSON string encoding removed, and
+// "" for a JSON null (a variable iTerm2 has no value for).
+func varValue(v string) string {
+	if v == "null" {
+		return ""
+	}
+	return unquoteJSON(v)
+}
+
+// sessionVars is what a session's variable request reports.
+type sessionVars struct {
+	tty, job string
+	cwd      string // the "path" variable: set by shell integration or OSC 7
+}
+
+// sessionVars gets a session's TTY, foreground job, and working directory
+// in one request; each is "" when the request fails or iTerm2 has no value.
+func (c *Client) sessionVars(sessionID string) sessionVars {
 	resp, err := c.idempotentRequest(&pb.ClientOriginatedMessage{
 		Submessage: &pb.ClientOriginatedMessage_VariableRequest{
 			VariableRequest: &pb.VariableRequest{
 				Scope: &pb.VariableRequest_SessionId{SessionId: sessionID},
-				Get:   []string{"tty", "jobName"},
+				Get:   []string{"tty", "jobName", "path"},
 			},
 		},
 	})
 	if err != nil {
-		return "", ""
+		return sessionVars{}
 	}
-	vr := resp.GetVariableResponse()
-	if vr == nil || vr.GetStatus() != pb.VariableResponse_OK || len(vr.GetValues()) == 0 {
-		return "", ""
+	return sessionVarsFrom(resp.GetVariableResponse())
+}
+
+// sessionVarsFrom reads the response to sessionVars' request, whose values
+// come back in the order asked.
+func sessionVarsFrom(vr *pb.VariableResponse) sessionVars {
+	if vr == nil || vr.GetStatus() != pb.VariableResponse_OK {
+		return sessionVars{}
 	}
-	tty = unquoteJSON(vr.GetValues()[0])
-	if len(vr.GetValues()) > 1 {
-		job = unquoteJSON(vr.GetValues()[1])
+	vals := vr.GetValues()
+	get := func(i int) string {
+		if i < len(vals) {
+			return varValue(vals[i])
+		}
+		return ""
 	}
-	return tty, job
+	return sessionVars{tty: get(0), job: get(1), cwd: get(2)}
 }
 
 // extractFocusedWindowID scans FocusResponse notifications for the focused window.
