@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.13.0
+
+- Add `Cwd` to `terminal.Session`: the pane's working directory as the terminal reports it, so a caller can group panes by project without a process lookup per pane. It comes from the calls that already list the panes: iTerm2's `path` variable, tmux's `pane_current_path`, and the `cwd` that WezTerm, kitty, and DeviceTerm report. It's best-effort and empty when the terminal can't say; iTerm2 knows a directory only through shell integration or OSC 7, and PTY sessions leave it empty. It's separate from `watch.Snapshot.Dir`, which the Watcher resolves for agent sessions
+- The Watcher's `PanesChanged` fires when a pane's `Cwd` changes, including a directory reported for the first time, so a `cd` moves a shell to another project for clients that group by it
+
 ## v0.12.1
 
 - Fix a working Claude Code session flipping to idle and back every few seconds, in atria and in the Watcher's `StatusChanged` events: Claude's spinner cycles through ✳, which the working pattern left out, so on that frame the prompt's `❯` matched idle. The spinner row now has to start its line, so a status line or footer that uses ✳ or · as a separator, with a segment ending in `…` (a truncated branch), no longer reads as working
