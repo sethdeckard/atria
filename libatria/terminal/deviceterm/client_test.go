@@ -177,7 +177,7 @@ func TestSessionsFromPanes(t *testing.T) {
 // paneListPlaced has a split tab and a second tab in w1, then w2 with a
 // simulator tab ahead of a terminal tab.
 const paneListPlaced = `[
-  {"id":"p-a","kind":"terminal","tabId":"t1","tabTitle":"✳ Claude Code","windowId":"w1","terminal":{"title":"✳ Claude Code","tty":"/dev/ttys004"}},
+  {"id":"p-a","kind":"terminal","tabId":"t1","tabTitle":"✳ Claude Code","windowId":"w1","terminal":{"title":"✳ Claude Code","tty":"/dev/ttys004","foregroundProcess":"claude"}},
   {"id":"p-b","kind":"terminal","tabId":"t1","tabTitle":"✳ Claude Code","windowId":"w1","terminal":{"title":"zsh","tty":"/dev/ttys005"}},
   {"id":"p-c","kind":"terminal","tabId":"t2","tabTitle":"logs","windowId":"w1","terminal":{"title":"tail","tty":"/dev/ttys006"}},
   {"id":"p-sim","kind":"simulator","tabId":"t3","tabTitle":"iPhone 17","windowId":"w2","simulator":{"udid":"abc"}},
@@ -213,6 +213,10 @@ func TestSessionsFromPanesFillsPlacement(t *testing.T) {
 		if s.ID != w.id || s.Window != w.window || s.Tab != w.tab {
 			t.Errorf("sessions[%d] = %s %+v %+v, want %s %+v %+v", i, s.ID, s.Window, s.Tab, w.id, w.window, w.tab)
 		}
+	}
+	// foregroundProcess may be absent; only p-a has it in this fixture.
+	if sessions[0].Job != "claude" || sessions[1].Job != "" {
+		t.Errorf("Job = %q, %q; want claude and none", sessions[0].Job, sessions[1].Job)
 	}
 }
 

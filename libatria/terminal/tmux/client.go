@@ -212,10 +212,14 @@ func chooseSessionName(paneTitle, windowName string) string {
 	}
 }
 
-// paneFormat is the list-panes format parsePaneList reads. Fields added
-// later go at the end, so older fields keep their positions.
+// paneFormat is the list-panes format parsePaneList reads. The path stays
+// last: tmux prints a tab inside a directory name as is, and SplitN leaves
+// the last field whole. paneFields counts the fields.
 const paneFormat = "#{pane_id}\t#{pane_title}\t#{window_name}\t#{pane_tty}" +
-	"\t#{session_id}\t#{session_name}\t#{window_id}\t#{pane_current_path}"
+	"\t#{session_id}\t#{session_name}\t#{window_id}" +
+	"\t#{pane_current_command}\t#{pane_current_path}"
+
+const paneFields = 9
 
 // parsePaneList parses tab-separated list-panes output into terminal sessions.
 // Window and tab indexes are positions in order of first appearance, which
@@ -233,7 +237,7 @@ func parsePaneList(output string) []terminal.Session {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		fields := strings.SplitN(line, "\t", 8) // the path is last, so it's never split
+		fields := strings.SplitN(line, "\t", paneFields) // the path is last, so it's never split
 		if len(fields) < 1 {
 			continue
 		}
@@ -262,8 +266,8 @@ func parsePaneList(output string) []terminal.Session {
 			s.Window = terminal.Place{ID: sessionID, Title: fields[5], Index: windows[sessionID]}
 			s.Tab = terminal.Place{ID: windowID, Title: windowName, Index: tabs[key]}
 		}
-		if len(fields) == 8 {
-			s.Cwd = fields[7]
+		if len(fields) == paneFields {
+			s.Job, s.Cwd = fields[7], fields[8]
 		}
 		sessions = append(sessions, s)
 	}

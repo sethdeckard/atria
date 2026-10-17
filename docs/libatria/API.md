@@ -81,7 +81,7 @@ type Session struct {
     ID     string // backend-specific; a composite prefixes integration sessions ("tmux:%3", "pty:pty-1") and leaves the primary's unprefixed
     Name   string // live title
     TTY    string // controlling terminal device, "" when unknown
-    Job    string // foreground job name when the backend reports one (iTerm2)
+    Job    string // the pane's foreground program when the terminal reports one (iTerm2, tmux, kitty, DeviceTerm)
     Source string // "pty", "iterm", "tmux", "kitty", "wezterm", "deviceterm"; set by the composite
     Window Place  // the window holding the pane; zero when the backend can't say
     Tab    Place  // the tab within that window, shared by its split panes; zero when the backend can't say
@@ -149,6 +149,8 @@ iTerm2 asks for each window's and tab's title separately, one request apiece per
 A tmux window linked into several sessions is listed under each, with its position in that session, and its panes appear once per session under the same pane ID.
 
 `Cwd` comes from the terminal, in the same calls that list the panes: iTerm2's `path` variable, tmux's `pane_current_path`, and the `cwd` that WezTerm, kitty, and DeviceTerm report. It's best-effort. iTerm2 knows a directory only through shell integration or the OSC 7 escape, so a tab without either reports none, and any terminal can lag a `cd` until the shell reports it. PTY sessions leave it empty, because their only source is the process lookup the listing avoids. It's separate from `watch.Snapshot.Dir`, the directory the Watcher resolved for an agent session: its process's cwd when the lookup finds one, otherwise the discovery fallbacks.
+
+`Job` comes from the same listing calls: iTerm2's `jobName` variable, tmux's `pane_current_command`, the first of kitty's `foreground_processes` (its program's base name, without a login shell's leading `-`), and DeviceTerm's `foregroundProcess`, which needs the automation grant. WezTerm's listing has no foreground process, so its panes leave `Job` empty, and so do PTY sessions. It follows whatever runs in the pane, so it changes when a command starts and again when it ends.
 
 ### Optional Interfaces
 

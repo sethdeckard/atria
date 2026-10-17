@@ -5,7 +5,7 @@ type Session struct {
 	ID     string
 	Name   string
 	TTY    string
-	Job    string
+	Job    string // the pane's foreground program when the terminal reports one (iTerm2, tmux, kitty, DeviceTerm); "" otherwise
 	Source string // "pty", "iterm", "tmux" — set by composite backend
 	Window Place  // the window holding the pane; zero when the backend can't say
 	Tab    Place  // the tab within that window, shared by its split panes; zero when the backend can't say

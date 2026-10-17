@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -142,8 +143,17 @@ type lsOutput struct {
 			CWD       string `json:"cwd"`
 			PID       int    `json:"pid"`
 			IsFocused bool   `json:"is_focused"`
+			// ForegroundProcesses lists the processes in the window's
+			// foreground process group, each with its argv.
+			ForegroundProcesses []lsProcess `json:"foreground_processes"`
 		} `json:"windows"`
 	} `json:"tabs"`
+}
+
+// lsProcess is the part of a foreground process kitten @ ls reports that
+// Atria reads.
+type lsProcess struct {
+	Cmdline []string `json:"cmdline"`
 }
 
 // kittyWindow holds the parsed fields for a single Kitty window.
@@ -152,6 +162,7 @@ type kittyWindow struct {
 	Title string
 	CWD   string
 	PID   int
+	Job   string // the foreground program: see foregroundJob
 	// OSWindow and Tab place the window. kitty's ls gives an OS window no
 	// title, so OSWindow.Title stays empty.
 	OSWindow, Tab terminal.Place
@@ -174,6 +185,7 @@ func parseLSOutput(data []byte) ([]kittyWindow, error) {
 					Title:    win.Title,
 					CWD:      win.CWD,
 					PID:      win.PID,
+					Job:      foregroundJob(win.ForegroundProcesses),
 					OSWindow: osPlace,
 					Tab:      tabPlace,
 				})
@@ -181,6 +193,16 @@ func parseLSOutput(data []byte) ([]kittyWindow, error) {
 		}
 	}
 	return windows, nil
+}
+
+// foregroundJob names a window's foreground program: the base name of the
+// first foreground process's argv[0], without a login shell's leading "-",
+// or "" when kitty lists none.
+func foregroundJob(procs []lsProcess) string {
+	if len(procs) == 0 || len(procs[0].Cmdline) == 0 {
+		return ""
+	}
+	return strings.TrimPrefix(filepath.Base(procs[0].Cmdline[0]), "-")
 }
 
 // ListSessions returns all Kitty windows as terminal sessions, each with
@@ -204,6 +226,7 @@ func (c *Client) ListSessions() ([]terminal.Session, error) {
 			Window: w.OSWindow,
 			Tab:    w.Tab,
 			Cwd:    w.CWD,
+			Job:    w.Job,
 		})
 	}
 	return sessions, nil

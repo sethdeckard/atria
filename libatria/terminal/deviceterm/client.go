@@ -312,12 +312,15 @@ type workspacePane struct {
 // paneTerminal is the terminal object on a pane row. title is the pane's own
 // live label (OSC title, then user-assigned name, then cwd basename). tty is
 // absent only transiently, before the shell attaches. cwd is grant-gated and
-// omitted when DeviceTerm cannot resolve it.
+// omitted when DeviceTerm cannot resolve it. foregroundProcess, the name of
+// the foreground process group's leader, is grant-gated the same way; when
+// it's absent, Job stays empty.
 type paneTerminal struct {
-	SessionID string `json:"sessionId"`
-	Title     string `json:"title"`
-	TTY       string `json:"tty"`
-	CWD       string `json:"cwd"`
+	SessionID         string `json:"sessionId"`
+	Title             string `json:"title"`
+	TTY               string `json:"tty"`
+	CWD               string `json:"cwd"`
+	ForegroundProcess string `json:"foregroundProcess"`
 }
 
 // parsePaneList parses `pane list --all --json`, a flat array of pane rows
@@ -362,6 +365,7 @@ func sessionsFromPanes(panes []workspacePane) ([]terminal.Session, map[string]st
 			ID:     p.ID,
 			Name:   p.Terminal.Title,
 			TTY:    p.Terminal.TTY,
+			Job:    p.Terminal.ForegroundProcess,
 			Window: win,
 			Tab:    tab,
 			Cwd:    p.Terminal.CWD,

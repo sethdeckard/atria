@@ -186,29 +186,35 @@ func TestParsePaneListLinkedWindow(t *testing.T) {
 	}
 }
 
-func TestParsePaneListCwd(t *testing.T) {
-	// Captured with pane_current_path last; the second path has a space.
-	out := "%0\thost.local\tone\t/dev/ttys046\t$0\tbeta\t@0\t/private/tmp\n" +
-		"%1\thost.local\ttwo\t/dev/ttys048\t$0\tbeta\t@1\t/Users/example/my app\n" +
-		"%2\thost.local\tthree\t/dev/ttys049\t$0\tbeta\t@2\t\n" +
-		"%3\thost.local\tfour\t/dev/ttys050\t$0\tbeta\t@3\t/tmp/project \n"
-	want := []string{"/private/tmp", "/Users/example/my app", "", "/tmp/project "}
+func TestParsePaneListJobAndCwd(t *testing.T) {
+	// Captured with pane_current_command and pane_current_path last; the
+	// second path has a space, the last one a trailing space.
+	out := "%0\thost.local\tone\t/dev/ttys046\t$0\tbeta\t@0\tzsh\t/private/tmp\n" +
+		"%1\thost.local\ttwo\t/dev/ttys048\t$0\tbeta\t@1\tsleep\t/Users/example/my app\n" +
+		"%2\thost.local\tthree\t/dev/ttys049\t$0\tbeta\t@2\t\t\n" +
+		"%3\thost.local\tfour\t/dev/ttys050\t$0\tbeta\t@3\tclaude\t/tmp/project \n"
+	want := []struct{ job, cwd string }{
+		{"zsh", "/private/tmp"},
+		{"sleep", "/Users/example/my app"},
+		{"", ""},
+		{"claude", "/tmp/project "},
+	}
 	got := parsePaneList(out)
 	if len(got) != len(want) {
 		t.Fatalf("got %d sessions, want %d", len(got), len(want))
 	}
 	for i, w := range want {
-		if got[i].Cwd != w {
-			t.Errorf("pane %d Cwd = %q, want %q", i, got[i].Cwd, w)
+		if got[i].Job != w.job || got[i].Cwd != w.cwd {
+			t.Errorf("pane %d = job %q cwd %q, want %q %q", i, got[i].Job, got[i].Cwd, w.job, w.cwd)
 		}
 	}
 	if got[1].Tab != (terminal.Place{ID: "@1", Title: "two", Index: 1}) {
-		t.Errorf("placement with the path field = %+v", got[1].Tab)
+		t.Errorf("placement with the trailing fields = %+v", got[1].Tab)
 	}
-	// Without the path field, as in the placement fixtures, Cwd is empty.
+	// Without the trailing fields, as in the placement fixtures, both are empty.
 	for _, s := range parsePaneList(twoSessionPanes) {
-		if s.Cwd != "" {
-			t.Errorf("%s: Cwd = %q without the field, want empty", s.ID, s.Cwd)
+		if s.Job != "" || s.Cwd != "" {
+			t.Errorf("%s: job %q cwd %q without the fields, want empty", s.ID, s.Job, s.Cwd)
 		}
 	}
 }

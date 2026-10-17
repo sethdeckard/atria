@@ -150,6 +150,25 @@ func TestParseLSOutputFillsPlacement(t *testing.T) {
 	}
 }
 
+func TestForegroundJob(t *testing.T) {
+	tests := []struct {
+		name  string
+		procs []lsProcess
+		want  string
+	}{
+		{"path", []lsProcess{{Cmdline: []string{"/usr/bin/vim", "main.go"}}}, "vim"},
+		{"login shell", []lsProcess{{Cmdline: []string{"-zsh"}}}, "zsh"},
+		{"first of several", []lsProcess{{Cmdline: []string{"make"}}, {Cmdline: []string{"cc"}}}, "make"},
+		{"no argv", []lsProcess{{}}, ""},
+		{"none", nil, ""},
+	}
+	for _, tt := range tests {
+		if got := foregroundJob(tt.procs); got != tt.want {
+			t.Errorf("%s: foregroundJob = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestListSessionsPopulatesTTY(t *testing.T) {
 	// Verify that parseLSOutput preserves PID so ListSessions can resolve TTY.
 	input := `[{"id": 1, "tabs": [{"id": 1, "windows": [
@@ -295,7 +314,7 @@ exit 0
 func TestListSessionsUsesInjectedTTYLookupConcurrently(t *testing.T) {
 	kitten := writeFakeKitten(t, `
 if [ "$4" = "ls" ]; then
-  echo '[{"tabs":[{"windows":[{"id":7,"title":"claude","pid":4242,"cwd":"/p"}]}]}]'
+  echo '[{"tabs":[{"windows":[{"id":7,"title":"claude","pid":4242,"cwd":"/p","foreground_processes":[{"pid":4300,"cmdline":["/opt/homebrew/bin/claude","--resume"]}]}]}]}]'
 fi
 exit 0
 `)
@@ -307,7 +326,7 @@ exit 0
 		go func() {
 			defer wg.Done()
 			sessions, err := c.ListSessions()
-			if err != nil || len(sessions) != 1 || sessions[0].TTY != "/dev/ttys4242" || sessions[0].Cwd != "/p" {
+			if err != nil || len(sessions) != 1 || sessions[0].TTY != "/dev/ttys4242" || sessions[0].Cwd != "/p" || sessions[0].Job != "claude" {
 				t.Errorf("ListSessions = %+v, %v", sessions, err)
 			}
 		}()
