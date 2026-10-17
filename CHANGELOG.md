@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.0
+
+- Add `Job` for tmux, kitty, and DeviceTerm panes: the foreground program each terminal reports in the calls that already list the panes (tmux's `pane_current_command`, the first of kitty's `foreground_processes`, DeviceTerm's grant-gated `foregroundProcess`), so a tmux pane no longer shows only its title. WezTerm's listing has no foreground process, so its panes leave it empty. kitty's `-zsh` reads as `zsh`, as tmux reports it
+- Add `Frame` to `terminal.Session`: the pane's rectangle within its tab, in the terminal's own units (cells for tmux, WezTerm, and iTerm2, points for DeviceTerm), so a caller can draw split panes where they really are. Compare frames only within one tab, as proportions. iTerm2's are laid out from the tab's split tree and each pane's size; kitty's and PTY sessions' stay zero, and so does every frame in a zoomed tmux window
+- The Watcher's `PanesChanged` fires when a tab's arrangement changes (panes swapped, a layout switched, a tmux pane zoomed) and never on size alone, so resizing a window or dragging a divider doesn't fire it. The exception is two dividers that line up exactly: moving one into or out of line fires it once
+
 ## v0.13.0
 
 - Add `Cwd` to `terminal.Session`: the pane's working directory as the terminal reports it, so a caller can group panes by project without a process lookup per pane. It comes from the calls that already list the panes: iTerm2's `path` variable, tmux's `pane_current_path`, and the `cwd` that WezTerm, kitty, and DeviceTerm report. It's best-effort and empty when the terminal can't say; iTerm2 knows a directory only through shell integration or OSC 7, and PTY sessions leave it empty. It's separate from `watch.Snapshot.Dir`, which the Watcher resolves for agent sessions
