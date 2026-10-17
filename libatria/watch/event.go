@@ -31,7 +31,10 @@ const (
 	// discovery pass and carries only Time; read Panes for the listing. A
 	// title that changes only its agent spinner glyph doesn't count, and
 	// window titles aren't compared, because most terminals report the
-	// selected tab's title there.
+	// selected tab's title there. A pane's frame counts by its tab's split
+	// layout, so a swap, a new layout, or a zoom fires it, and a window
+	// resize or a divider drag doesn't, unless the drag moves a divider into
+	// or out of line with another (see splitLayout).
 	PanesChanged
 )
 

@@ -297,8 +297,8 @@ func (c *Client) Available() error {
 
 // workspacePane is the subset of a WorkspacePane row Atria reads. Exactly one
 // of the kind-specific objects is present; only terminal panes are sessions.
-// Of the row context fields, the window and tab are read and the rest
-// (focused, capabilities, …) are ignored.
+// Of the row context fields, the window, tab, and frame are read and the
+// rest (focused, capabilities, …) are ignored.
 type workspacePane struct {
 	ID       string        `json:"id"`
 	Name     string        `json:"name"`
@@ -306,7 +306,26 @@ type workspacePane struct {
 	WindowID string        `json:"windowId"`
 	TabID    string        `json:"tabId"`
 	TabTitle string        `json:"tabTitle"`
+	Frame    *paneFrame    `json:"frame"`
 	Terminal *paneTerminal `json:"terminal"`
+}
+
+// paneFrame is a pane's slot in its tab's split layout, in whole points from
+// the top-left corner of the tab's pane area. A pane that has never been laid
+// out has none.
+type paneFrame struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// frame converts f, zero when the row had none.
+func (f *paneFrame) frame() terminal.Frame {
+	if f == nil {
+		return terminal.Frame{}
+	}
+	return terminal.Frame{Left: f.X, Top: f.Y, Width: f.Width, Height: f.Height}
 }
 
 // paneTerminal is the terminal object on a pane row. title is the pane's own
@@ -369,6 +388,7 @@ func sessionsFromPanes(panes []workspacePane) ([]terminal.Session, map[string]st
 			Window: win,
 			Tab:    tab,
 			Cwd:    p.Terminal.CWD,
+			Frame:  p.Frame.frame(),
 		})
 		cwd[p.ID] = p.Terminal.CWD
 	}

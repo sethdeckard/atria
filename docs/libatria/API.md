@@ -85,7 +85,12 @@ type Session struct {
     Source string // "pty", "iterm", "tmux", "kitty", "wezterm", "deviceterm"; set by the composite
     Window Place  // the window holding the pane; zero when the backend can't say
     Tab    Place  // the tab within that window, shared by its split panes; zero when the backend can't say
+    Frame  Frame  // the pane's position and size within its tab; zero when the backend can't say
     Cwd    string // the pane's working directory as the terminal reports it; "" when it can't say
+}
+
+type Frame struct {
+    Left, Top, Width, Height int // within the pane's tab, in the terminal's own units
 }
 
 type Place struct {
@@ -151,6 +156,10 @@ A tmux window linked into several sessions is listed under each, with its positi
 `Cwd` comes from the terminal, in the same calls that list the panes: iTerm2's `path` variable, tmux's `pane_current_path`, and the `cwd` that WezTerm, kitty, and DeviceTerm report. It's best-effort. iTerm2 knows a directory only through shell integration or the OSC 7 escape, so a tab without either reports none, and any terminal can lag a `cd` until the shell reports it. PTY sessions leave it empty, because their only source is the process lookup the listing avoids. It's separate from `watch.Snapshot.Dir`, the directory the Watcher resolved for an agent session: its process's cwd when the lookup finds one, otherwise the discovery fallbacks.
 
 `Job` comes from the same listing calls: iTerm2's `jobName` variable, tmux's `pane_current_command`, the first of kitty's `foreground_processes` (its program's base name, without a login shell's leading `-`), and DeviceTerm's `foregroundProcess`, which needs the automation grant. WezTerm's listing has no foreground process, so its panes leave `Job` empty, and so do PTY sessions. It follows whatever runs in the pane, so it changes when a command starts and again when it ends.
+
+`Frame` places a pane within its tab, so you can draw split panes where they really are. Its units are the terminal's own: cells for tmux (from `pane_left`, `pane_top`, `pane_width`, and `pane_height`), WezTerm (`left_col`, `top_row`, and `size`), and iTerm2, and points for DeviceTerm (its `frame`). Compare frames only within one tab, as proportions. kitty's listing gives no position, so its frames stay zero, and so do PTY sessions'. A zero `Frame` (`Width` 0) means unknown.
+
+iTerm2 reports each pane's size but not where it sits, so its frames are laid out from the tab's split tree: side-by-side splits left to right, stacked ones top to bottom, with a one-cell divider between them. A tab with any pane whose size is missing gets no frames at all. DeviceTerm reports the frames from when a tab was last on screen, and none for a pane that has never been laid out. A zoomed tmux window gives no frames: tmux reports the zoomed pane as the whole window while the others keep their old frames.
 
 ### Optional Interfaces
 
@@ -603,7 +612,7 @@ Bell delivery is the same on both paths. The plain path gets the bell inside the
 
 `PanesChanged` says when to read `Panes` again. It's the last event of a discovery pass whose panes differ from the previous pass's: a pane added or removed, or one's title, job, TTY, working directory, window, or tab changed. It carries only `Time`. A tab dragged to another window fires it, and the session's snapshot shows the new `Window` and `Tab`; there's no per-session event for a move.
 
-A title that changes only its agent spinner glyph doesn't count, or every working agent would fire it on every pass. Window titles aren't compared at all, because iTerm2 and WezTerm report the selected tab's title there, so a renamed tmux session shows up with the next change that does fire it.
+A title that changes only its agent spinner glyph doesn't count, or every working agent would fire it on every pass. Window titles aren't compared at all, because iTerm2 and WezTerm report the selected tab's title there, so a renamed tmux session shows up with the next change that does fire it. `PanesChanged` fires on a change in a tab's arrangement, never on size alone: swapping panes, switching layouts, or zooming fires it, and resizing the window or dragging a divider doesn't. The one exception comes from two dividers that line up exactly, because then the frames can't say which split came first, and moving one into or out of line fires it once.
 
 Terminal loss: with a `terminal.Lister` backend (the composite and the cache are both), every failed source keeps its sessions, and its panes in `Panes`, while the rest proceed, the primary included. Each gets one `Error` event per pass with a zero `Session`, and `errors.As` into a `*terminal.SourceError` names it.
 

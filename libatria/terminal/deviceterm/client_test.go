@@ -220,6 +220,35 @@ func TestSessionsFromPanesFillsPlacement(t *testing.T) {
 	}
 }
 
+func TestSessionsFromPanesReadsFrame(t *testing.T) {
+	// The terminal row from DeviceTerm's integration doc, and one without
+	// a frame (a pane never laid out).
+	data := `[
+	  {"id":"550e8400-e29b-41d4-a716-446655440000","shortId":"term01","name":"test runner","kind":"terminal",
+	   "tabId":"11111111-1111-1111-1111-111111111111","tabTitle":"vim Login.swift",
+	   "windowId":"22222222-2222-2222-2222-222222222222","current":true,"focused":true,
+	   "capabilities":["sendInput","captureText"],
+	   "frame":{"x":0,"y":0,"width":640,"height":800},
+	   "terminal":{"sessionId":"550e8400-e29b-41d4-a716-446655440000","title":"vim Login.swift",
+	     "tty":"/dev/ttys004","cwd":"/Users/example/project","foregroundProcess":"vim"}},
+	  {"id":"p-new","kind":"terminal","tabId":"t9","windowId":"w9","terminal":{"title":"zsh"}}
+	]`
+	panes, err := parsePaneList([]byte(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions, _ := sessionsFromPanes(panes)
+	if len(sessions) != 2 {
+		t.Fatalf("got %d sessions, want 2", len(sessions))
+	}
+	if sessions[0].Frame != (terminal.Frame{Width: 640, Height: 800}) || sessions[0].Job != "vim" {
+		t.Errorf("documented row = Frame %+v Job %q", sessions[0].Frame, sessions[0].Job)
+	}
+	if sessions[1].Frame != (terminal.Frame{}) {
+		t.Errorf("row without a frame = %+v, want zero", sessions[1].Frame)
+	}
+}
+
 func TestParseCapture(t *testing.T) {
 	tests := []struct {
 		name  string

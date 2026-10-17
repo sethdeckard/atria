@@ -123,6 +123,13 @@ type listEntry struct {
 	WindowTitle string `json:"window_title"`
 	TabTitle    string `json:"tab_title"`
 	IsActive    bool   `json:"is_active"`
+	// LeftCol, TopRow, and Size place the pane within its tab, in cells.
+	LeftCol int `json:"left_col"`
+	TopRow  int `json:"top_row"`
+	Size    struct {
+		Rows int `json:"rows"`
+		Cols int `json:"cols"`
+	} `json:"size"`
 }
 
 // parseListOutput parses the flat JSON array from wezterm cli list.
@@ -132,6 +139,15 @@ func parseListOutput(data []byte) ([]listEntry, error) {
 		return nil, fmt.Errorf("parse wezterm cli list: %w", err)
 	}
 	return entries, nil
+}
+
+// entryFrame is the pane's rectangle within its tab, zero when the listing
+// gives no size.
+func entryFrame(e listEntry) terminal.Frame {
+	if e.Size.Cols <= 0 || e.Size.Rows <= 0 {
+		return terminal.Frame{}
+	}
+	return terminal.Frame{Left: e.LeftCol, Top: e.TopRow, Width: e.Size.Cols, Height: e.Size.Rows}
 }
 
 // normalizeCWD strips the file:// URI prefix that WezTerm may use for CWD values.
@@ -213,6 +229,7 @@ func sessionsFromEntries(entries []listEntry) []terminal.Session {
 			Window: terminal.Place{ID: strconv.Itoa(e.WindowID), Title: e.WindowTitle, Index: windows[e.WindowID]},
 			Tab:    terminal.Place{ID: strconv.Itoa(e.TabID), Title: tabTitle, Index: tabs[e.TabID]},
 			Cwd:    normalizeCWD(e.CWD),
+			Frame:  entryFrame(e),
 		})
 	}
 	return sessions

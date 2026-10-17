@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -217,9 +218,26 @@ func chooseSessionName(paneTitle, windowName string) string {
 // the last field whole. paneFields counts the fields.
 const paneFormat = "#{pane_id}\t#{pane_title}\t#{window_name}\t#{pane_tty}" +
 	"\t#{session_id}\t#{session_name}\t#{window_id}" +
-	"\t#{pane_current_command}\t#{pane_current_path}"
+	"\t#{pane_current_command}" +
+	"\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}" +
+	"\t#{window_zoomed_flag}\t#{pane_current_path}"
 
-const paneFields = 9
+const paneFields = 14
+
+// paneFrame reads pane_left, pane_top, pane_width, and pane_height, cells
+// within the pane's window. Any field that isn't a number leaves the frame
+// zero.
+func paneFrame(f []string) terminal.Frame {
+	var n [4]int
+	for i := range n {
+		v, err := strconv.Atoi(f[i])
+		if err != nil {
+			return terminal.Frame{}
+		}
+		n[i] = v
+	}
+	return terminal.Frame{Left: n[0], Top: n[1], Width: n[2], Height: n[3]}
+}
 
 // parsePaneList parses tab-separated list-panes output into terminal sessions.
 // Window and tab indexes are positions in order of first appearance, which
@@ -267,7 +285,12 @@ func parsePaneList(output string) []terminal.Session {
 			s.Tab = terminal.Place{ID: windowID, Title: windowName, Index: tabs[key]}
 		}
 		if len(fields) == paneFields {
-			s.Job, s.Cwd = fields[7], fields[8]
+			s.Job, s.Cwd = fields[7], fields[13]
+			// A zoomed pane reports the whole window while the others keep
+			// their old frames, so a zoomed window's frames would overlap.
+			if fields[12] != "1" {
+				s.Frame = paneFrame(fields[8:12])
+			}
 		}
 		sessions = append(sessions, s)
 	}

@@ -114,8 +114,10 @@ func TestSessionsFromEntriesFillsPlacement(t *testing.T) {
 	// Window 0 holds a split tab without its own title and a titled tab;
 	// window 3 holds one tab.
 	data := `[
-	  {"window_id":0,"tab_id":0,"pane_id":0,"title":"✳ Claude Code","tty_name":"/dev/ttys001","window_title":"✳ Claude Code","tab_title":"","is_active":false},
-	  {"window_id":0,"tab_id":0,"pane_id":1,"title":"zsh","tty_name":"/dev/ttys002","window_title":"✳ Claude Code","tab_title":"","is_active":true},
+	  {"window_id":0,"tab_id":0,"pane_id":0,"title":"✳ Claude Code","tty_name":"/dev/ttys001","window_title":"✳ Claude Code","tab_title":"","is_active":false,
+	   "left_col":0,"top_row":0,"size":{"rows":40,"cols":80,"pixel_width":640,"pixel_height":800,"dpi":72}},
+	  {"window_id":0,"tab_id":0,"pane_id":1,"title":"zsh","tty_name":"/dev/ttys002","window_title":"✳ Claude Code","tab_title":"","is_active":true,
+	   "left_col":81,"top_row":0,"size":{"rows":40,"cols":79,"pixel_width":632,"pixel_height":800,"dpi":72}},
 	  {"window_id":0,"tab_id":4,"pane_id":5,"title":"htop","tty_name":"/dev/ttys003","window_title":"✳ Claude Code","tab_title":"monitor","is_active":true},
 	  {"window_id":3,"tab_id":7,"pane_id":8,"title":"vim","tty_name":"/dev/ttys004","window_title":"vim","tab_title":"","is_active":true,"cwd":"file://host/Users/example/my%20app"}
 	]`
@@ -149,6 +151,12 @@ func TestSessionsFromEntriesFillsPlacement(t *testing.T) {
 	}
 	if got[0].Cwd != "" {
 		t.Errorf("Cwd without a cwd field = %q, want empty", got[0].Cwd)
+	}
+	if got[0].Frame != (terminal.Frame{Width: 80, Height: 40}) || got[1].Frame != (terminal.Frame{Left: 81, Width: 79, Height: 40}) {
+		t.Errorf("split frames = %+v, %+v", got[0].Frame, got[1].Frame)
+	}
+	if got[2].Frame != (terminal.Frame{}) {
+		t.Errorf("Frame without a size = %+v, want zero", got[2].Frame)
 	}
 }
 

@@ -1906,3 +1906,117 @@ func TestSamePanesRepeatedID(t *testing.T) {
 		t.Fatal("a row under a repeated ID changing should compare unequal")
 	}
 }
+
+func TestSamePanesComparesSplitLayoutNotSize(t *testing.T) {
+	// One tmux window: %0 on the left, %1 over %2 on the right.
+	pane := func(id string, f terminal.Frame) terminal.Session {
+		return terminal.Session{ID: id, Source: "tmux", Window: terminal.Place{ID: "$0"}, Tab: terminal.Place{ID: "@0"}, Frame: f}
+	}
+	base := []terminal.Session{
+		pane("%0", terminal.Frame{Left: 0, Top: 0, Width: 100, Height: 50}),
+		pane("%1", terminal.Frame{Left: 101, Top: 0, Width: 99, Height: 25}),
+		pane("%2", terminal.Frame{Left: 101, Top: 26, Width: 99, Height: 24}),
+	}
+	frames := func(fs ...terminal.Frame) []terminal.Session {
+		out := append([]terminal.Session{}, base...)
+		for i, f := range fs {
+			out[i].Frame = f
+		}
+		return out
+	}
+	tests := []struct {
+		name string
+		next []terminal.Session
+		same bool
+	}{
+		{"window resized", frames(
+			terminal.Frame{Left: 0, Top: 0, Width: 60, Height: 30},
+			terminal.Frame{Left: 61, Top: 0, Width: 59, Height: 15},
+			terminal.Frame{Left: 61, Top: 16, Width: 59, Height: 14}), true},
+		{"divider dragged", frames(
+			terminal.Frame{Left: 0, Top: 0, Width: 140, Height: 50},
+			terminal.Frame{Left: 141, Top: 0, Width: 59, Height: 10},
+			terminal.Frame{Left: 141, Top: 11, Width: 59, Height: 39}), true},
+		{"panes swapped", frames(
+			terminal.Frame{Left: 101, Top: 0, Width: 99, Height: 25},
+			terminal.Frame{Left: 0, Top: 0, Width: 100, Height: 50}), false},
+		{"layout switched to stacked", frames(
+			terminal.Frame{Left: 0, Top: 0, Width: 200, Height: 16},
+			terminal.Frame{Left: 0, Top: 17, Width: 200, Height: 16},
+			terminal.Frame{Left: 0, Top: 34, Width: 200, Height: 16}), false},
+	}
+	for _, tt := range tests {
+		if got := samePanes(base, tt.next); got != tt.same {
+			t.Errorf("%s: samePanes = %v, want %v", tt.name, got, tt.same)
+		}
+	}
+
+	// Two columns, each split at the same height: moving one column's
+	// divider moves no pane between splits.
+	grid := func(leftSplit, rightSplit int) []terminal.Session {
+		return []terminal.Session{
+			pane("tl", terminal.Frame{Left: 0, Top: 0, Width: 60, Height: leftSplit}),
+			pane("bl", terminal.Frame{Left: 0, Top: leftSplit + 1, Width: 60, Height: 49 - leftSplit}),
+			pane("tr", terminal.Frame{Left: 61, Top: 0, Width: 59, Height: rightSplit}),
+			pane("br", terminal.Frame{Left: 61, Top: rightSplit + 1, Width: 59, Height: 49 - rightSplit}),
+		}
+	}
+	if !samePanes(grid(24, 24), grid(19, 24)) {
+		t.Error("moving one column's divider should compare equal")
+	}
+	// The mirror: two rows, each split at the same column.
+	rows := func(topSplit, bottomSplit int) []terminal.Session {
+		return []terminal.Session{
+			pane("tl", terminal.Frame{Left: 0, Top: 0, Width: topSplit, Height: 20}),
+			pane("tr", terminal.Frame{Left: topSplit + 1, Top: 0, Width: 119 - topSplit, Height: 20}),
+			pane("bl", terminal.Frame{Left: 0, Top: 21, Width: bottomSplit, Height: 19}),
+			pane("br", terminal.Frame{Left: bottomSplit + 1, Top: 21, Width: 119 - bottomSplit, Height: 19}),
+		}
+	}
+	if !samePanes(rows(59, 40), rows(59, 30)) {
+		t.Error("moving one row's divider should compare equal")
+	}
+	// Lined-up dividers read as columns (the tie goes to vertical cuts), so
+	// pulling one out of line changes the layout once.
+	if samePanes(rows(59, 59), rows(59, 30)) {
+		t.Error("lined-up dividers coming apart should compare unequal")
+	}
+
+	// A frame that becomes known counts; one that stays unknown doesn't.
+	unknown := []terminal.Session{pane("%0", terminal.Frame{}), pane("%1", terminal.Frame{})}
+	known := []terminal.Session{pane("%0", terminal.Frame{Width: 80, Height: 24}), pane("%1", terminal.Frame{Top: 25, Width: 80, Height: 24})}
+	if samePanes(unknown, known) {
+		t.Error("frames becoming known should compare unequal")
+	}
+	if !samePanes(unknown, append([]terminal.Session{}, unknown...)) {
+		t.Error("unknown frames should compare equal")
+	}
+}
+
+func TestSplitLayout(t *testing.T) {
+	f := func(id string, l, t, w, h int) terminal.Session {
+		return terminal.Session{ID: id, Frame: terminal.Frame{Left: l, Top: t, Width: w, Height: h}}
+	}
+	tests := []struct {
+		name  string
+		panes []terminal.Session
+		want  string
+	}{
+		{"one pane", []terminal.Session{f("a", 0, 0, 80, 24)}, "a"},
+		{"left, then a stack on the right", []terminal.Session{
+			f("%2", 101, 26, 99, 24), f("%0", 0, 0, 100, 50), f("%1", 101, 0, 99, 25),
+		}, "V(%0,H(%1,%2))"},
+		{"rows split independently", []terminal.Session{
+			f("a", 0, 0, 60, 20), f("b", 61, 0, 59, 20), f("c", 0, 21, 40, 19), f("d", 41, 21, 79, 19),
+		}, "H(V(a,b),V(c,d))"},
+		{"not cut from splits", []terminal.Session{
+			// A pinwheel: no line crosses the tab without crossing a pane.
+			f("a", 0, 0, 20, 10), f("b", 20, 0, 10, 20), f("c", 10, 20, 20, 10), f("d", 0, 10, 10, 20), f("e", 10, 10, 10, 10),
+		}, "?(a,b,c,d,e)"},
+	}
+	for _, tt := range tests {
+		if got := splitLayout(tt.panes); got != tt.want {
+			t.Errorf("%s: splitLayout = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -569,17 +570,22 @@ func (w *Watcher) updatePanes(listed []terminal.Session, failed map[string]bool)
 // Window titles are left out: most terminals report the selected tab's
 // title there, which changes on every tab switch. A renamed tmux session
 // (its window title) therefore shows up with the next change that fires the
-// event, not on its own.
+// event, not on its own. A pane's frame counts by its tab's split layout
+// (see splitLayout), not its size, so a swap, a new layout, or a zoom fires
+// the event, and a window resize or a divider drag doesn't, unless the drag
+// moves a divider into or out of line with another.
 type paneKey struct {
 	source, tty, job, name string
 	cwd                    string
 	windowID, tabID        string
 	windowIndex, tabIndex  int
 	tabTitle               string
+	layout                 string // the pane's tab's split layout
 }
 
-func keyOf(s terminal.Session) paneKey {
+func keyOf(s terminal.Session, layout string) paneKey {
 	return paneKey{
+		layout:      layout,
 		source:      s.Source,
 		tty:         s.TTY,
 		job:         s.Job,
@@ -601,17 +607,99 @@ func samePanes(a, b []terminal.Session) bool {
 		return false
 	}
 	keys := make(map[string][]paneKey, len(a))
-	for _, s := range a {
-		keys[s.ID] = append(keys[s.ID], keyOf(s))
+	for i, layout := range layouts(a) {
+		keys[a[i].ID] = append(keys[a[i].ID], keyOf(a[i], layout))
 	}
-	for _, s := range b {
+	for i, layout := range layouts(b) {
+		s := b[i]
 		k := keys[s.ID]
-		if len(k) == 0 || k[0] != keyOf(s) {
+		if len(k) == 0 || k[0] != keyOf(s, layout) {
 			return false
 		}
 		keys[s.ID] = k[1:]
 	}
 	return true
+}
+
+// layouts gives each pane its tab's split layout (see splitLayout), built
+// from the panes that have a frame; a pane with none gets "".
+func layouts(panes []terminal.Session) []string {
+	type tab struct{ source, window, tab string }
+	byTab := map[tab][]terminal.Session{}
+	for _, s := range panes {
+		if s.Frame.Width > 0 {
+			k := tab{s.Source, s.Window.ID, s.Tab.ID}
+			byTab[k] = append(byTab[k], s)
+		}
+	}
+	layout := map[tab]string{}
+	for k, ps := range byTab {
+		layout[k] = splitLayout(ps)
+	}
+	out := make([]string, len(panes))
+	for i, s := range panes {
+		if s.Frame.Width > 0 {
+			out[i] = layout[tab{s.Source, s.Window.ID, s.Tab.ID}]
+		}
+	}
+	return out
+}
+
+// splitLayout recovers the split tree a tab's frames were cut from, as a
+// string such as "V(%0,H(%1,%2))": the panes are cut apart along every
+// vertical line no pane crosses, or failing that every horizontal one, and
+// each part is cut again. Where a divider sits doesn't enter into it, so
+// the string holds still while a window resizes or a divider moves, and
+// changes when panes swap or the layout does. When two splits line up
+// exactly, cuts run across the tab both ways and vertical ones win, so
+// moving a divider into or out of line changes the string once. Frames
+// that can't be cut that way (no terminal draws them) give the pane IDs in
+// listing order.
+func splitLayout(panes []terminal.Session) string {
+	if len(panes) == 1 {
+		return panes[0].ID
+	}
+	vertical := func(f terminal.Frame) (int, int) { return f.Left, f.Left + f.Width }
+	horizontal := func(f terminal.Frame) (int, int) { return f.Top, f.Top + f.Height }
+	for _, cut := range []struct {
+		name string
+		span func(terminal.Frame) (int, int)
+	}{{"V", vertical}, {"H", horizontal}} {
+		if parts := cutApart(panes, cut.span); len(parts) > 1 {
+			names := make([]string, len(parts))
+			for i, part := range parts {
+				names[i] = splitLayout(part)
+			}
+			return cut.name + "(" + strings.Join(names, ",") + ")"
+		}
+	}
+	ids := make([]string, len(panes))
+	for i, s := range panes {
+		ids[i] = s.ID
+	}
+	return "?(" + strings.Join(ids, ",") + ")"
+}
+
+// cutApart splits panes into the groups that no pane's span crosses
+// between, in order along that axis.
+func cutApart(panes []terminal.Session, span func(terminal.Frame) (start, end int)) [][]terminal.Session {
+	sorted := slices.Clone(panes)
+	slices.SortStableFunc(sorted, func(a, b terminal.Session) int {
+		as, _ := span(a.Frame)
+		bs, _ := span(b.Frame)
+		return as - bs
+	})
+	var parts [][]terminal.Session
+	reach := 0
+	for _, s := range sorted {
+		start, end := span(s.Frame)
+		if len(parts) == 0 || start >= reach {
+			parts = append(parts, nil)
+		}
+		parts[len(parts)-1] = append(parts[len(parts)-1], s)
+		reach = max(reach, end)
+	}
+	return parts
 }
 
 // list returns one listing and the sources that failed while producing it.

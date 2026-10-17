@@ -9,6 +9,7 @@ type Session struct {
 	Source string // "pty", "iterm", "tmux" — set by composite backend
 	Window Place  // the window holding the pane; zero when the backend can't say
 	Tab    Place  // the tab within that window, shared by its split panes; zero when the backend can't say
+	Frame  Frame  // the pane's position and size within its tab; zero when the backend can't say
 	// Cwd is the pane's working directory as the terminal reports it:
 	// best-effort, and empty when the terminal can't say. It may lag a cd
 	// until the shell reports it (iTerm2 needs shell integration or OSC 7).
@@ -17,6 +18,12 @@ type Session struct {
 	// finds one, otherwise the discovery fallbacks.
 	Cwd string
 }
+
+// Frame is a pane's rectangle within its tab, in the terminal's own units:
+// cells for tmux, iTerm2, and WezTerm, points for DeviceTerm. Only
+// proportions within one tab are comparable. The zero Frame (Width 0) means
+// the backend can't say.
+type Frame struct{ Left, Top, Width, Height int }
 
 // Place is a window or tab as a terminal lists it. The zero Place means the
 // backend can't say; Index is meaningful only when ID is set.

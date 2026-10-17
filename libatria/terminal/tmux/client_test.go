@@ -187,12 +187,12 @@ func TestParsePaneListLinkedWindow(t *testing.T) {
 }
 
 func TestParsePaneListJobAndCwd(t *testing.T) {
-	// Captured with pane_current_command and pane_current_path last; the
+	// Captured with the trailing fields (command, geometry, path); the
 	// second path has a space, the last one a trailing space.
-	out := "%0\thost.local\tone\t/dev/ttys046\t$0\tbeta\t@0\tzsh\t/private/tmp\n" +
-		"%1\thost.local\ttwo\t/dev/ttys048\t$0\tbeta\t@1\tsleep\t/Users/example/my app\n" +
-		"%2\thost.local\tthree\t/dev/ttys049\t$0\tbeta\t@2\t\t\n" +
-		"%3\thost.local\tfour\t/dev/ttys050\t$0\tbeta\t@3\tclaude\t/tmp/project \n"
+	out := "%0\thost.local\tone\t/dev/ttys046\t$0\tbeta\t@0\tzsh\t0\t0\t80\t24\t0\t/private/tmp\n" +
+		"%1\thost.local\ttwo\t/dev/ttys048\t$0\tbeta\t@1\tsleep\t0\t0\t80\t24\t0\t/Users/example/my app\n" +
+		"%2\thost.local\tthree\t/dev/ttys049\t$0\tbeta\t@2\t\t0\t0\t80\t24\t0\t\n" +
+		"%3\thost.local\tfour\t/dev/ttys050\t$0\tbeta\t@3\tclaude\t0\t0\t80\t24\t0\t/tmp/project \n"
 	want := []struct{ job, cwd string }{
 		{"zsh", "/private/tmp"},
 		{"sleep", "/Users/example/my app"},
@@ -215,6 +215,51 @@ func TestParsePaneListJobAndCwd(t *testing.T) {
 	for _, s := range parsePaneList(twoSessionPanes) {
 		if s.Job != "" || s.Cwd != "" {
 			t.Errorf("%s: job %q cwd %q without the fields, want empty", s.ID, s.Job, s.Cwd)
+		}
+	}
+}
+
+func TestParsePaneListFrames(t *testing.T) {
+	// Captured from a 200x50 window split side by side, then the right
+	// pane split top and bottom. The divider takes a cell.
+	out := "%0\thost.local\tw\t/dev/ttys049\t$0\ts\t@0\tzsh\t0\t0\t100\t50\t0\t/private/tmp\n" +
+		"%1\thost.local\tw\t/dev/ttys056\t$0\ts\t@0\tzsh\t101\t0\t99\t25\t0\t/private/tmp\n" +
+		"%2\thost.local\tw\t/dev/ttys057\t$0\ts\t@0\tzsh\t101\t26\t99\t24\t0\t/private/tmp\n" +
+		"%3\thost.local\tw\t/dev/ttys058\t$0\ts\t@1\tzsh\t0\tx\t80\t24\t0\t/private/tmp\n"
+	want := []terminal.Frame{
+		{Left: 0, Top: 0, Width: 100, Height: 50},
+		{Left: 101, Top: 0, Width: 99, Height: 25},
+		{Left: 101, Top: 26, Width: 99, Height: 24},
+		{}, // a field that isn't a number
+	}
+	got := parsePaneList(out)
+	if len(got) != len(want) {
+		t.Fatalf("got %d sessions, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].Frame != w {
+			t.Errorf("pane %d Frame = %+v, want %+v", i, got[i].Frame, w)
+		}
+	}
+	for _, s := range parsePaneList(twoSessionPanes) {
+		if s.Frame != (terminal.Frame{}) {
+			t.Errorf("%s: Frame = %+v without the fields, want zero", s.ID, s.Frame)
+		}
+	}
+}
+
+func TestParsePaneListZoomedWindowHasNoFrames(t *testing.T) {
+	// Captured with %1 zoomed: it reports the whole window while %0 and %2
+	// keep their old frames.
+	out := "%0\thost.local\tw\t/dev/ttys049\t$0\ts\t@0\tzsh\t0\t0\t60\t40\t1\t/tmp\n" +
+		"%1\thost.local\tw\t/dev/ttys056\t$0\ts\t@0\tzsh\t0\t0\t120\t40\t1\t/tmp\n" +
+		"%2\thost.local\tw\t/dev/ttys057\t$0\ts\t@0\tzsh\t61\t21\t59\t19\t1\t/tmp\n"
+	for _, s := range parsePaneList(out) {
+		if s.Frame != (terminal.Frame{}) {
+			t.Errorf("%s: Frame = %+v in a zoomed window, want zero", s.ID, s.Frame)
+		}
+		if s.Job != "zsh" || s.Cwd != "/tmp" {
+			t.Errorf("%s: job %q cwd %q, want the other fields read as usual", s.ID, s.Job, s.Cwd)
 		}
 	}
 }

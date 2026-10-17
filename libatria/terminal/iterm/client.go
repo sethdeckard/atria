@@ -225,6 +225,62 @@ func collectSessions(node *pb.SplitTreeNode) []*pb.SessionSummary {
 	return sessions
 }
 
+// layoutTab places each session of a tab's split tree in cells. A session
+// is its grid size; a vertical node lays its children out left to right
+// and any other node top to bottom, with a one-cell divider between them.
+// It returns nil when a session has no grid size, because then nothing in
+// the tab can be placed.
+func layoutTab(root *pb.SplitTreeNode) map[string]terminal.Frame {
+	frames := map[string]terminal.Frame{}
+	if root == nil {
+		return frames
+	}
+	if _, _, ok := placeNode(root, 0, 0, frames); !ok {
+		return nil
+	}
+	return frames
+}
+
+// placeNode lays n out with its top-left corner at left, top and returns
+// its width and height.
+func placeNode(n *pb.SplitTreeNode, left, top int, frames map[string]terminal.Frame) (width, height int, ok bool) {
+	placed := 0
+	for _, link := range n.GetLinks() {
+		x, y := left, top
+		if placed > 0 {
+			if n.GetVertical() {
+				x += width + 1
+			} else {
+				y += height + 1
+			}
+		}
+		var w, h int
+		switch {
+		case link.GetSession() != nil:
+			s := link.GetSession()
+			g := s.GetGridSize()
+			if g.GetWidth() <= 0 || g.GetHeight() <= 0 {
+				return 0, 0, false
+			}
+			w, h = int(g.GetWidth()), int(g.GetHeight())
+			frames[s.GetUniqueIdentifier()] = terminal.Frame{Left: x, Top: y, Width: w, Height: h}
+		case link.GetNode() != nil:
+			if w, h, ok = placeNode(link.GetNode(), x, y, frames); !ok {
+				return 0, 0, false
+			}
+		default:
+			continue
+		}
+		if n.GetVertical() {
+			width, height = x-left+w, max(height, h)
+		} else {
+			width, height = max(width, w), y-top+h
+		}
+		placed++
+	}
+	return width, height, true
+}
+
 // ListSessions returns all iTerm2 sessions (panes), including those in
 // splits, with the window and tab holding each. Besides the listing it makes
 // one variable request per session (TTY, job, and working directory) and one
@@ -268,6 +324,7 @@ func sessionsFromWindows(
 				Title: title(&pb.VariableRequest{Scope: &pb.VariableRequest_TabId{TabId: tab.GetTabId()}}),
 				Index: ti,
 			}
+			frames := layoutTab(tab.GetRoot())
 			for _, ss := range collectSessions(tab.GetRoot()) {
 				v := vars(ss.GetUniqueIdentifier())
 				sessions = append(sessions, terminal.Session{
@@ -278,6 +335,7 @@ func sessionsFromWindows(
 					Window: win,
 					Tab:    t,
 					Cwd:    v.cwd,
+					Frame:  frames[ss.GetUniqueIdentifier()],
 				})
 			}
 		}

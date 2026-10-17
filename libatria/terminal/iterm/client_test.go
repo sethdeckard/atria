@@ -526,3 +526,58 @@ func TestSessionVarsFrom(t *testing.T) {
 		}
 	}
 }
+
+func sized(id string, cols, rows int32) *pb.SplitTreeNode_SplitTreeLink {
+	return &pb.SplitTreeNode_SplitTreeLink{Child: &pb.SplitTreeNode_SplitTreeLink_Session{
+		Session: &pb.SessionSummary{
+			UniqueIdentifier: proto.String(id),
+			GridSize:         &pb.Size{Width: proto.Int32(cols), Height: proto.Int32(rows)},
+		},
+	}}
+}
+
+func TestLayoutTab(t *testing.T) {
+	// Side by side: left, and a stack of top-right over bottom-right.
+	root := &pb.SplitTreeNode{
+		Vertical: proto.Bool(true),
+		Links: []*pb.SplitTreeNode_SplitTreeLink{
+			sized("left", 80, 24),
+			{Child: &pb.SplitTreeNode_SplitTreeLink_Node{Node: &pb.SplitTreeNode{
+				Links: []*pb.SplitTreeNode_SplitTreeLink{sized("top-right", 79, 11), sized("bottom-right", 79, 12)},
+			}}},
+		},
+	}
+	want := map[string]terminal.Frame{
+		"left":         {Left: 0, Top: 0, Width: 80, Height: 24},
+		"top-right":    {Left: 81, Top: 0, Width: 79, Height: 11},
+		"bottom-right": {Left: 81, Top: 12, Width: 79, Height: 12},
+	}
+	got := layoutTab(root)
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("%s = %+v, want %+v", id, got[id], w)
+		}
+	}
+
+	// One session without a grid size leaves the whole tab unplaced.
+	root.Links[1].GetNode().Links[1] = pane("bottom-right", "zsh")
+	if got := layoutTab(root); got != nil {
+		t.Errorf("with a missing grid size, layoutTab = %+v, want nil", got)
+	}
+}
+
+func TestSessionsFromWindowsCarriesFrames(t *testing.T) {
+	windows := []*pb.ListSessionsResponse_Window{{WindowId: proto.String("w"), Tabs: []*pb.ListSessionsResponse_Tab{
+		{TabId: proto.String("1"), Root: &pb.SplitTreeNode{Links: []*pb.SplitTreeNode_SplitTreeLink{
+			sized("top", 120, 20), sized("bottom", 120, 19),
+		}}},
+	}}}
+	got := sessionsFromWindows(windows, func(string) sessionVars { return sessionVars{} }, func(*pb.VariableRequest) string { return "" })
+	if len(got) != 2 || got[0].Frame != (terminal.Frame{Width: 120, Height: 20}) ||
+		got[1].Frame != (terminal.Frame{Top: 21, Width: 120, Height: 19}) {
+		t.Fatalf("frames = %+v", got)
+	}
+}
