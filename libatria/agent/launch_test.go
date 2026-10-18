@@ -38,6 +38,7 @@ func (r *recorder) FocusSession(id string) error {
 	return nil
 }
 func (r *recorder) ReadScreen(string, int) (string, error)            { return "", nil }
+func (r *recorder) ReadScrollback(string, int, bool) (string, error)  { return "", nil }
 func (r *recorder) GetVar(string, string) (string, error)             { return "", nil }
 func (r *recorder) MonitorOutput(string, string, string) (int, error) { return 0, nil }
 

@@ -18,6 +18,10 @@ func (m *cwdMockBackend) SendText(sessionID, text string) error                 
 func (m *cwdMockBackend) RunCommand(sessionID, cmd string) error                 { return nil }
 func (m *cwdMockBackend) FocusSession(sessionID string) error                    { return nil }
 func (m *cwdMockBackend) ReadScreen(sessionID string, lines int) (string, error) { return "", nil }
+
+func (m *cwdMockBackend) ReadScrollback(id string, lines int, _ bool) (string, error) {
+	return m.ReadScreen(id, lines)
+}
 func (m *cwdMockBackend) GetVar(sessionID, varName string) (string, error) {
 	return m.getVarResult, m.getVarErr
 }

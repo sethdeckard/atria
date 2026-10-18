@@ -60,6 +60,10 @@ func (m *mockBackend) ReadScreen(sid string, lines int) (string, error) {
 	}
 	return m.screenContent, nil
 }
+
+func (m *mockBackend) ReadScrollback(id string, lines int, _ bool) (string, error) {
+	return m.ReadScreen(id, lines)
+}
 func (m *mockBackend) GetVar(sid, name string) (string, error) {
 	return m.getVarVal, nil
 }

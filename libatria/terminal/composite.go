@@ -222,6 +222,17 @@ func (c *CompositeBackend) ReadScreen(sessionID string, lines int) (string, erro
 	return b.ReadScreen(id, lines)
 }
 
+// ReadScrollback routes to the correct backend based on session ID prefix.
+func (c *CompositeBackend) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	c.mu.RLock()
+	b, id, err := c.route(sessionID)
+	c.mu.RUnlock()
+	if err != nil {
+		return "", err
+	}
+	return b.ReadScrollback(id, lines, styled)
+}
+
 // SendKey routes to the correct backend based on session ID prefix, using the
 // owner's KeySender when it has one and the key's byte sequence otherwise.
 func (c *CompositeBackend) SendKey(sessionID string, key Key) error {

@@ -18,6 +18,10 @@ func (s *styledStub) ReadScreen(sessionID string, lines int) (string, error) {
 	return s.plain, nil
 }
 
+func (s *styledStub) ReadScrollback(id string, lines int, _ bool) (string, error) {
+	return s.ReadScreen(id, lines)
+}
+
 func (s *styledStub) ReadScreenStyled(sessionID string, lines int) (string, error) {
 	return s.styled, s.styledErr
 }

@@ -16,6 +16,7 @@ type trackingBackend struct {
 	lastFocusID   string
 	lastReadID    string
 	lastReadLines int
+	lastStyled    bool
 	lastGetVarID  string
 	lastGetVar    string
 	readScreen    string
@@ -44,6 +45,11 @@ func (t *trackingBackend) ReadScreen(sessionID string, lines int) (string, error
 	t.lastReadID = sessionID
 	t.lastReadLines = lines
 	return t.readScreen, nil
+}
+
+func (t *trackingBackend) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	t.lastStyled = styled
+	return t.ReadScreen(sessionID, lines)
 }
 
 func (t *trackingBackend) GetVar(sessionID, varName string) (string, error) {
@@ -237,6 +243,27 @@ func TestComposite_RouteReadScreen(t *testing.T) {
 	}
 	if itermInteg.lastReadID != "session-1" {
 		t.Errorf("expected read ID 'session-1', got %q", itermInteg.lastReadID)
+	}
+}
+
+func TestComposite_RouteReadScrollback(t *testing.T) {
+	primary := &trackingBackend{readScreen: "primary content"}
+	tmuxInteg := &trackingBackend{readScreen: "tmux history"}
+	comp := NewCompositeBackend(primary, "pty", []Integration{
+		{Prefix: "tmux:", Source: "tmux", Backend: tmuxInteg},
+	})
+	cached := NewCachedBackend(comp, 0)
+
+	content, err := cached.ReadScrollback("tmux:%3", 500, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "tmux history" || tmuxInteg.lastReadID != "%3" || tmuxInteg.lastReadLines != 500 || !tmuxInteg.lastStyled {
+		t.Errorf("ReadScrollback = %q reached %q, %d lines, styled %v; want tmux history, %%3, 500, true",
+			content, tmuxInteg.lastReadID, tmuxInteg.lastReadLines, tmuxInteg.lastStyled)
+	}
+	if primary.lastReadID != "" {
+		t.Errorf("primary was read for an integration session: %q", primary.lastReadID)
 	}
 }
 

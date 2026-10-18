@@ -311,6 +311,28 @@ exit 0
 	}
 }
 
+func TestReadScrollbackReadsTheScreen(t *testing.T) {
+	kitten := writeFakeKitten(t, `
+shift 3
+echo "$@"
+`)
+	c := NewClient(Options{Path: kitten})
+	plain, err := c.ReadScrollback("7", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	styled, err := c.ReadScrollback("7", 100, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "get-text --match id:7 --extent screen\n"; plain != want {
+		t.Errorf("plain read ran %q, want %q", plain, want)
+	}
+	if want := "get-text --match id:7 --extent screen --ansi\n"; styled != want {
+		t.Errorf("styled read ran %q, want %q", styled, want)
+	}
+}
+
 func TestListSessionsUsesInjectedTTYLookupConcurrently(t *testing.T) {
 	kitten := writeFakeKitten(t, `
 if [ "$4" = "ls" ]; then

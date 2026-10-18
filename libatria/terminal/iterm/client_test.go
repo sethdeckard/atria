@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/sethdeckard/atria/libatria/terminal"
@@ -310,6 +311,100 @@ func TestLineRangeForVisibleScreenErrors(t *testing.T) {
 				t.Fatal("expected error")
 			}
 		})
+	}
+}
+
+func TestScrollbackRange(t *testing.T) {
+	tests := []struct {
+		name      string
+		info      lineInfo
+		lines     int
+		wantStart int64
+		wantEnd   int64
+	}{
+		{"one grid extra above the requested lines", lineInfo{Overflow: 5, History: 100, Grid: 4}, 3, 102, 109},
+		{"history shorter than requested", lineInfo{Overflow: 5, History: 10, Grid: 4}, 50, 5, 19},
+		{"no history", lineInfo{Grid: 24}, 100, 0, 24},
+		{"lines within the grid", lineInfo{History: 100, Grid: 40}, 25, 75, 140},
+		{"ignores a scrolled view", lineInfo{History: 100, Grid: 4, FirstVisible: proto.Int64(10)}, 2, 98, 104},
+	}
+	for _, tt := range tests {
+		r := scrollbackRange(tt.info, tt.lines).GetWindowedCoordRange().GetCoordRange()
+		if r.GetStart().GetY() != tt.wantStart || r.GetEnd().GetY() != tt.wantEnd {
+			t.Errorf("%s: range = %d..%d, want %d..%d", tt.name, r.GetStart().GetY(), r.GetEnd().GetY(), tt.wantStart, tt.wantEnd)
+		}
+	}
+}
+
+func TestReadScrollback(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		props    []string
+		lineRngs []*pb.LineRange
+	)
+	row := func(text string) *pb.LineContents { return &pb.LineContents{Text: proto.String(text)} }
+	bold := &pb.LineContents{
+		Text:  proto.String("s2"),
+		Style: []*pb.CellStyle{{Bold: proto.Bool(true), Repeats: proto.Uint32(2)}},
+	}
+	sock, _ := startFakeITermWith(t, "", func(req *pb.ClientOriginatedMessage) *pb.ServerOriginatedMessage {
+		mu.Lock()
+		defer mu.Unlock()
+		if gp := req.GetGetPropertyRequest(); gp != nil {
+			props = append(props, gp.GetName())
+			return &pb.ServerOriginatedMessage{Submessage: &pb.ServerOriginatedMessage_GetPropertyResponse{
+				GetPropertyResponse: &pb.GetPropertyResponse{JsonValue: proto.String(`{"overflow":5,"history":100,"grid":4}`)},
+			}}
+		}
+		lineRngs = append(lineRngs, req.GetGetBufferRequest().GetLineRange())
+		return &pb.ServerOriginatedMessage{Submessage: &pb.ServerOriginatedMessage_GetBufferResponse{
+			GetBufferResponse: &pb.GetBufferResponse{Contents: []*pb.LineContents{
+				row("h1"), row("h2"), row("h3"), row("s1"), bold, row(" "), row("\x00\x00"),
+			}},
+		}}
+	})
+	c := NewClient(Options{SocketPath: sock, NoPrompt: true})
+	t.Cleanup(func() { _ = c.Close() })
+
+	plain, err := c.ReadScrollback("s", 3, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "h3\ns1\ns2"; plain != want {
+		t.Errorf("plain = %q, want %q", plain, want)
+	}
+	styled, err := c.ReadScrollback("s", 3, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "h3\ns1\n\x1b[1ms2\x1b[0m"; styled != want {
+		t.Errorf("styled = %q, want %q", styled, want)
+	}
+
+	if _, err := c.ReadScrollback("s", 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ReadScrollback("s", -1, true); err != nil {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if n := len(lineRngs); n != 4 || !lineRngs[2].GetScreenContentsOnly() || !lineRngs[3].GetScreenContentsOnly() {
+		t.Fatalf("buffer requests = %v, want screen reads for lines 0 and -1 after two history reads", lineRngs)
+	}
+	lineRngs = lineRngs[:2]
+	if len(props) != 2 || props[0] != "number_of_lines" {
+		t.Errorf("property requests = %q, want number_of_lines per read", props)
+	}
+	for _, lr := range lineRngs {
+		r := lr.GetWindowedCoordRange().GetCoordRange()
+		if lr.GetScreenContentsOnly() || r.GetStart().GetY() != 102 || r.GetEnd().GetY() != 109 {
+			t.Errorf("buffer range = %v, want rows 102..109", lr)
+		}
+	}
+	if len(lineRngs) != 2 {
+		t.Errorf("buffer requests = %d, want one per read", len(lineRngs))
 	}
 }
 

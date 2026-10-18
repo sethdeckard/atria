@@ -27,6 +27,7 @@ func (m *mockBackend) SendText(sessionID, text string) error {
 func (m *mockBackend) RunCommand(sessionID, cmd string) error                 { return nil }
 func (m *mockBackend) FocusSession(sessionID string) error                    { return nil }
 func (m *mockBackend) ReadScreen(sessionID string, lines int) (string, error) { return "", nil }
+func (m *mockBackend) ReadScrollback(string, int, bool) (string, error)       { return "", nil }
 func (m *mockBackend) GetVar(sessionID, varName string) (string, error)       { return "", nil }
 func (m *mockBackend) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
 	return 0, nil

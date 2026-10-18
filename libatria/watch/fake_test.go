@@ -84,6 +84,10 @@ func (f *fakeBackend) ReadScreen(id string, _ int) (string, error) {
 	}
 	return f.screens[id], nil
 }
+
+func (f *fakeBackend) ReadScrollback(id string, lines int, _ bool) (string, error) {
+	return f.ReadScreen(id, lines)
+}
 func (f *fakeBackend) ReadScreenStyled(id string, _ int) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

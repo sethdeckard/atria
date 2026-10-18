@@ -286,6 +286,15 @@ func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
 	return terminal.TrimScreenTail(string(out), lines), nil
 }
 
+// ReadScrollback returns the visible screen, as ReadScreen does; this backend
+// doesn't read the pane's history.
+func (c *Client) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	if styled {
+		return c.ReadScreenStyled(sessionID, lines)
+	}
+	return c.ReadScreen(sessionID, lines)
+}
+
 func trimToLastN(text string, n int) string {
 	return terminal.TrimScreenTail(text, n)
 }

@@ -284,6 +284,15 @@ func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
 	return terminal.TrimScreenTail(string(out), lines), nil
 }
 
+// ReadScrollback returns the visible screen, as ReadScreen does; this backend
+// doesn't read the window's history.
+func (c *Client) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	if styled {
+		return c.ReadScreenStyled(sessionID, lines)
+	}
+	return c.ReadScreen(sessionID, lines)
+}
+
 // lookupWindowVar finds a window by ID string and returns the requested variable.
 func lookupWindowVar(windows []kittyWindow, sessionID, varName string) (string, error) {
 	if varName != "path" && varName != "pid" {

@@ -22,6 +22,7 @@ func (s *stubBackend) SendText(sessionID, text string) error                  { 
 func (s *stubBackend) RunCommand(sessionID, cmd string) error                 { return nil }
 func (s *stubBackend) FocusSession(sessionID string) error                    { return nil }
 func (s *stubBackend) ReadScreen(sessionID string, lines int) (string, error) { return "", nil }
+func (s *stubBackend) ReadScrollback(string, int, bool) (string, error)       { return "", nil }
 func (s *stubBackend) GetVar(sessionID, varName string) (string, error)       { return "", nil }
 func (s *stubBackend) MonitorOutput(sessionID, logPath, patterns string) (int, error) {
 	return 0, nil

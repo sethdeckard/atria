@@ -538,6 +538,15 @@ func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
 	return terminal.TrimScreenTail(text, lines), nil
 }
 
+// ReadScrollback returns the visible viewport, as ReadScreen does: DeviceTerm's
+// capture has no scrollback.
+func (c *Client) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	if styled {
+		return c.ReadScreenStyled(sessionID, lines)
+	}
+	return c.ReadScreen(sessionID, lines)
+}
+
 // GetVar reads a variable for a DeviceTerm pane. Supported: "path", served
 // from the working directory captured by the last ListSessions. It is empty
 // when DeviceTerm could not resolve the directory, which makes CWD discovery

@@ -188,6 +188,15 @@ func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
 	return s.readScreenStyled(lines), nil
 }
 
+// ReadScrollback returns the visible screen, as ReadScreen does: the vt10x
+// emulator keeps no history.
+func (c *Client) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	if styled {
+		return c.ReadScreenStyled(sessionID, lines)
+	}
+	return c.ReadScreen(sessionID, lines)
+}
+
 // GetVar reads session variables. Supported: "pid", "path".
 func (c *Client) GetVar(sessionID, varName string) (string, error) {
 	s, err := c.getSession(sessionID)

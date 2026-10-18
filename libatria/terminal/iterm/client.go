@@ -433,26 +433,49 @@ func extractFocusedWindowID(fr *pb.FocusResponse) (string, bool) {
 	return "", false
 }
 
-func lineRangeForVisibleScreen(jsonValue string) (*pb.LineRange, error) {
+// parseLineInfo decodes the number_of_lines property.
+func parseLineInfo(jsonValue string) (lineInfo, error) {
 	var info lineInfo
 	if err := json.Unmarshal([]byte(jsonValue), &info); err != nil {
-		return nil, fmt.Errorf("parse line info: %w", err)
+		return lineInfo{}, fmt.Errorf("parse line info: %w", err)
 	}
 	if info.Grid <= 0 {
-		return nil, fmt.Errorf("invalid grid height %d", info.Grid)
+		return lineInfo{}, fmt.Errorf("invalid grid height %d", info.Grid)
+	}
+	return info, nil
+}
+
+func lineRangeForVisibleScreen(jsonValue string) (*pb.LineRange, error) {
+	info, err := parseLineInfo(jsonValue)
+	if err != nil {
+		return nil, err
 	}
 	startY := info.Overflow + info.History
 	if info.FirstVisible != nil {
 		startY = *info.FirstVisible
 	}
+	return windowedRange(startY, startY+info.Grid), nil
+}
+
+// scrollbackRange covers up to lines plus one grid of rows ending at the
+// grid's last row, never above the oldest row iTerm2 still keeps. The extra
+// grid lets the trim end at the last nonblank row, as screen reads do.
+func scrollbackRange(info lineInfo, lines int) *pb.LineRange {
+	end := info.Overflow + info.History + info.Grid
+	start := max(info.Overflow, end-int64(lines)-info.Grid)
+	return windowedRange(start, end)
+}
+
+// windowedRange covers rows startY up to, not including, endY.
+func windowedRange(startY, endY int64) *pb.LineRange {
 	return &pb.LineRange{
 		WindowedCoordRange: &pb.WindowedCoordRange{
 			CoordRange: &pb.CoordRange{
 				Start: &pb.Coord{X: proto.Int32(0), Y: proto.Int64(startY)},
-				End:   &pb.Coord{X: proto.Int32(0), Y: proto.Int64(startY + info.Grid)},
+				End:   &pb.Coord{X: proto.Int32(0), Y: proto.Int64(endY)},
 			},
 		},
-	}, nil
+	}
 }
 
 func normalizeBufferText(s string) string {
@@ -683,6 +706,36 @@ func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
 		return visibleContent, nil
 	}
 	return visibleContent, nil
+}
+
+// ReadScrollback returns up to lines lines ending at the bottom of the
+// session's screen, reaching back into its history. The screen here is the
+// grid, wherever the user has scrolled the view. lines <= 0 returns the
+// visible screen, as ReadScreen does, rather than every row kept. Blank cells
+// come back as spaces, never NUL.
+func (c *Client) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	if lines <= 0 {
+		if styled {
+			return c.ReadScreenStyled(sessionID, lines)
+		}
+		return c.ReadScreen(sessionID, lines)
+	}
+	lineInfoJSON, err := c.getProperty(sessionID, "number_of_lines")
+	if err != nil {
+		return "", err
+	}
+	info, err := parseLineInfo(lineInfoJSON)
+	if err != nil {
+		return "", err
+	}
+	gbr, err := c.getBufferResponse(sessionID, scrollbackRange(info, lines))
+	if err != nil {
+		return "", err
+	}
+	if styled {
+		return joinBufferLinesStyled(gbr.GetContents(), lines), nil
+	}
+	return joinBufferLines(gbr.GetContents(), lines), nil
 }
 
 // GetVar reads a variable from a session.

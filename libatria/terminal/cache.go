@@ -126,6 +126,11 @@ func (c *CachedBackend) ReadScreen(sessionID string, lines int) (string, error) 
 	return c.inner.ReadScreen(sessionID, lines)
 }
 
+// ReadScrollback delegates to the inner backend.
+func (c *CachedBackend) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	return c.inner.ReadScrollback(sessionID, lines, styled)
+}
+
 // ReadScreenStyled delegates to the inner backend's styled-read path, falling
 // back to plain ReadScreen when the inner backend does not implement it.
 func (c *CachedBackend) ReadScreenStyled(sessionID string, lines int) (string, error) {

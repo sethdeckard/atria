@@ -107,6 +107,7 @@ type Backend interface {
     RunCommand(sessionID, cmd string) error
     FocusSession(sessionID string) error
     ReadScreen(sessionID string, lines int) (string, error)
+    ReadScrollback(sessionID string, lines int, styled bool) (string, error)
     GetVar(sessionID, varName string) (string, error)
     MonitorOutput(sessionID, logPath, patterns string) (int, error)
 }
@@ -133,6 +134,10 @@ func HasBell(text string) bool
 ```
 
 `GetVar` supports `"path"` everywhere and `"pid"` on pty, tmux, and kitty. `MonitorOutput` returns an error from every backend today; it stays on the interface so a consumer that wants log-based monitoring has a place to implement it. `NewCachedBackend` takes a `time.Duration` instead of the current int seconds.
+
+`ReadScrollback` returns up to `lines` lines ending at the bottom of the screen, reaching back into the session's history. tmux and iTerm2 read their history; DeviceTerm, kitty, WezTerm, and PTY return the visible screen, as `ReadScreen` does. Set `styled` for the SGR escapes `ReadScreenStyled` keeps, and as with it, use the styled text for display only. A `lines` of 0 or less returns the visible screen, so history needs an explicit count.
+
+When more than `lines` come back, the result ends at the last nonblank line, as screen reads do. On iTerm2 the bottom is the screen's own, even while the user has the view scrolled back. A call costs iTerm2 two requests and tmux one subprocess, so read history when you need it rather than on every poll.
 
 A composite prefixes every integration session's ID with its source and a colon, and leaves the primary's sessions unprefixed. An ID is stable for the life of the session unless the backend changes role (primary to integration or back). `libatria.Stack` reports that as a `RoleChange` so you can rewrite the IDs you hold.
 
@@ -313,7 +318,7 @@ pty.NewClient(cols, rows int) *pty.Client // unchanged; DefaultCols 120, Default
 
 The iTerm2 constructor changes shape: today it is `NewClient(socketPath ...string)` plus a `SetNoPrompt` setter. tmux changes from two positional strings to an options struct. The names atria hardcodes into these clients (`"atria"` in the AppleScript request, the advisory header, the DeviceTerm reason text, and the tmux fallback session) become options, and atria passes `"atria"` so its wire traffic and UI text don't change.
 
-iTerm2 sends a cell nothing has written to as NUL. `iterm.Client` returns each one as a space, in both `ReadScreen` and `ReadScreenStyled`, so its screen text never contains NUL and a row of unwritten cells trims as blank. The `Backend` interface doesn't promise this for every terminal.
+iTerm2 sends a cell nothing has written to as NUL. `iterm.Client` returns each one as a space, in `ReadScreen`, `ReadScreenStyled`, and `ReadScrollback`, so its screen text never contains NUL and a row of unwritten cells trims as blank. The `Backend` interface doesn't promise this for every terminal.
 
 `deviceterm.CLIError{Code, Message}` stays exported. Branch on `Code`, never on `Message`.
 

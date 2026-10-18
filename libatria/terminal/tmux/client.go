@@ -432,6 +432,29 @@ func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
 	return string(out), nil
 }
 
+// ReadScrollback captures up to lines lines from a tmux pane, ending at the
+// bottom of its screen and reaching into its history. styled keeps ANSI
+// escapes (-e). lines <= 0 returns the screen read rather than the whole
+// history.
+func (c *Client) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
+	if lines <= 0 {
+		if styled {
+			return c.ReadScreenStyled(sessionID, 0)
+		}
+		return c.ReadScreen(sessionID, 0)
+	}
+	args := []string{"capture-pane", "-t", sessionID, "-p"}
+	if styled {
+		args = append(args, "-e")
+	}
+	args = append(args, "-S", fmt.Sprintf("-%d", lines))
+	out, err := c.run(args...)
+	if err != nil {
+		return "", err
+	}
+	return terminal.TrimScreenTail(string(out), lines), nil
+}
+
 // GetVar reads a tmux variable from a pane. Supported variables:
 // "path" -> #{pane_current_path}, "pid" -> #{pane_pid}.
 func (c *Client) GetVar(sessionID, varName string) (string, error) {

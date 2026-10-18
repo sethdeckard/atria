@@ -60,6 +60,14 @@ type Backend interface {
 	// ReadScreen captures visible terminal output from a session.
 	ReadScreen(sessionID string, lines int) (string, error)
 
+	// ReadScrollback returns up to lines lines ending at the bottom of the
+	// screen, reaching back into the session's history where the terminal
+	// keeps one (tmux, iTerm2). Other backends return the visible screen,
+	// and so does every backend for lines <= 0, so history takes an explicit
+	// count. styled keeps SGR escapes, as ReadScreenStyled does; for display
+	// only.
+	ReadScrollback(sessionID string, lines int, styled bool) (string, error)
+
 	// GetVar reads a multiplexer variable from a session.
 	GetVar(sessionID, varName string) (string, error)
 

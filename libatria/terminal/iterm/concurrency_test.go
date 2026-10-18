@@ -26,6 +26,17 @@ func startFakeITerm(t *testing.T) (string, *atomic.Int32) {
 // is non-empty, a handshake without that x-iterm2-cookie is refused with 401.
 func startFakeITermAuth(t *testing.T, cookie string) (string, *atomic.Int32) {
 	t.Helper()
+	return startFakeITermWith(t, cookie, func(*pb.ClientOriginatedMessage) *pb.ServerOriginatedMessage {
+		return &pb.ServerOriginatedMessage{
+			Submessage: &pb.ServerOriginatedMessage_ListSessionsResponse{ListSessionsResponse: &pb.ListSessionsResponse{}},
+		}
+	})
+}
+
+// startFakeITermWith is startFakeITermAuth answering each request with
+// respond's message, stamped with the request's id.
+func startFakeITermWith(t *testing.T, cookie string, respond func(*pb.ClientOriginatedMessage) *pb.ServerOriginatedMessage) (string, *atomic.Int32) {
+	t.Helper()
 	// Unix socket paths are limited to about 100 bytes; t.TempDir is too long.
 	dir, err := os.MkdirTemp("", "iterm")
 	if err != nil {
@@ -59,10 +70,8 @@ func startFakeITermAuth(t *testing.T, cookie string) (string, *atomic.Int32) {
 			if err := proto.Unmarshal(data, &req); err != nil {
 				return
 			}
-			resp := &pb.ServerOriginatedMessage{
-				Id:         proto.Int64(req.GetId()),
-				Submessage: &pb.ServerOriginatedMessage_ListSessionsResponse{ListSessionsResponse: &pb.ListSessionsResponse{}},
-			}
+			resp := respond(&req)
+			resp.Id = proto.Int64(req.GetId())
 			out, _ := proto.Marshal(resp)
 			if err := ws.WriteMessage(websocket.BinaryMessage, out); err != nil {
 				return

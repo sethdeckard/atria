@@ -605,6 +605,41 @@ exit 0
 	}
 }
 
+func TestReadScrollback(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := writeFakeTmux(t, `
+echo "$@" >> "`+logPath+`"
+printf 'old 1\nold 2\nprompt\n\n\n'
+`)
+	c := NewClient(Options{Path: tmuxPath})
+	for _, styled := range []bool{false, true} {
+		got, err := c.ReadScrollback("%1", 2, styled)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "old 2\nprompt"; got != want {
+			t.Errorf("styled=%v: ReadScrollback = %q, want %q", styled, got, want)
+		}
+	}
+	if _, err := c.ReadScrollback("%1", 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ReadScrollback("%1", -1, true); err != nil {
+		t.Fatal(err)
+	}
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "capture-pane -t %1 -p -S -2\n" +
+		"capture-pane -t %1 -p -e -S -2\n" +
+		"capture-pane -t %1 -p -S -0\n" +
+		"capture-pane -t %1 -p -e -S -0\n"
+	if string(logData) != want {
+		t.Fatalf("tmux calls:\n%s\nwant:\n%s", logData, want)
+	}
+}
+
 func TestRunWrapsNoServerAndTimeoutAsUnavailable(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "tmux.log")
 	tmuxPath := writeFakeTmux(t, `
