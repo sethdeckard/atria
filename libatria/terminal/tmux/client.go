@@ -408,34 +408,35 @@ func (c *Client) FocusSession(sessionID string) error {
 	return nil
 }
 
-// ReadScreen captures the last N lines from a tmux pane as plain text.
+// ReadScreen captures a tmux pane's visible screen as plain text. It never
+// reaches the pane's history; ReadScrollback does. When lines is positive
+// and the screen has more, it keeps up to that many, ending at the last
+// nonblank line; otherwise it returns the whole screen.
 func (c *Client) ReadScreen(sessionID string, lines int) (string, error) {
-	out, err := c.run("capture-pane", "-t", sessionID, "-p",
-		"-S", fmt.Sprintf("-%d", lines))
+	out, err := c.run("capture-pane", "-t", sessionID, "-p")
 	if err != nil {
 		return "", err
 	}
-	return string(out), nil
+	return terminal.TrimScreenTail(string(out), lines), nil
 }
 
 // Compile-time check that the tmux backend supports styled reads.
 var _ terminal.StyledReader = (*Client)(nil)
 
-// ReadScreenStyled captures the last N lines from a tmux pane with ANSI
-// color/style escapes preserved (-e), for display only.
+// ReadScreenStyled is ReadScreen with ANSI color/style escapes preserved
+// (-e), for display only.
 func (c *Client) ReadScreenStyled(sessionID string, lines int) (string, error) {
-	out, err := c.run("capture-pane", "-t", sessionID, "-p", "-e",
-		"-S", fmt.Sprintf("-%d", lines))
+	out, err := c.run("capture-pane", "-t", sessionID, "-p", "-e")
 	if err != nil {
 		return "", err
 	}
-	return string(out), nil
+	return terminal.TrimScreenTail(string(out), lines), nil
 }
 
 // ReadScrollback captures up to lines lines from a tmux pane, ending at the
 // bottom of its screen and reaching into its history. styled keeps ANSI
-// escapes (-e). lines <= 0 returns the screen read rather than the whole
-// history.
+// escapes (-e). lines <= 0 returns the visible screen, as ReadScreen does,
+// rather than the whole history.
 func (c *Client) ReadScrollback(sessionID string, lines int, styled bool) (string, error) {
 	if lines <= 0 {
 		if styled {

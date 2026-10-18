@@ -135,6 +135,8 @@ func HasBell(text string) bool
 
 `GetVar` supports `"path"` everywhere and `"pid"` on pty, tmux, and kitty. `MonitorOutput` returns an error from every backend today; it stays on the interface so a consumer that wants log-based monitoring has a place to implement it. `NewCachedBackend` takes a `time.Duration` instead of the current int seconds.
 
+`ReadScreen` and `ReadScreenStyled` read the visible screen on every backend, tmux included, and never reach into history. When `lines` is positive and the screen has more, they keep up to that many lines, ending at the last nonblank one; otherwise they return the whole screen.
+
 `ReadScrollback` returns up to `lines` lines ending at the bottom of the screen, reaching back into the session's history. tmux and iTerm2 read their history; DeviceTerm, kitty, WezTerm, and PTY return the visible screen, as `ReadScreen` does. Set `styled` for the SGR escapes `ReadScreenStyled` keeps, and as with it, use the styled text for display only. A `lines` of 0 or less returns the visible screen, so history needs an explicit count.
 
 When more than `lines` come back, the result ends at the last nonblank line, as screen reads do. On iTerm2 the bottom is the screen's own, even while the user has the view scrolled back. A call costs iTerm2 two requests and tmux one subprocess, so read history when you need it rather than on every poll.

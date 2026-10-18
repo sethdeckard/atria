@@ -10,5 +10,7 @@
 // inside tmux, also attempts to switch the client to the owning session.
 //
 // SendText uses send-keys -l, with a carriage return or newline mapped to the
-// Enter key name. Screen reads use capture-pane. MonitorOutput is unsupported.
+// Enter key name. ReadScreen and ReadScreenStyled capture the visible pane with
+// capture-pane; ReadScrollback adds -S to reach into its history. MonitorOutput
+// is unsupported.
 package tmux

@@ -605,6 +605,33 @@ exit 0
 	}
 }
 
+func TestReadScreenStopsAtTheVisiblePane(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := writeFakeTmux(t, `
+echo "$@" >> "`+logPath+`"
+printf 'one\ntwo\nprompt\n\n\n'
+`)
+	c := NewClient(Options{Path: tmuxPath})
+	plain, err := c.ReadScreen("%1", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	styled, err := c.ReadScreenStyled("%1", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "two\nprompt"; plain != want || styled != want {
+		t.Errorf("ReadScreen = %q, ReadScreenStyled = %q, want %q", plain, styled, want)
+	}
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "capture-pane -t %1 -p\ncapture-pane -t %1 -p -e\n"; string(logData) != want {
+		t.Fatalf("tmux calls:\n%s\nwant:\n%s", logData, want)
+	}
+}
+
 func TestReadScrollback(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "tmux.log")
 	tmuxPath := writeFakeTmux(t, `
@@ -633,8 +660,8 @@ printf 'old 1\nold 2\nprompt\n\n\n'
 	}
 	want := "capture-pane -t %1 -p -S -2\n" +
 		"capture-pane -t %1 -p -e -S -2\n" +
-		"capture-pane -t %1 -p -S -0\n" +
-		"capture-pane -t %1 -p -e -S -0\n"
+		"capture-pane -t %1 -p\n" +
+		"capture-pane -t %1 -p -e\n"
 	if string(logData) != want {
 		t.Fatalf("tmux calls:\n%s\nwant:\n%s", logData, want)
 	}
