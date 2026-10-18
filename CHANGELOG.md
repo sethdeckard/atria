@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.15.0
+
+- Breaking for library callers: `terminal.Backend` gains `ReadScrollback(sessionID, lines, styled)`, so anything that implements `Backend` itself (a test fake, a backend of your own) needs the method. It returns up to `lines` lines ending at the bottom of the screen, reaching back into history on tmux and iTerm2; DeviceTerm, kitty, WezTerm, and PTY return the visible screen. `styled` keeps the escapes `ReadScreenStyled` keeps. A `lines` of 0 or less returns the visible screen, so a whole unlimited iTerm2 history can't come back by accident
+- tmux's `ReadScreen` and `ReadScreenStyled` stop at the visible pane, as every other backend's do; they used to reach `lines` lines into history, so status polls, in atria and in the Watcher, classified old prompts from above the pane. atria's chat view and stream preview of a tmux pane shorter than 40 rows now show only the pane, as they already did for iTerm2
+
 ## v0.14.0
 
 - Add `Job` for tmux, kitty, and DeviceTerm panes: the foreground program each terminal reports in the calls that already list the panes (tmux's `pane_current_command`, the first of kitty's `foreground_processes`, DeviceTerm's grant-gated `foregroundProcess`), so a tmux pane no longer shows only its title. WezTerm's listing has no foreground process, so its panes leave it empty. kitty's `-zsh` reads as `zsh`, as tmux reports it
