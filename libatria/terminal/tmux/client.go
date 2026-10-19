@@ -322,6 +322,56 @@ func (c *Client) NewSession() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// Compile-time check that the tmux backend opens tabs and splits in place.
+var _ terminal.PaneOpener = (*Client)(nil)
+
+// NewTab opens a window in the tmux session windowID (Session.Window.ID, such
+// as "$1") and returns its pane ID. dir sets its directory; "" leaves it to
+// tmux. The window opens with -d, so attached clients stay on the window they
+// show.
+func (c *Client) NewTab(windowID, dir string) (string, error) {
+	if windowID == "" {
+		return "", fmt.Errorf("new tab: no window given")
+	}
+	args := []string{"new-window", "-d", "-t", windowID + ":", "-P", "-F", "#{pane_id}"}
+	if dir != "" {
+		args = append(args, "-c", dirArg(dir))
+	}
+	out, err := c.run(args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// SplitPane splits pane sessionID and returns the new pane's ID. dir sets its
+// directory; "" uses the split pane's own (#{pane_current_path}). The split
+// uses -d, so the original pane stays active.
+func (c *Client) SplitPane(sessionID string, d terminal.SplitDirection, dir string) (string, error) {
+	start := "#{pane_current_path}"
+	if dir != "" {
+		start = dirArg(dir)
+	}
+	args := []string{"split-window", "-d", "-t", sessionID}
+	if d == terminal.SplitRight {
+		args = append(args, "-h")
+	}
+	args = append(args, "-c", start, "-P", "-F", "#{pane_id}")
+	out, err := c.run(args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// dirArg prepares a directory for -c, which tmux expands as a format after
+// splitting its argv into commands. "##" is a literal "#", so a directory
+// named "a#{b}" stays as written, and literalArg keeps a trailing ";" from
+// ending the command.
+func dirArg(dir string) string {
+	return literalArg(strings.ReplaceAll(dir, "#", "##"))
+}
+
 // literalArg prepares text for send-keys -l. tmux splits its argv into
 // commands before send-keys sees it: an argument that is exactly ";" is a
 // separator, and a trailing ";" on any argument is stripped and ends the

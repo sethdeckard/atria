@@ -112,6 +112,42 @@ type SourceLauncher interface {
 	NewSessionOn(source string) (string, error)
 }
 
+// SplitDirection says where SplitPane puts the new pane.
+type SplitDirection int
+
+const (
+	SplitRight SplitDirection = iota // side by side, the new pane on the right
+	SplitBelow                       // stacked, the new pane below
+)
+
+// PaneOpener is implemented by backends that can open a shell in a place the
+// caller chooses: a new tab in a listed window (windowID is a
+// Session.Window.ID), or a split of a listed pane. dir is the new shell's
+// working directory; "" means the terminal's default for a tab, and the split
+// pane's own directory, where the terminal knows it, for a split. Both return
+// the new session's ID.
+type PaneOpener interface {
+	NewTab(windowID, dir string) (string, error)
+	PaneSplitter
+}
+
+// PaneSplitter is PaneOpener's split alone.
+type PaneSplitter interface {
+	SplitPane(sessionID string, d SplitDirection, dir string) (string, error)
+}
+
+// SourcePaneOpener is PaneOpener for aggregating backends. A window ID
+// doesn't name its terminal, so NewTabOn takes the member's source label,
+// as NewSessionOn does; SplitPane routes by session ID. CanOpenPanes
+// reports whether that member is a PaneOpener, so a caller can offer the
+// actions only where they work. CompositeBackend and CachedBackend implement
+// it.
+type SourcePaneOpener interface {
+	NewTabOn(source, windowID, dir string) (string, error)
+	CanOpenPanes(source string) bool
+	PaneSplitter
+}
+
 // Invalidator is implemented by caching backends. Call it after a mutation
 // (a launch, a removed integration) so the next ListSessions refetches.
 type Invalidator interface {

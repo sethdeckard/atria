@@ -408,6 +408,109 @@ func TestReadScrollback(t *testing.T) {
 	}
 }
 
+func TestNewTabAndSplitPane(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		reqs []*pb.ClientOriginatedMessage
+	)
+	sock, _ := startFakeITermWith(t, "", func(req *pb.ClientOriginatedMessage) *pb.ServerOriginatedMessage {
+		mu.Lock()
+		reqs = append(reqs, req)
+		mu.Unlock()
+		switch {
+		case req.GetCreateTabRequest() != nil:
+			status := pb.CreateTabResponse_OK
+			if req.GetCreateTabRequest().GetWindowId() == "gone" {
+				status = pb.CreateTabResponse_INVALID_WINDOW_ID
+			}
+			return &pb.ServerOriginatedMessage{Submessage: &pb.ServerOriginatedMessage_CreateTabResponse{
+				CreateTabResponse: &pb.CreateTabResponse{Status: status.Enum(), SessionId: proto.String("tab-s")},
+			}}
+		case req.GetSplitPaneRequest() != nil:
+			status := pb.SplitPaneResponse_OK
+			if req.GetSplitPaneRequest().GetSession() == "full" {
+				status = pb.SplitPaneResponse_CANNOT_SPLIT
+			}
+			return &pb.ServerOriginatedMessage{Submessage: &pb.ServerOriginatedMessage_SplitPaneResponse{
+				SplitPaneResponse: &pb.SplitPaneResponse{Status: status.Enum(), SessionId: []string{"split-s"}},
+			}}
+		case req.GetVariableRequest() != nil:
+			return &pb.ServerOriginatedMessage{Submessage: &pb.ServerOriginatedMessage_VariableResponse{
+				VariableResponse: &pb.VariableResponse{Values: []string{`"/home/proj"`}},
+			}}
+		default:
+			return &pb.ServerOriginatedMessage{Submessage: &pb.ServerOriginatedMessage_ActivateResponse{
+				ActivateResponse: &pb.ActivateResponse{},
+			}}
+		}
+	})
+	c := NewClient(Options{SocketPath: sock, NoPrompt: true})
+	t.Cleanup(func() { _ = c.Close() })
+
+	if id, err := c.NewTab("w1", "/p"); err != nil || id != "tab-s" {
+		t.Fatalf("NewTab = %q, %v", id, err)
+	}
+	if id, err := c.SplitPane("orig", terminal.SplitRight, ""); err != nil || id != "split-s" {
+		t.Fatalf("SplitPane = %q, %v", id, err)
+	}
+	if id, err := c.SplitPane("orig", terminal.SplitBelow, "/q"); err != nil || id != "split-s" {
+		t.Fatalf("SplitPane below = %q, %v", id, err)
+	}
+	if _, err := c.NewTab("gone", ""); err == nil || !strings.Contains(err.Error(), "INVALID_WINDOW_ID") {
+		t.Errorf("NewTab in a missing window = %v, want INVALID_WINDOW_ID", err)
+	}
+	if _, err := c.SplitPane("full", terminal.SplitBelow, "/q"); err == nil || !strings.Contains(err.Error(), "CANNOT_SPLIT") {
+		t.Errorf("SplitPane that can't split = %v, want CANNOT_SPLIT", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	dirOf := func(props []*pb.ProfileProperty) string {
+		if len(props) != 2 || props[0].GetKey() != "Custom Directory" || props[0].GetJsonValue() != `"Yes"` ||
+			props[1].GetKey() != "Working Directory" {
+			t.Errorf("profile properties = %v, want Custom Directory then Working Directory", props)
+			return ""
+		}
+		return props[1].GetJsonValue()
+	}
+	// A failed split sends no reselect, so the failed split is the last request.
+	if len(reqs) != 8 {
+		t.Fatalf("requests = %d, want 8: %v", len(reqs), reqs)
+	}
+	tab := reqs[0].GetCreateTabRequest()
+	if tab.GetWindowId() != "w1" || tab.SelectTab == nil || tab.GetSelectTab() || dirOf(tab.GetCustomProfileProperties()) != `"/p"` {
+		t.Errorf("create tab = %v, want window w1 in the background in /p", tab)
+	}
+	if v := reqs[1].GetVariableRequest(); v.GetSessionId() != "orig" || len(v.GetGet()) != 1 || v.GetGet()[0] != "path" {
+		t.Errorf("an empty dir should read path first, got %v", reqs[1])
+	}
+	right := reqs[2].GetSplitPaneRequest()
+	if right.GetSession() != "orig" || right.GetSplitDirection() != pb.SplitPaneRequest_VERTICAL || dirOf(right.GetCustomProfileProperties()) != `"/home/proj"` {
+		t.Errorf("split right = %v, want a vertical split of orig in /home/proj", right)
+	}
+	for _, i := range []int{3, 5} {
+		a := reqs[i].GetActivateRequest()
+		if a.GetSessionId() != "orig" || !a.GetSelectSession() || a.OrderWindowFront != nil || a.SelectTab != nil {
+			t.Errorf("request %d = %v, want select_session on orig and nothing brought forward", i, reqs[i])
+		}
+	}
+	if below := reqs[4].GetSplitPaneRequest(); below.GetSplitDirection() != pb.SplitPaneRequest_HORIZONTAL || dirOf(below.GetCustomProfileProperties()) != `"/q"` {
+		t.Errorf("split below = %v, want a horizontal split in /q", below)
+	}
+	if reqs[7].GetSplitPaneRequest().GetSession() != "full" {
+		t.Errorf("last request = %v, want the failed split with no reselect after it", reqs[7])
+	}
+}
+
+func TestDirProperties(t *testing.T) {
+	if got := dirProperties(""); got != nil {
+		t.Errorf("dirProperties(\"\") = %v, want nil", got)
+	}
+	if got := dirProperties(`/a "b"`); got[1].GetJsonValue() != `"/a \"b\""` {
+		t.Errorf("dirProperties quoted %q", got[1].GetJsonValue())
+	}
+}
+
 func TestJoinBufferLines(t *testing.T) {
 	got := joinBufferLines([]*pb.LineContents{
 		{Text: proto.String("one")},

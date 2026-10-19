@@ -205,7 +205,128 @@ func (x *CreateTabResponse_Status) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use CreateTabResponse_Status.Descriptor instead.
 func (CreateTabResponse_Status) EnumDescriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{9, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{10, 0}
+}
+
+type SplitPaneRequest_SplitDirection int32
+
+const (
+	SplitPaneRequest_VERTICAL   SplitPaneRequest_SplitDirection = 0
+	SplitPaneRequest_HORIZONTAL SplitPaneRequest_SplitDirection = 1
+)
+
+// Enum value maps for SplitPaneRequest_SplitDirection.
+var (
+	SplitPaneRequest_SplitDirection_name = map[int32]string{
+		0: "VERTICAL",
+		1: "HORIZONTAL",
+	}
+	SplitPaneRequest_SplitDirection_value = map[string]int32{
+		"VERTICAL":   0,
+		"HORIZONTAL": 1,
+	}
+)
+
+func (x SplitPaneRequest_SplitDirection) Enum() *SplitPaneRequest_SplitDirection {
+	p := new(SplitPaneRequest_SplitDirection)
+	*p = x
+	return p
+}
+
+func (x SplitPaneRequest_SplitDirection) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SplitPaneRequest_SplitDirection) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_api_proto_enumTypes[3].Descriptor()
+}
+
+func (SplitPaneRequest_SplitDirection) Type() protoreflect.EnumType {
+	return &file_proto_api_proto_enumTypes[3]
+}
+
+func (x SplitPaneRequest_SplitDirection) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *SplitPaneRequest_SplitDirection) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = SplitPaneRequest_SplitDirection(num)
+	return nil
+}
+
+// Deprecated: Use SplitPaneRequest_SplitDirection.Descriptor instead.
+func (SplitPaneRequest_SplitDirection) EnumDescriptor() ([]byte, []int) {
+	return file_proto_api_proto_rawDescGZIP(), []int{11, 0}
+}
+
+type SplitPaneResponse_Status int32
+
+const (
+	SplitPaneResponse_OK                                SplitPaneResponse_Status = 0
+	SplitPaneResponse_SESSION_NOT_FOUND                 SplitPaneResponse_Status = 1
+	SplitPaneResponse_INVALID_PROFILE_NAME              SplitPaneResponse_Status = 2
+	SplitPaneResponse_CANNOT_SPLIT                      SplitPaneResponse_Status = 3
+	SplitPaneResponse_MALFORMED_CUSTOM_PROFILE_PROPERTY SplitPaneResponse_Status = 4
+)
+
+// Enum value maps for SplitPaneResponse_Status.
+var (
+	SplitPaneResponse_Status_name = map[int32]string{
+		0: "OK",
+		1: "SESSION_NOT_FOUND",
+		2: "INVALID_PROFILE_NAME",
+		3: "CANNOT_SPLIT",
+		4: "MALFORMED_CUSTOM_PROFILE_PROPERTY",
+	}
+	SplitPaneResponse_Status_value = map[string]int32{
+		"OK":                                0,
+		"SESSION_NOT_FOUND":                 1,
+		"INVALID_PROFILE_NAME":              2,
+		"CANNOT_SPLIT":                      3,
+		"MALFORMED_CUSTOM_PROFILE_PROPERTY": 4,
+	}
+)
+
+func (x SplitPaneResponse_Status) Enum() *SplitPaneResponse_Status {
+	p := new(SplitPaneResponse_Status)
+	*p = x
+	return p
+}
+
+func (x SplitPaneResponse_Status) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SplitPaneResponse_Status) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_api_proto_enumTypes[4].Descriptor()
+}
+
+func (SplitPaneResponse_Status) Type() protoreflect.EnumType {
+	return &file_proto_api_proto_enumTypes[4]
+}
+
+func (x SplitPaneResponse_Status) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *SplitPaneResponse_Status) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = SplitPaneResponse_Status(num)
+	return nil
+}
+
+// Deprecated: Use SplitPaneResponse_Status.Descriptor instead.
+func (SplitPaneResponse_Status) EnumDescriptor() ([]byte, []int) {
+	return file_proto_api_proto_rawDescGZIP(), []int{12, 0}
 }
 
 type SendTextResponse_Status int32
@@ -238,11 +359,11 @@ func (x SendTextResponse_Status) String() string {
 }
 
 func (SendTextResponse_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_api_proto_enumTypes[3].Descriptor()
+	return file_proto_api_proto_enumTypes[5].Descriptor()
 }
 
 func (SendTextResponse_Status) Type() protoreflect.EnumType {
-	return &file_proto_api_proto_enumTypes[3]
+	return &file_proto_api_proto_enumTypes[5]
 }
 
 func (x SendTextResponse_Status) Number() protoreflect.EnumNumber {
@@ -261,7 +382,7 @@ func (x *SendTextResponse_Status) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use SendTextResponse_Status.Descriptor instead.
 func (SendTextResponse_Status) EnumDescriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{11, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{14, 0}
 }
 
 type ActivateResponse_Status int32
@@ -297,11 +418,11 @@ func (x ActivateResponse_Status) String() string {
 }
 
 func (ActivateResponse_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_api_proto_enumTypes[4].Descriptor()
+	return file_proto_api_proto_enumTypes[6].Descriptor()
 }
 
 func (ActivateResponse_Status) Type() protoreflect.EnumType {
-	return &file_proto_api_proto_enumTypes[4]
+	return &file_proto_api_proto_enumTypes[6]
 }
 
 func (x ActivateResponse_Status) Number() protoreflect.EnumNumber {
@@ -320,7 +441,7 @@ func (x *ActivateResponse_Status) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use ActivateResponse_Status.Descriptor instead.
 func (ActivateResponse_Status) EnumDescriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{13, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{16, 0}
 }
 
 type GetBufferResponse_Status int32
@@ -359,11 +480,11 @@ func (x GetBufferResponse_Status) String() string {
 }
 
 func (GetBufferResponse_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_api_proto_enumTypes[5].Descriptor()
+	return file_proto_api_proto_enumTypes[7].Descriptor()
 }
 
 func (GetBufferResponse_Status) Type() protoreflect.EnumType {
-	return &file_proto_api_proto_enumTypes[5]
+	return &file_proto_api_proto_enumTypes[7]
 }
 
 func (x GetBufferResponse_Status) Number() protoreflect.EnumNumber {
@@ -382,7 +503,7 @@ func (x *GetBufferResponse_Status) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use GetBufferResponse_Status.Descriptor instead.
 func (GetBufferResponse_Status) EnumDescriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{16, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{19, 0}
 }
 
 type LineContents_Continuation int32
@@ -415,11 +536,11 @@ func (x LineContents_Continuation) String() string {
 }
 
 func (LineContents_Continuation) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_api_proto_enumTypes[6].Descriptor()
+	return file_proto_api_proto_enumTypes[8].Descriptor()
 }
 
 func (LineContents_Continuation) Type() protoreflect.EnumType {
-	return &file_proto_api_proto_enumTypes[6]
+	return &file_proto_api_proto_enumTypes[8]
 }
 
 func (x LineContents_Continuation) Number() protoreflect.EnumNumber {
@@ -438,7 +559,7 @@ func (x *LineContents_Continuation) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use LineContents_Continuation.Descriptor instead.
 func (LineContents_Continuation) EnumDescriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{21, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{24, 0}
 }
 
 type GetPropertyResponse_Status int32
@@ -474,11 +595,11 @@ func (x GetPropertyResponse_Status) String() string {
 }
 
 func (GetPropertyResponse_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_api_proto_enumTypes[7].Descriptor()
+	return file_proto_api_proto_enumTypes[9].Descriptor()
 }
 
 func (GetPropertyResponse_Status) Type() protoreflect.EnumType {
-	return &file_proto_api_proto_enumTypes[7]
+	return &file_proto_api_proto_enumTypes[9]
 }
 
 func (x GetPropertyResponse_Status) Number() protoreflect.EnumNumber {
@@ -497,7 +618,7 @@ func (x *GetPropertyResponse_Status) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use GetPropertyResponse_Status.Descriptor instead.
 func (GetPropertyResponse_Status) EnumDescriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{27, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{30, 0}
 }
 
 type VariableResponse_Status int32
@@ -545,11 +666,11 @@ func (x VariableResponse_Status) String() string {
 }
 
 func (VariableResponse_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_api_proto_enumTypes[8].Descriptor()
+	return file_proto_api_proto_enumTypes[10].Descriptor()
 }
 
 func (VariableResponse_Status) Type() protoreflect.EnumType {
-	return &file_proto_api_proto_enumTypes[8]
+	return &file_proto_api_proto_enumTypes[10]
 }
 
 func (x VariableResponse_Status) Number() protoreflect.EnumNumber {
@@ -568,7 +689,7 @@ func (x *VariableResponse_Status) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use VariableResponse_Status.Descriptor instead.
 func (VariableResponse_Status) EnumDescriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{29, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{32, 0}
 }
 
 type FocusChangedNotification_Window_WindowStatus int32
@@ -604,11 +725,11 @@ func (x FocusChangedNotification_Window_WindowStatus) String() string {
 }
 
 func (FocusChangedNotification_Window_WindowStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_api_proto_enumTypes[9].Descriptor()
+	return file_proto_api_proto_enumTypes[11].Descriptor()
 }
 
 func (FocusChangedNotification_Window_WindowStatus) Type() protoreflect.EnumType {
-	return &file_proto_api_proto_enumTypes[9]
+	return &file_proto_api_proto_enumTypes[11]
 }
 
 func (x FocusChangedNotification_Window_WindowStatus) Number() protoreflect.EnumNumber {
@@ -627,7 +748,7 @@ func (x *FocusChangedNotification_Window_WindowStatus) UnmarshalJSON(b []byte) e
 
 // Deprecated: Use FocusChangedNotification_Window_WindowStatus.Descriptor instead.
 func (FocusChangedNotification_Window_WindowStatus) EnumDescriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{32, 0, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{35, 0, 0}
 }
 
 type ClientOriginatedMessage struct {
@@ -640,6 +761,7 @@ type ClientOriginatedMessage struct {
 	//	*ClientOriginatedMessage_ListSessionsRequest
 	//	*ClientOriginatedMessage_SendTextRequest
 	//	*ClientOriginatedMessage_CreateTabRequest
+	//	*ClientOriginatedMessage_SplitPaneRequest
 	//	*ClientOriginatedMessage_ActivateRequest
 	//	*ClientOriginatedMessage_VariableRequest
 	//	*ClientOriginatedMessage_FocusRequest
@@ -737,6 +859,15 @@ func (x *ClientOriginatedMessage) GetCreateTabRequest() *CreateTabRequest {
 	return nil
 }
 
+func (x *ClientOriginatedMessage) GetSplitPaneRequest() *SplitPaneRequest {
+	if x != nil {
+		if x, ok := x.Submessage.(*ClientOriginatedMessage_SplitPaneRequest); ok {
+			return x.SplitPaneRequest
+		}
+	}
+	return nil
+}
+
 func (x *ClientOriginatedMessage) GetActivateRequest() *ActivateRequest {
 	if x != nil {
 		if x, ok := x.Submessage.(*ClientOriginatedMessage_ActivateRequest); ok {
@@ -788,6 +919,10 @@ type ClientOriginatedMessage_CreateTabRequest struct {
 	CreateTabRequest *CreateTabRequest `protobuf:"bytes,108,opt,name=create_tab_request,json=createTabRequest,oneof"`
 }
 
+type ClientOriginatedMessage_SplitPaneRequest struct {
+	SplitPaneRequest *SplitPaneRequest `protobuf:"bytes,109,opt,name=split_pane_request,json=splitPaneRequest,oneof"`
+}
+
 type ClientOriginatedMessage_ActivateRequest struct {
 	ActivateRequest *ActivateRequest `protobuf:"bytes,114,opt,name=activate_request,json=activateRequest,oneof"`
 }
@@ -810,6 +945,8 @@ func (*ClientOriginatedMessage_SendTextRequest) isClientOriginatedMessage_Submes
 
 func (*ClientOriginatedMessage_CreateTabRequest) isClientOriginatedMessage_Submessage() {}
 
+func (*ClientOriginatedMessage_SplitPaneRequest) isClientOriginatedMessage_Submessage() {}
+
 func (*ClientOriginatedMessage_ActivateRequest) isClientOriginatedMessage_Submessage() {}
 
 func (*ClientOriginatedMessage_VariableRequest) isClientOriginatedMessage_Submessage() {}
@@ -827,6 +964,7 @@ type ServerOriginatedMessage struct {
 	//	*ServerOriginatedMessage_ListSessionsResponse
 	//	*ServerOriginatedMessage_SendTextResponse
 	//	*ServerOriginatedMessage_CreateTabResponse
+	//	*ServerOriginatedMessage_SplitPaneResponse
 	//	*ServerOriginatedMessage_ActivateResponse
 	//	*ServerOriginatedMessage_VariableResponse
 	//	*ServerOriginatedMessage_FocusResponse
@@ -934,6 +1072,15 @@ func (x *ServerOriginatedMessage) GetCreateTabResponse() *CreateTabResponse {
 	return nil
 }
 
+func (x *ServerOriginatedMessage) GetSplitPaneResponse() *SplitPaneResponse {
+	if x != nil {
+		if x, ok := x.Submessage.(*ServerOriginatedMessage_SplitPaneResponse); ok {
+			return x.SplitPaneResponse
+		}
+	}
+	return nil
+}
+
 func (x *ServerOriginatedMessage) GetActivateResponse() *ActivateResponse {
 	if x != nil {
 		if x, ok := x.Submessage.(*ServerOriginatedMessage_ActivateResponse); ok {
@@ -998,6 +1145,10 @@ type ServerOriginatedMessage_CreateTabResponse struct {
 	CreateTabResponse *CreateTabResponse `protobuf:"bytes,108,opt,name=create_tab_response,json=createTabResponse,oneof"`
 }
 
+type ServerOriginatedMessage_SplitPaneResponse struct {
+	SplitPaneResponse *SplitPaneResponse `protobuf:"bytes,109,opt,name=split_pane_response,json=splitPaneResponse,oneof"`
+}
+
 type ServerOriginatedMessage_ActivateResponse struct {
 	ActivateResponse *ActivateResponse `protobuf:"bytes,114,opt,name=activate_response,json=activateResponse,oneof"`
 }
@@ -1025,6 +1176,8 @@ func (*ServerOriginatedMessage_ListSessionsResponse) isServerOriginatedMessage_S
 func (*ServerOriginatedMessage_SendTextResponse) isServerOriginatedMessage_Submessage() {}
 
 func (*ServerOriginatedMessage_CreateTabResponse) isServerOriginatedMessage_Submessage() {}
+
+func (*ServerOriginatedMessage_SplitPaneResponse) isServerOriginatedMessage_Submessage() {}
 
 func (*ServerOriginatedMessage_ActivateResponse) isServerOriginatedMessage_Submessage() {}
 
@@ -1317,10 +1470,14 @@ func (x *Size) GetHeight() int32 {
 }
 
 type CreateTabRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProfileName   *string                `protobuf:"bytes,1,opt,name=profile_name,json=profileName" json:"profile_name,omitempty"`
-	WindowId      *string                `protobuf:"bytes,2,opt,name=window_id,json=windowId" json:"window_id,omitempty"`
-	TabIndex      *uint32                `protobuf:"varint,3,opt,name=tab_index,json=tabIndex" json:"tab_index,omitempty"`
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	ProfileName             *string                `protobuf:"bytes,1,opt,name=profile_name,json=profileName" json:"profile_name,omitempty"`
+	WindowId                *string                `protobuf:"bytes,2,opt,name=window_id,json=windowId" json:"window_id,omitempty"`
+	TabIndex                *uint32                `protobuf:"varint,3,opt,name=tab_index,json=tabIndex" json:"tab_index,omitempty"`
+	CustomProfileProperties []*ProfileProperty     `protobuf:"bytes,5,rep,name=custom_profile_properties,json=customProfileProperties" json:"custom_profile_properties,omitempty"`
+	// If false, create the tab in the background: do not select it and do not
+	// bring its window to the front.
+	SelectTab     *bool `protobuf:"varint,6,opt,name=select_tab,json=selectTab" json:"select_tab,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1376,6 +1533,72 @@ func (x *CreateTabRequest) GetTabIndex() uint32 {
 	return 0
 }
 
+func (x *CreateTabRequest) GetCustomProfileProperties() []*ProfileProperty {
+	if x != nil {
+		return x.CustomProfileProperties
+	}
+	return nil
+}
+
+func (x *CreateTabRequest) GetSelectTab() bool {
+	if x != nil && x.SelectTab != nil {
+		return *x.SelectTab
+	}
+	return false
+}
+
+type ProfileProperty struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key" json:"key,omitempty"`
+	JsonValue     *string                `protobuf:"bytes,2,opt,name=json_value,json=jsonValue" json:"json_value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProfileProperty) Reset() {
+	*x = ProfileProperty{}
+	mi := &file_proto_api_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProfileProperty) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProfileProperty) ProtoMessage() {}
+
+func (x *ProfileProperty) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProfileProperty.ProtoReflect.Descriptor instead.
+func (*ProfileProperty) Descriptor() ([]byte, []int) {
+	return file_proto_api_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ProfileProperty) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *ProfileProperty) GetJsonValue() string {
+	if x != nil && x.JsonValue != nil {
+		return *x.JsonValue
+	}
+	return ""
+}
+
 type CreateTabResponse struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
 	Status        *CreateTabResponse_Status `protobuf:"varint,1,opt,name=status,enum=iterm2.CreateTabResponse_Status" json:"status,omitempty"`
@@ -1388,7 +1611,7 @@ type CreateTabResponse struct {
 
 func (x *CreateTabResponse) Reset() {
 	*x = CreateTabResponse{}
-	mi := &file_proto_api_proto_msgTypes[9]
+	mi := &file_proto_api_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1400,7 +1623,7 @@ func (x *CreateTabResponse) String() string {
 func (*CreateTabResponse) ProtoMessage() {}
 
 func (x *CreateTabResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[9]
+	mi := &file_proto_api_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1413,7 +1636,7 @@ func (x *CreateTabResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTabResponse.ProtoReflect.Descriptor instead.
 func (*CreateTabResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{9}
+	return file_proto_api_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateTabResponse) GetStatus() CreateTabResponse_Status {
@@ -1444,6 +1667,139 @@ func (x *CreateTabResponse) GetSessionId() string {
 	return ""
 }
 
+type SplitPaneRequest struct {
+	state                   protoimpl.MessageState           `protogen:"open.v1"`
+	Session                 *string                          `protobuf:"bytes,1,opt,name=session" json:"session,omitempty"`
+	SplitDirection          *SplitPaneRequest_SplitDirection `protobuf:"varint,2,opt,name=split_direction,json=splitDirection,enum=iterm2.SplitPaneRequest_SplitDirection" json:"split_direction,omitempty"`
+	Before                  *bool                            `protobuf:"varint,3,opt,name=before,def=0" json:"before,omitempty"`
+	ProfileName             *string                          `protobuf:"bytes,4,opt,name=profile_name,json=profileName" json:"profile_name,omitempty"`
+	CustomProfileProperties []*ProfileProperty               `protobuf:"bytes,5,rep,name=custom_profile_properties,json=customProfileProperties" json:"custom_profile_properties,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+// Default values for SplitPaneRequest fields.
+const (
+	Default_SplitPaneRequest_Before = bool(false)
+)
+
+func (x *SplitPaneRequest) Reset() {
+	*x = SplitPaneRequest{}
+	mi := &file_proto_api_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SplitPaneRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SplitPaneRequest) ProtoMessage() {}
+
+func (x *SplitPaneRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SplitPaneRequest.ProtoReflect.Descriptor instead.
+func (*SplitPaneRequest) Descriptor() ([]byte, []int) {
+	return file_proto_api_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *SplitPaneRequest) GetSession() string {
+	if x != nil && x.Session != nil {
+		return *x.Session
+	}
+	return ""
+}
+
+func (x *SplitPaneRequest) GetSplitDirection() SplitPaneRequest_SplitDirection {
+	if x != nil && x.SplitDirection != nil {
+		return *x.SplitDirection
+	}
+	return SplitPaneRequest_VERTICAL
+}
+
+func (x *SplitPaneRequest) GetBefore() bool {
+	if x != nil && x.Before != nil {
+		return *x.Before
+	}
+	return Default_SplitPaneRequest_Before
+}
+
+func (x *SplitPaneRequest) GetProfileName() string {
+	if x != nil && x.ProfileName != nil {
+		return *x.ProfileName
+	}
+	return ""
+}
+
+func (x *SplitPaneRequest) GetCustomProfileProperties() []*ProfileProperty {
+	if x != nil {
+		return x.CustomProfileProperties
+	}
+	return nil
+}
+
+type SplitPaneResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Status        *SplitPaneResponse_Status `protobuf:"varint,1,opt,name=status,enum=iterm2.SplitPaneResponse_Status" json:"status,omitempty"`
+	SessionId     []string                  `protobuf:"bytes,2,rep,name=session_id,json=sessionId" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SplitPaneResponse) Reset() {
+	*x = SplitPaneResponse{}
+	mi := &file_proto_api_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SplitPaneResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SplitPaneResponse) ProtoMessage() {}
+
+func (x *SplitPaneResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SplitPaneResponse.ProtoReflect.Descriptor instead.
+func (*SplitPaneResponse) Descriptor() ([]byte, []int) {
+	return file_proto_api_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SplitPaneResponse) GetStatus() SplitPaneResponse_Status {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return SplitPaneResponse_OK
+}
+
+func (x *SplitPaneResponse) GetSessionId() []string {
+	if x != nil {
+		return x.SessionId
+	}
+	return nil
+}
+
 type SendTextRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Session           *string                `protobuf:"bytes,1,opt,name=session" json:"session,omitempty"`
@@ -1455,7 +1811,7 @@ type SendTextRequest struct {
 
 func (x *SendTextRequest) Reset() {
 	*x = SendTextRequest{}
-	mi := &file_proto_api_proto_msgTypes[10]
+	mi := &file_proto_api_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1467,7 +1823,7 @@ func (x *SendTextRequest) String() string {
 func (*SendTextRequest) ProtoMessage() {}
 
 func (x *SendTextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[10]
+	mi := &file_proto_api_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1480,7 +1836,7 @@ func (x *SendTextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendTextRequest.ProtoReflect.Descriptor instead.
 func (*SendTextRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{10}
+	return file_proto_api_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SendTextRequest) GetSession() string {
@@ -1513,7 +1869,7 @@ type SendTextResponse struct {
 
 func (x *SendTextResponse) Reset() {
 	*x = SendTextResponse{}
-	mi := &file_proto_api_proto_msgTypes[11]
+	mi := &file_proto_api_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1525,7 +1881,7 @@ func (x *SendTextResponse) String() string {
 func (*SendTextResponse) ProtoMessage() {}
 
 func (x *SendTextResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[11]
+	mi := &file_proto_api_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1538,7 +1894,7 @@ func (x *SendTextResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendTextResponse.ProtoReflect.Descriptor instead.
 func (*SendTextResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{11}
+	return file_proto_api_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SendTextResponse) GetStatus() SendTextResponse_Status {
@@ -1565,7 +1921,7 @@ type ActivateRequest struct {
 
 func (x *ActivateRequest) Reset() {
 	*x = ActivateRequest{}
-	mi := &file_proto_api_proto_msgTypes[12]
+	mi := &file_proto_api_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1577,7 +1933,7 @@ func (x *ActivateRequest) String() string {
 func (*ActivateRequest) ProtoMessage() {}
 
 func (x *ActivateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[12]
+	mi := &file_proto_api_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1590,7 +1946,7 @@ func (x *ActivateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivateRequest.ProtoReflect.Descriptor instead.
 func (*ActivateRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{12}
+	return file_proto_api_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ActivateRequest) GetIdentifier() isActivateRequest_Identifier {
@@ -1679,7 +2035,7 @@ type ActivateResponse struct {
 
 func (x *ActivateResponse) Reset() {
 	*x = ActivateResponse{}
-	mi := &file_proto_api_proto_msgTypes[13]
+	mi := &file_proto_api_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1691,7 +2047,7 @@ func (x *ActivateResponse) String() string {
 func (*ActivateResponse) ProtoMessage() {}
 
 func (x *ActivateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[13]
+	mi := &file_proto_api_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1704,7 +2060,7 @@ func (x *ActivateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivateResponse.ProtoReflect.Descriptor instead.
 func (*ActivateResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{13}
+	return file_proto_api_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ActivateResponse) GetStatus() ActivateResponse_Status {
@@ -1725,7 +2081,7 @@ type GetBufferRequest struct {
 
 func (x *GetBufferRequest) Reset() {
 	*x = GetBufferRequest{}
-	mi := &file_proto_api_proto_msgTypes[14]
+	mi := &file_proto_api_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1737,7 +2093,7 @@ func (x *GetBufferRequest) String() string {
 func (*GetBufferRequest) ProtoMessage() {}
 
 func (x *GetBufferRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[14]
+	mi := &file_proto_api_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1750,7 +2106,7 @@ func (x *GetBufferRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBufferRequest.ProtoReflect.Descriptor instead.
 func (*GetBufferRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{14}
+	return file_proto_api_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetBufferRequest) GetSession() string {
@@ -1785,7 +2141,7 @@ type LineRange struct {
 
 func (x *LineRange) Reset() {
 	*x = LineRange{}
-	mi := &file_proto_api_proto_msgTypes[15]
+	mi := &file_proto_api_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1797,7 +2153,7 @@ func (x *LineRange) String() string {
 func (*LineRange) ProtoMessage() {}
 
 func (x *LineRange) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[15]
+	mi := &file_proto_api_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1810,7 +2166,7 @@ func (x *LineRange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LineRange.ProtoReflect.Descriptor instead.
 func (*LineRange) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{15}
+	return file_proto_api_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *LineRange) GetScreenContentsOnly() bool {
@@ -1855,7 +2211,7 @@ const (
 
 func (x *GetBufferResponse) Reset() {
 	*x = GetBufferResponse{}
-	mi := &file_proto_api_proto_msgTypes[16]
+	mi := &file_proto_api_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1867,7 +2223,7 @@ func (x *GetBufferResponse) String() string {
 func (*GetBufferResponse) ProtoMessage() {}
 
 func (x *GetBufferResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[16]
+	mi := &file_proto_api_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1880,7 +2236,7 @@ func (x *GetBufferResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBufferResponse.ProtoReflect.Descriptor instead.
 func (*GetBufferResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{16}
+	return file_proto_api_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetBufferResponse) GetStatus() GetBufferResponse_Status {
@@ -1937,7 +2293,7 @@ type Range struct {
 
 func (x *Range) Reset() {
 	*x = Range{}
-	mi := &file_proto_api_proto_msgTypes[17]
+	mi := &file_proto_api_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1949,7 +2305,7 @@ func (x *Range) String() string {
 func (*Range) ProtoMessage() {}
 
 func (x *Range) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[17]
+	mi := &file_proto_api_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1962,7 +2318,7 @@ func (x *Range) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Range.ProtoReflect.Descriptor instead.
 func (*Range) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{17}
+	return file_proto_api_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Range) GetLocation() int64 {
@@ -1989,7 +2345,7 @@ type Coord struct {
 
 func (x *Coord) Reset() {
 	*x = Coord{}
-	mi := &file_proto_api_proto_msgTypes[18]
+	mi := &file_proto_api_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2001,7 +2357,7 @@ func (x *Coord) String() string {
 func (*Coord) ProtoMessage() {}
 
 func (x *Coord) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[18]
+	mi := &file_proto_api_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2014,7 +2370,7 @@ func (x *Coord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Coord.ProtoReflect.Descriptor instead.
 func (*Coord) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{18}
+	return file_proto_api_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *Coord) GetX() int32 {
@@ -2041,7 +2397,7 @@ type CoordRange struct {
 
 func (x *CoordRange) Reset() {
 	*x = CoordRange{}
-	mi := &file_proto_api_proto_msgTypes[19]
+	mi := &file_proto_api_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2053,7 +2409,7 @@ func (x *CoordRange) String() string {
 func (*CoordRange) ProtoMessage() {}
 
 func (x *CoordRange) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[19]
+	mi := &file_proto_api_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2066,7 +2422,7 @@ func (x *CoordRange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordRange.ProtoReflect.Descriptor instead.
 func (*CoordRange) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{19}
+	return file_proto_api_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CoordRange) GetStart() *Coord {
@@ -2093,7 +2449,7 @@ type WindowedCoordRange struct {
 
 func (x *WindowedCoordRange) Reset() {
 	*x = WindowedCoordRange{}
-	mi := &file_proto_api_proto_msgTypes[20]
+	mi := &file_proto_api_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2105,7 +2461,7 @@ func (x *WindowedCoordRange) String() string {
 func (*WindowedCoordRange) ProtoMessage() {}
 
 func (x *WindowedCoordRange) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[20]
+	mi := &file_proto_api_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2118,7 +2474,7 @@ func (x *WindowedCoordRange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WindowedCoordRange.ProtoReflect.Descriptor instead.
 func (*WindowedCoordRange) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{20}
+	return file_proto_api_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *WindowedCoordRange) GetCoordRange() *CoordRange {
@@ -2152,7 +2508,7 @@ const (
 
 func (x *LineContents) Reset() {
 	*x = LineContents{}
-	mi := &file_proto_api_proto_msgTypes[21]
+	mi := &file_proto_api_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2164,7 +2520,7 @@ func (x *LineContents) String() string {
 func (*LineContents) ProtoMessage() {}
 
 func (x *LineContents) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[21]
+	mi := &file_proto_api_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2177,7 +2533,7 @@ func (x *LineContents) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LineContents.ProtoReflect.Descriptor instead.
 func (*LineContents) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{21}
+	return file_proto_api_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *LineContents) GetText() string {
@@ -2223,7 +2579,7 @@ const (
 
 func (x *CodePointsPerCell) Reset() {
 	*x = CodePointsPerCell{}
-	mi := &file_proto_api_proto_msgTypes[22]
+	mi := &file_proto_api_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2235,7 +2591,7 @@ func (x *CodePointsPerCell) String() string {
 func (*CodePointsPerCell) ProtoMessage() {}
 
 func (x *CodePointsPerCell) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[22]
+	mi := &file_proto_api_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2248,7 +2604,7 @@ func (x *CodePointsPerCell) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodePointsPerCell.ProtoReflect.Descriptor instead.
 func (*CodePointsPerCell) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{22}
+	return file_proto_api_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CodePointsPerCell) GetNumCodePoints() int32 {
@@ -2276,7 +2632,7 @@ type RGBColor struct {
 
 func (x *RGBColor) Reset() {
 	*x = RGBColor{}
-	mi := &file_proto_api_proto_msgTypes[23]
+	mi := &file_proto_api_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2288,7 +2644,7 @@ func (x *RGBColor) String() string {
 func (*RGBColor) ProtoMessage() {}
 
 func (x *RGBColor) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[23]
+	mi := &file_proto_api_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2301,7 +2657,7 @@ func (x *RGBColor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RGBColor.ProtoReflect.Descriptor instead.
 func (*RGBColor) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{23}
+	return file_proto_api_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *RGBColor) GetRed() uint32 {
@@ -2335,7 +2691,7 @@ type URL struct {
 
 func (x *URL) Reset() {
 	*x = URL{}
-	mi := &file_proto_api_proto_msgTypes[24]
+	mi := &file_proto_api_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2347,7 +2703,7 @@ func (x *URL) String() string {
 func (*URL) ProtoMessage() {}
 
 func (x *URL) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[24]
+	mi := &file_proto_api_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2360,7 +2716,7 @@ func (x *URL) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use URL.ProtoReflect.Descriptor instead.
 func (*URL) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{24}
+	return file_proto_api_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *URL) GetUrl() string {
@@ -2413,7 +2769,7 @@ type CellStyle struct {
 
 func (x *CellStyle) Reset() {
 	*x = CellStyle{}
-	mi := &file_proto_api_proto_msgTypes[25]
+	mi := &file_proto_api_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2425,7 +2781,7 @@ func (x *CellStyle) String() string {
 func (*CellStyle) ProtoMessage() {}
 
 func (x *CellStyle) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[25]
+	mi := &file_proto_api_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2438,7 +2794,7 @@ func (x *CellStyle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CellStyle.ProtoReflect.Descriptor instead.
 func (*CellStyle) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{25}
+	return file_proto_api_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CellStyle) GetFgColor() isCellStyle_FgColor {
@@ -2695,7 +3051,7 @@ type GetPropertyRequest struct {
 
 func (x *GetPropertyRequest) Reset() {
 	*x = GetPropertyRequest{}
-	mi := &file_proto_api_proto_msgTypes[26]
+	mi := &file_proto_api_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2707,7 +3063,7 @@ func (x *GetPropertyRequest) String() string {
 func (*GetPropertyRequest) ProtoMessage() {}
 
 func (x *GetPropertyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[26]
+	mi := &file_proto_api_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2720,7 +3076,7 @@ func (x *GetPropertyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPropertyRequest.ProtoReflect.Descriptor instead.
 func (*GetPropertyRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{26}
+	return file_proto_api_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetPropertyRequest) GetIdentifier() isGetPropertyRequest_Identifier {
@@ -2781,7 +3137,7 @@ type GetPropertyResponse struct {
 
 func (x *GetPropertyResponse) Reset() {
 	*x = GetPropertyResponse{}
-	mi := &file_proto_api_proto_msgTypes[27]
+	mi := &file_proto_api_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2793,7 +3149,7 @@ func (x *GetPropertyResponse) String() string {
 func (*GetPropertyResponse) ProtoMessage() {}
 
 func (x *GetPropertyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[27]
+	mi := &file_proto_api_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2806,7 +3162,7 @@ func (x *GetPropertyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPropertyResponse.ProtoReflect.Descriptor instead.
 func (*GetPropertyResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{27}
+	return file_proto_api_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetPropertyResponse) GetStatus() GetPropertyResponse_Status {
@@ -2839,7 +3195,7 @@ type VariableRequest struct {
 
 func (x *VariableRequest) Reset() {
 	*x = VariableRequest{}
-	mi := &file_proto_api_proto_msgTypes[28]
+	mi := &file_proto_api_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2851,7 +3207,7 @@ func (x *VariableRequest) String() string {
 func (*VariableRequest) ProtoMessage() {}
 
 func (x *VariableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[28]
+	mi := &file_proto_api_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2864,7 +3220,7 @@ func (x *VariableRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VariableRequest.ProtoReflect.Descriptor instead.
 func (*VariableRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{28}
+	return file_proto_api_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *VariableRequest) GetScope() isVariableRequest_Scope {
@@ -2955,7 +3311,7 @@ type VariableResponse struct {
 
 func (x *VariableResponse) Reset() {
 	*x = VariableResponse{}
-	mi := &file_proto_api_proto_msgTypes[29]
+	mi := &file_proto_api_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2967,7 +3323,7 @@ func (x *VariableResponse) String() string {
 func (*VariableResponse) ProtoMessage() {}
 
 func (x *VariableResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[29]
+	mi := &file_proto_api_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2980,7 +3336,7 @@ func (x *VariableResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VariableResponse.ProtoReflect.Descriptor instead.
 func (*VariableResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{29}
+	return file_proto_api_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *VariableResponse) GetStatus() VariableResponse_Status {
@@ -3005,7 +3361,7 @@ type FocusRequest struct {
 
 func (x *FocusRequest) Reset() {
 	*x = FocusRequest{}
-	mi := &file_proto_api_proto_msgTypes[30]
+	mi := &file_proto_api_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3017,7 +3373,7 @@ func (x *FocusRequest) String() string {
 func (*FocusRequest) ProtoMessage() {}
 
 func (x *FocusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[30]
+	mi := &file_proto_api_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3030,7 +3386,7 @@ func (x *FocusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusRequest.ProtoReflect.Descriptor instead.
 func (*FocusRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{30}
+	return file_proto_api_proto_rawDescGZIP(), []int{33}
 }
 
 type FocusResponse struct {
@@ -3042,7 +3398,7 @@ type FocusResponse struct {
 
 func (x *FocusResponse) Reset() {
 	*x = FocusResponse{}
-	mi := &file_proto_api_proto_msgTypes[31]
+	mi := &file_proto_api_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3054,7 +3410,7 @@ func (x *FocusResponse) String() string {
 func (*FocusResponse) ProtoMessage() {}
 
 func (x *FocusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[31]
+	mi := &file_proto_api_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3067,7 +3423,7 @@ func (x *FocusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusResponse.ProtoReflect.Descriptor instead.
 func (*FocusResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{31}
+	return file_proto_api_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *FocusResponse) GetNotifications() []*FocusChangedNotification {
@@ -3092,7 +3448,7 @@ type FocusChangedNotification struct {
 
 func (x *FocusChangedNotification) Reset() {
 	*x = FocusChangedNotification{}
-	mi := &file_proto_api_proto_msgTypes[32]
+	mi := &file_proto_api_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3104,7 +3460,7 @@ func (x *FocusChangedNotification) String() string {
 func (*FocusChangedNotification) ProtoMessage() {}
 
 func (x *FocusChangedNotification) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[32]
+	mi := &file_proto_api_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3117,7 +3473,7 @@ func (x *FocusChangedNotification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusChangedNotification.ProtoReflect.Descriptor instead.
 func (*FocusChangedNotification) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{32}
+	return file_proto_api_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *FocusChangedNotification) GetEvent() isFocusChangedNotification_Event {
@@ -3201,7 +3557,7 @@ type ListSessionsResponse_Window struct {
 
 func (x *ListSessionsResponse_Window) Reset() {
 	*x = ListSessionsResponse_Window{}
-	mi := &file_proto_api_proto_msgTypes[33]
+	mi := &file_proto_api_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3213,7 +3569,7 @@ func (x *ListSessionsResponse_Window) String() string {
 func (*ListSessionsResponse_Window) ProtoMessage() {}
 
 func (x *ListSessionsResponse_Window) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[33]
+	mi := &file_proto_api_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3253,7 +3609,7 @@ type ListSessionsResponse_Tab struct {
 
 func (x *ListSessionsResponse_Tab) Reset() {
 	*x = ListSessionsResponse_Tab{}
-	mi := &file_proto_api_proto_msgTypes[34]
+	mi := &file_proto_api_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3265,7 +3621,7 @@ func (x *ListSessionsResponse_Tab) String() string {
 func (*ListSessionsResponse_Tab) ProtoMessage() {}
 
 func (x *ListSessionsResponse_Tab) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[34]
+	mi := &file_proto_api_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3308,7 +3664,7 @@ type SplitTreeNode_SplitTreeLink struct {
 
 func (x *SplitTreeNode_SplitTreeLink) Reset() {
 	*x = SplitTreeNode_SplitTreeLink{}
-	mi := &file_proto_api_proto_msgTypes[35]
+	mi := &file_proto_api_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3320,7 +3676,7 @@ func (x *SplitTreeNode_SplitTreeLink) String() string {
 func (*SplitTreeNode_SplitTreeLink) ProtoMessage() {}
 
 func (x *SplitTreeNode_SplitTreeLink) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[35]
+	mi := &file_proto_api_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3387,7 +3743,7 @@ type FocusChangedNotification_Window struct {
 
 func (x *FocusChangedNotification_Window) Reset() {
 	*x = FocusChangedNotification_Window{}
-	mi := &file_proto_api_proto_msgTypes[36]
+	mi := &file_proto_api_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3399,7 +3755,7 @@ func (x *FocusChangedNotification_Window) String() string {
 func (*FocusChangedNotification_Window) ProtoMessage() {}
 
 func (x *FocusChangedNotification_Window) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_proto_msgTypes[36]
+	mi := &file_proto_api_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3412,7 +3768,7 @@ func (x *FocusChangedNotification_Window) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusChangedNotification_Window.ProtoReflect.Descriptor instead.
 func (*FocusChangedNotification_Window) Descriptor() ([]byte, []int) {
-	return file_proto_api_proto_rawDescGZIP(), []int{32, 0}
+	return file_proto_api_proto_rawDescGZIP(), []int{35, 0}
 }
 
 func (x *FocusChangedNotification_Window) GetWindowStatus() FocusChangedNotification_Window_WindowStatus {
@@ -3433,19 +3789,20 @@ var File_proto_api_proto protoreflect.FileDescriptor
 
 const file_proto_api_proto_rawDesc = "" +
 	"\n" +
-	"\x0fproto/api.proto\x12\x06iterm2\"\xfe\x04\n" +
+	"\x0fproto/api.proto\x12\x06iterm2\"\xc8\x05\n" +
 	"\x17ClientOriginatedMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12H\n" +
 	"\x12get_buffer_request\x18d \x01(\v2\x18.iterm2.GetBufferRequestH\x00R\x10getBufferRequest\x12N\n" +
 	"\x14get_property_request\x18p \x01(\v2\x1a.iterm2.GetPropertyRequestH\x00R\x12getPropertyRequest\x12Q\n" +
 	"\x15list_sessions_request\x18j \x01(\v2\x1b.iterm2.ListSessionsRequestH\x00R\x13listSessionsRequest\x12E\n" +
 	"\x11send_text_request\x18k \x01(\v2\x17.iterm2.SendTextRequestH\x00R\x0fsendTextRequest\x12H\n" +
-	"\x12create_tab_request\x18l \x01(\v2\x18.iterm2.CreateTabRequestH\x00R\x10createTabRequest\x12D\n" +
+	"\x12create_tab_request\x18l \x01(\v2\x18.iterm2.CreateTabRequestH\x00R\x10createTabRequest\x12H\n" +
+	"\x12split_pane_request\x18m \x01(\v2\x18.iterm2.SplitPaneRequestH\x00R\x10splitPaneRequest\x12D\n" +
 	"\x10activate_request\x18r \x01(\v2\x17.iterm2.ActivateRequestH\x00R\x0factivateRequest\x12D\n" +
 	"\x10variable_request\x18s \x01(\v2\x17.iterm2.VariableRequestH\x00R\x0fvariableRequest\x12;\n" +
 	"\rfocus_request\x18u \x01(\v2\x14.iterm2.FocusRequestH\x00R\ffocusRequestB\f\n" +
 	"\n" +
-	"submessage\"\xeb\x05\n" +
+	"submessage\"\xb8\x06\n" +
 	"\x17ServerOriginatedMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x16\n" +
 	"\x05error\x18\x02 \x01(\tH\x00R\x05error\x12K\n" +
@@ -3453,7 +3810,8 @@ const file_proto_api_proto_rawDesc = "" +
 	"\x15get_property_response\x18p \x01(\v2\x1b.iterm2.GetPropertyResponseH\x00R\x13getPropertyResponse\x12T\n" +
 	"\x16list_sessions_response\x18j \x01(\v2\x1c.iterm2.ListSessionsResponseH\x00R\x14listSessionsResponse\x12H\n" +
 	"\x12send_text_response\x18k \x01(\v2\x18.iterm2.SendTextResponseH\x00R\x10sendTextResponse\x12K\n" +
-	"\x13create_tab_response\x18l \x01(\v2\x19.iterm2.CreateTabResponseH\x00R\x11createTabResponse\x12G\n" +
+	"\x13create_tab_response\x18l \x01(\v2\x19.iterm2.CreateTabResponseH\x00R\x11createTabResponse\x12K\n" +
+	"\x13split_pane_response\x18m \x01(\v2\x19.iterm2.SplitPaneResponseH\x00R\x11splitPaneResponse\x12G\n" +
 	"\x11activate_response\x18r \x01(\v2\x18.iterm2.ActivateResponseH\x00R\x10activateResponse\x12G\n" +
 	"\x11variable_response\x18s \x01(\v2\x18.iterm2.VariableResponseH\x00R\x10variableResponse\x12>\n" +
 	"\x0efocus_response\x18u \x01(\v2\x15.iterm2.FocusResponseH\x00R\rfocusResponse\x12;\n" +
@@ -3483,11 +3841,18 @@ const file_proto_api_proto_rawDesc = "" +
 	"\x05title\x18\x04 \x01(\tR\x05title\"4\n" +
 	"\x04Size\x12\x14\n" +
 	"\x05width\x18\x01 \x01(\x05R\x05width\x12\x16\n" +
-	"\x06height\x18\x02 \x01(\x05R\x06height\"o\n" +
+	"\x06height\x18\x02 \x01(\x05R\x06height\"\xe3\x01\n" +
 	"\x10CreateTabRequest\x12!\n" +
 	"\fprofile_name\x18\x01 \x01(\tR\vprofileName\x12\x1b\n" +
 	"\twindow_id\x18\x02 \x01(\tR\bwindowId\x12\x1b\n" +
-	"\ttab_index\x18\x03 \x01(\rR\btabIndex\"\x94\x02\n" +
+	"\ttab_index\x18\x03 \x01(\rR\btabIndex\x12S\n" +
+	"\x19custom_profile_properties\x18\x05 \x03(\v2\x17.iterm2.ProfilePropertyR\x17customProfileProperties\x12\x1d\n" +
+	"\n" +
+	"select_tab\x18\x06 \x01(\bR\tselectTab\"B\n" +
+	"\x0fProfileProperty\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1d\n" +
+	"\n" +
+	"json_value\x18\x02 \x01(\tR\tjsonValue\"\x94\x02\n" +
 	"\x11CreateTabResponse\x128\n" +
 	"\x06status\x18\x01 \x01(\x0e2 .iterm2.CreateTabResponse.StatusR\x06status\x12\x1b\n" +
 	"\twindow_id\x18\x02 \x01(\tR\bwindowId\x12\x15\n" +
@@ -3499,7 +3864,27 @@ const file_proto_api_proto_rawDesc = "" +
 	"\x14INVALID_PROFILE_NAME\x10\x01\x12\x15\n" +
 	"\x11INVALID_WINDOW_ID\x10\x02\x12\x15\n" +
 	"\x11INVALID_TAB_INDEX\x10\x03\x12\x18\n" +
-	"\x14MISSING_SUBSTITUTION\x10\x04\"n\n" +
+	"\x14MISSING_SUBSTITUTION\x10\x04\"\xc5\x02\n" +
+	"\x10SplitPaneRequest\x12\x18\n" +
+	"\asession\x18\x01 \x01(\tR\asession\x12P\n" +
+	"\x0fsplit_direction\x18\x02 \x01(\x0e2'.iterm2.SplitPaneRequest.SplitDirectionR\x0esplitDirection\x12\x1d\n" +
+	"\x06before\x18\x03 \x01(\b:\x05falseR\x06before\x12!\n" +
+	"\fprofile_name\x18\x04 \x01(\tR\vprofileName\x12S\n" +
+	"\x19custom_profile_properties\x18\x05 \x03(\v2\x17.iterm2.ProfilePropertyR\x17customProfileProperties\".\n" +
+	"\x0eSplitDirection\x12\f\n" +
+	"\bVERTICAL\x10\x00\x12\x0e\n" +
+	"\n" +
+	"HORIZONTAL\x10\x01\"\xe8\x01\n" +
+	"\x11SplitPaneResponse\x128\n" +
+	"\x06status\x18\x01 \x01(\x0e2 .iterm2.SplitPaneResponse.StatusR\x06status\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x02 \x03(\tR\tsessionId\"z\n" +
+	"\x06Status\x12\x06\n" +
+	"\x02OK\x10\x00\x12\x15\n" +
+	"\x11SESSION_NOT_FOUND\x10\x01\x12\x18\n" +
+	"\x14INVALID_PROFILE_NAME\x10\x02\x12\x10\n" +
+	"\fCANNOT_SPLIT\x10\x03\x12%\n" +
+	"!MALFORMED_CUSTOM_PROFILE_PROPERTY\x10\x04\"n\n" +
 	"\x0fSendTextRequest\x12\x18\n" +
 	"\asession\x18\x01 \x01(\tR\asession\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12-\n" +
@@ -3683,116 +4068,127 @@ func file_proto_api_proto_rawDescGZIP() []byte {
 	return file_proto_api_proto_rawDescData
 }
 
-var file_proto_api_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
-var file_proto_api_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
+var file_proto_api_proto_enumTypes = make([]protoimpl.EnumInfo, 12)
+var file_proto_api_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_proto_api_proto_goTypes = []any{
 	(AlternateColor)(0),                               // 0: iterm2.AlternateColor
 	(ImagePlaceholderType)(0),                         // 1: iterm2.ImagePlaceholderType
 	(CreateTabResponse_Status)(0),                     // 2: iterm2.CreateTabResponse.Status
-	(SendTextResponse_Status)(0),                      // 3: iterm2.SendTextResponse.Status
-	(ActivateResponse_Status)(0),                      // 4: iterm2.ActivateResponse.Status
-	(GetBufferResponse_Status)(0),                     // 5: iterm2.GetBufferResponse.Status
-	(LineContents_Continuation)(0),                    // 6: iterm2.LineContents.Continuation
-	(GetPropertyResponse_Status)(0),                   // 7: iterm2.GetPropertyResponse.Status
-	(VariableResponse_Status)(0),                      // 8: iterm2.VariableResponse.Status
-	(FocusChangedNotification_Window_WindowStatus)(0), // 9: iterm2.FocusChangedNotification.Window.WindowStatus
-	(*ClientOriginatedMessage)(nil),                   // 10: iterm2.ClientOriginatedMessage
-	(*ServerOriginatedMessage)(nil),                   // 11: iterm2.ServerOriginatedMessage
-	(*Notification)(nil),                              // 12: iterm2.Notification
-	(*ListSessionsRequest)(nil),                       // 13: iterm2.ListSessionsRequest
-	(*ListSessionsResponse)(nil),                      // 14: iterm2.ListSessionsResponse
-	(*SplitTreeNode)(nil),                             // 15: iterm2.SplitTreeNode
-	(*SessionSummary)(nil),                            // 16: iterm2.SessionSummary
-	(*Size)(nil),                                      // 17: iterm2.Size
-	(*CreateTabRequest)(nil),                          // 18: iterm2.CreateTabRequest
-	(*CreateTabResponse)(nil),                         // 19: iterm2.CreateTabResponse
-	(*SendTextRequest)(nil),                           // 20: iterm2.SendTextRequest
-	(*SendTextResponse)(nil),                          // 21: iterm2.SendTextResponse
-	(*ActivateRequest)(nil),                           // 22: iterm2.ActivateRequest
-	(*ActivateResponse)(nil),                          // 23: iterm2.ActivateResponse
-	(*GetBufferRequest)(nil),                          // 24: iterm2.GetBufferRequest
-	(*LineRange)(nil),                                 // 25: iterm2.LineRange
-	(*GetBufferResponse)(nil),                         // 26: iterm2.GetBufferResponse
-	(*Range)(nil),                                     // 27: iterm2.Range
-	(*Coord)(nil),                                     // 28: iterm2.Coord
-	(*CoordRange)(nil),                                // 29: iterm2.CoordRange
-	(*WindowedCoordRange)(nil),                        // 30: iterm2.WindowedCoordRange
-	(*LineContents)(nil),                              // 31: iterm2.LineContents
-	(*CodePointsPerCell)(nil),                         // 32: iterm2.CodePointsPerCell
-	(*RGBColor)(nil),                                  // 33: iterm2.RGBColor
-	(*URL)(nil),                                       // 34: iterm2.URL
-	(*CellStyle)(nil),                                 // 35: iterm2.CellStyle
-	(*GetPropertyRequest)(nil),                        // 36: iterm2.GetPropertyRequest
-	(*GetPropertyResponse)(nil),                       // 37: iterm2.GetPropertyResponse
-	(*VariableRequest)(nil),                           // 38: iterm2.VariableRequest
-	(*VariableResponse)(nil),                          // 39: iterm2.VariableResponse
-	(*FocusRequest)(nil),                              // 40: iterm2.FocusRequest
-	(*FocusResponse)(nil),                             // 41: iterm2.FocusResponse
-	(*FocusChangedNotification)(nil),                  // 42: iterm2.FocusChangedNotification
-	(*ListSessionsResponse_Window)(nil),               // 43: iterm2.ListSessionsResponse.Window
-	(*ListSessionsResponse_Tab)(nil),                  // 44: iterm2.ListSessionsResponse.Tab
-	(*SplitTreeNode_SplitTreeLink)(nil),               // 45: iterm2.SplitTreeNode.SplitTreeLink
-	(*FocusChangedNotification_Window)(nil),           // 46: iterm2.FocusChangedNotification.Window
+	(SplitPaneRequest_SplitDirection)(0),              // 3: iterm2.SplitPaneRequest.SplitDirection
+	(SplitPaneResponse_Status)(0),                     // 4: iterm2.SplitPaneResponse.Status
+	(SendTextResponse_Status)(0),                      // 5: iterm2.SendTextResponse.Status
+	(ActivateResponse_Status)(0),                      // 6: iterm2.ActivateResponse.Status
+	(GetBufferResponse_Status)(0),                     // 7: iterm2.GetBufferResponse.Status
+	(LineContents_Continuation)(0),                    // 8: iterm2.LineContents.Continuation
+	(GetPropertyResponse_Status)(0),                   // 9: iterm2.GetPropertyResponse.Status
+	(VariableResponse_Status)(0),                      // 10: iterm2.VariableResponse.Status
+	(FocusChangedNotification_Window_WindowStatus)(0), // 11: iterm2.FocusChangedNotification.Window.WindowStatus
+	(*ClientOriginatedMessage)(nil),                   // 12: iterm2.ClientOriginatedMessage
+	(*ServerOriginatedMessage)(nil),                   // 13: iterm2.ServerOriginatedMessage
+	(*Notification)(nil),                              // 14: iterm2.Notification
+	(*ListSessionsRequest)(nil),                       // 15: iterm2.ListSessionsRequest
+	(*ListSessionsResponse)(nil),                      // 16: iterm2.ListSessionsResponse
+	(*SplitTreeNode)(nil),                             // 17: iterm2.SplitTreeNode
+	(*SessionSummary)(nil),                            // 18: iterm2.SessionSummary
+	(*Size)(nil),                                      // 19: iterm2.Size
+	(*CreateTabRequest)(nil),                          // 20: iterm2.CreateTabRequest
+	(*ProfileProperty)(nil),                           // 21: iterm2.ProfileProperty
+	(*CreateTabResponse)(nil),                         // 22: iterm2.CreateTabResponse
+	(*SplitPaneRequest)(nil),                          // 23: iterm2.SplitPaneRequest
+	(*SplitPaneResponse)(nil),                         // 24: iterm2.SplitPaneResponse
+	(*SendTextRequest)(nil),                           // 25: iterm2.SendTextRequest
+	(*SendTextResponse)(nil),                          // 26: iterm2.SendTextResponse
+	(*ActivateRequest)(nil),                           // 27: iterm2.ActivateRequest
+	(*ActivateResponse)(nil),                          // 28: iterm2.ActivateResponse
+	(*GetBufferRequest)(nil),                          // 29: iterm2.GetBufferRequest
+	(*LineRange)(nil),                                 // 30: iterm2.LineRange
+	(*GetBufferResponse)(nil),                         // 31: iterm2.GetBufferResponse
+	(*Range)(nil),                                     // 32: iterm2.Range
+	(*Coord)(nil),                                     // 33: iterm2.Coord
+	(*CoordRange)(nil),                                // 34: iterm2.CoordRange
+	(*WindowedCoordRange)(nil),                        // 35: iterm2.WindowedCoordRange
+	(*LineContents)(nil),                              // 36: iterm2.LineContents
+	(*CodePointsPerCell)(nil),                         // 37: iterm2.CodePointsPerCell
+	(*RGBColor)(nil),                                  // 38: iterm2.RGBColor
+	(*URL)(nil),                                       // 39: iterm2.URL
+	(*CellStyle)(nil),                                 // 40: iterm2.CellStyle
+	(*GetPropertyRequest)(nil),                        // 41: iterm2.GetPropertyRequest
+	(*GetPropertyResponse)(nil),                       // 42: iterm2.GetPropertyResponse
+	(*VariableRequest)(nil),                           // 43: iterm2.VariableRequest
+	(*VariableResponse)(nil),                          // 44: iterm2.VariableResponse
+	(*FocusRequest)(nil),                              // 45: iterm2.FocusRequest
+	(*FocusResponse)(nil),                             // 46: iterm2.FocusResponse
+	(*FocusChangedNotification)(nil),                  // 47: iterm2.FocusChangedNotification
+	(*ListSessionsResponse_Window)(nil),               // 48: iterm2.ListSessionsResponse.Window
+	(*ListSessionsResponse_Tab)(nil),                  // 49: iterm2.ListSessionsResponse.Tab
+	(*SplitTreeNode_SplitTreeLink)(nil),               // 50: iterm2.SplitTreeNode.SplitTreeLink
+	(*FocusChangedNotification_Window)(nil),           // 51: iterm2.FocusChangedNotification.Window
 }
 var file_proto_api_proto_depIdxs = []int32{
-	24, // 0: iterm2.ClientOriginatedMessage.get_buffer_request:type_name -> iterm2.GetBufferRequest
-	36, // 1: iterm2.ClientOriginatedMessage.get_property_request:type_name -> iterm2.GetPropertyRequest
-	13, // 2: iterm2.ClientOriginatedMessage.list_sessions_request:type_name -> iterm2.ListSessionsRequest
-	20, // 3: iterm2.ClientOriginatedMessage.send_text_request:type_name -> iterm2.SendTextRequest
-	18, // 4: iterm2.ClientOriginatedMessage.create_tab_request:type_name -> iterm2.CreateTabRequest
-	22, // 5: iterm2.ClientOriginatedMessage.activate_request:type_name -> iterm2.ActivateRequest
-	38, // 6: iterm2.ClientOriginatedMessage.variable_request:type_name -> iterm2.VariableRequest
-	40, // 7: iterm2.ClientOriginatedMessage.focus_request:type_name -> iterm2.FocusRequest
-	26, // 8: iterm2.ServerOriginatedMessage.get_buffer_response:type_name -> iterm2.GetBufferResponse
-	37, // 9: iterm2.ServerOriginatedMessage.get_property_response:type_name -> iterm2.GetPropertyResponse
-	14, // 10: iterm2.ServerOriginatedMessage.list_sessions_response:type_name -> iterm2.ListSessionsResponse
-	21, // 11: iterm2.ServerOriginatedMessage.send_text_response:type_name -> iterm2.SendTextResponse
-	19, // 12: iterm2.ServerOriginatedMessage.create_tab_response:type_name -> iterm2.CreateTabResponse
-	23, // 13: iterm2.ServerOriginatedMessage.activate_response:type_name -> iterm2.ActivateResponse
-	39, // 14: iterm2.ServerOriginatedMessage.variable_response:type_name -> iterm2.VariableResponse
-	41, // 15: iterm2.ServerOriginatedMessage.focus_response:type_name -> iterm2.FocusResponse
-	12, // 16: iterm2.ServerOriginatedMessage.notification:type_name -> iterm2.Notification
-	43, // 17: iterm2.ListSessionsResponse.windows:type_name -> iterm2.ListSessionsResponse.Window
-	45, // 18: iterm2.SplitTreeNode.links:type_name -> iterm2.SplitTreeNode.SplitTreeLink
-	17, // 19: iterm2.SessionSummary.grid_size:type_name -> iterm2.Size
-	2,  // 20: iterm2.CreateTabResponse.status:type_name -> iterm2.CreateTabResponse.Status
-	3,  // 21: iterm2.SendTextResponse.status:type_name -> iterm2.SendTextResponse.Status
-	4,  // 22: iterm2.ActivateResponse.status:type_name -> iterm2.ActivateResponse.Status
-	25, // 23: iterm2.GetBufferRequest.line_range:type_name -> iterm2.LineRange
-	30, // 24: iterm2.LineRange.windowed_coord_range:type_name -> iterm2.WindowedCoordRange
-	5,  // 25: iterm2.GetBufferResponse.status:type_name -> iterm2.GetBufferResponse.Status
-	27, // 26: iterm2.GetBufferResponse.range:type_name -> iterm2.Range
-	31, // 27: iterm2.GetBufferResponse.contents:type_name -> iterm2.LineContents
-	28, // 28: iterm2.GetBufferResponse.cursor:type_name -> iterm2.Coord
-	30, // 29: iterm2.GetBufferResponse.windowed_coord_range:type_name -> iterm2.WindowedCoordRange
-	28, // 30: iterm2.CoordRange.start:type_name -> iterm2.Coord
-	28, // 31: iterm2.CoordRange.end:type_name -> iterm2.Coord
-	29, // 32: iterm2.WindowedCoordRange.coord_range:type_name -> iterm2.CoordRange
-	27, // 33: iterm2.WindowedCoordRange.columns:type_name -> iterm2.Range
-	32, // 34: iterm2.LineContents.code_points_per_cell:type_name -> iterm2.CodePointsPerCell
-	6,  // 35: iterm2.LineContents.continuation:type_name -> iterm2.LineContents.Continuation
-	35, // 36: iterm2.LineContents.style:type_name -> iterm2.CellStyle
-	0,  // 37: iterm2.CellStyle.fgAlternate:type_name -> iterm2.AlternateColor
-	33, // 38: iterm2.CellStyle.fgRgb:type_name -> iterm2.RGBColor
-	0,  // 39: iterm2.CellStyle.bgAlternate:type_name -> iterm2.AlternateColor
-	33, // 40: iterm2.CellStyle.bgRgb:type_name -> iterm2.RGBColor
-	1,  // 41: iterm2.CellStyle.image:type_name -> iterm2.ImagePlaceholderType
-	33, // 42: iterm2.CellStyle.underlineColor:type_name -> iterm2.RGBColor
-	34, // 43: iterm2.CellStyle.url:type_name -> iterm2.URL
-	7,  // 44: iterm2.GetPropertyResponse.status:type_name -> iterm2.GetPropertyResponse.Status
-	8,  // 45: iterm2.VariableResponse.status:type_name -> iterm2.VariableResponse.Status
-	42, // 46: iterm2.FocusResponse.notifications:type_name -> iterm2.FocusChangedNotification
-	46, // 47: iterm2.FocusChangedNotification.window:type_name -> iterm2.FocusChangedNotification.Window
-	44, // 48: iterm2.ListSessionsResponse.Window.tabs:type_name -> iterm2.ListSessionsResponse.Tab
-	15, // 49: iterm2.ListSessionsResponse.Tab.root:type_name -> iterm2.SplitTreeNode
-	16, // 50: iterm2.SplitTreeNode.SplitTreeLink.session:type_name -> iterm2.SessionSummary
-	15, // 51: iterm2.SplitTreeNode.SplitTreeLink.node:type_name -> iterm2.SplitTreeNode
-	9,  // 52: iterm2.FocusChangedNotification.Window.window_status:type_name -> iterm2.FocusChangedNotification.Window.WindowStatus
-	53, // [53:53] is the sub-list for method output_type
-	53, // [53:53] is the sub-list for method input_type
-	53, // [53:53] is the sub-list for extension type_name
-	53, // [53:53] is the sub-list for extension extendee
-	0,  // [0:53] is the sub-list for field type_name
+	29, // 0: iterm2.ClientOriginatedMessage.get_buffer_request:type_name -> iterm2.GetBufferRequest
+	41, // 1: iterm2.ClientOriginatedMessage.get_property_request:type_name -> iterm2.GetPropertyRequest
+	15, // 2: iterm2.ClientOriginatedMessage.list_sessions_request:type_name -> iterm2.ListSessionsRequest
+	25, // 3: iterm2.ClientOriginatedMessage.send_text_request:type_name -> iterm2.SendTextRequest
+	20, // 4: iterm2.ClientOriginatedMessage.create_tab_request:type_name -> iterm2.CreateTabRequest
+	23, // 5: iterm2.ClientOriginatedMessage.split_pane_request:type_name -> iterm2.SplitPaneRequest
+	27, // 6: iterm2.ClientOriginatedMessage.activate_request:type_name -> iterm2.ActivateRequest
+	43, // 7: iterm2.ClientOriginatedMessage.variable_request:type_name -> iterm2.VariableRequest
+	45, // 8: iterm2.ClientOriginatedMessage.focus_request:type_name -> iterm2.FocusRequest
+	31, // 9: iterm2.ServerOriginatedMessage.get_buffer_response:type_name -> iterm2.GetBufferResponse
+	42, // 10: iterm2.ServerOriginatedMessage.get_property_response:type_name -> iterm2.GetPropertyResponse
+	16, // 11: iterm2.ServerOriginatedMessage.list_sessions_response:type_name -> iterm2.ListSessionsResponse
+	26, // 12: iterm2.ServerOriginatedMessage.send_text_response:type_name -> iterm2.SendTextResponse
+	22, // 13: iterm2.ServerOriginatedMessage.create_tab_response:type_name -> iterm2.CreateTabResponse
+	24, // 14: iterm2.ServerOriginatedMessage.split_pane_response:type_name -> iterm2.SplitPaneResponse
+	28, // 15: iterm2.ServerOriginatedMessage.activate_response:type_name -> iterm2.ActivateResponse
+	44, // 16: iterm2.ServerOriginatedMessage.variable_response:type_name -> iterm2.VariableResponse
+	46, // 17: iterm2.ServerOriginatedMessage.focus_response:type_name -> iterm2.FocusResponse
+	14, // 18: iterm2.ServerOriginatedMessage.notification:type_name -> iterm2.Notification
+	48, // 19: iterm2.ListSessionsResponse.windows:type_name -> iterm2.ListSessionsResponse.Window
+	50, // 20: iterm2.SplitTreeNode.links:type_name -> iterm2.SplitTreeNode.SplitTreeLink
+	19, // 21: iterm2.SessionSummary.grid_size:type_name -> iterm2.Size
+	21, // 22: iterm2.CreateTabRequest.custom_profile_properties:type_name -> iterm2.ProfileProperty
+	2,  // 23: iterm2.CreateTabResponse.status:type_name -> iterm2.CreateTabResponse.Status
+	3,  // 24: iterm2.SplitPaneRequest.split_direction:type_name -> iterm2.SplitPaneRequest.SplitDirection
+	21, // 25: iterm2.SplitPaneRequest.custom_profile_properties:type_name -> iterm2.ProfileProperty
+	4,  // 26: iterm2.SplitPaneResponse.status:type_name -> iterm2.SplitPaneResponse.Status
+	5,  // 27: iterm2.SendTextResponse.status:type_name -> iterm2.SendTextResponse.Status
+	6,  // 28: iterm2.ActivateResponse.status:type_name -> iterm2.ActivateResponse.Status
+	30, // 29: iterm2.GetBufferRequest.line_range:type_name -> iterm2.LineRange
+	35, // 30: iterm2.LineRange.windowed_coord_range:type_name -> iterm2.WindowedCoordRange
+	7,  // 31: iterm2.GetBufferResponse.status:type_name -> iterm2.GetBufferResponse.Status
+	32, // 32: iterm2.GetBufferResponse.range:type_name -> iterm2.Range
+	36, // 33: iterm2.GetBufferResponse.contents:type_name -> iterm2.LineContents
+	33, // 34: iterm2.GetBufferResponse.cursor:type_name -> iterm2.Coord
+	35, // 35: iterm2.GetBufferResponse.windowed_coord_range:type_name -> iterm2.WindowedCoordRange
+	33, // 36: iterm2.CoordRange.start:type_name -> iterm2.Coord
+	33, // 37: iterm2.CoordRange.end:type_name -> iterm2.Coord
+	34, // 38: iterm2.WindowedCoordRange.coord_range:type_name -> iterm2.CoordRange
+	32, // 39: iterm2.WindowedCoordRange.columns:type_name -> iterm2.Range
+	37, // 40: iterm2.LineContents.code_points_per_cell:type_name -> iterm2.CodePointsPerCell
+	8,  // 41: iterm2.LineContents.continuation:type_name -> iterm2.LineContents.Continuation
+	40, // 42: iterm2.LineContents.style:type_name -> iterm2.CellStyle
+	0,  // 43: iterm2.CellStyle.fgAlternate:type_name -> iterm2.AlternateColor
+	38, // 44: iterm2.CellStyle.fgRgb:type_name -> iterm2.RGBColor
+	0,  // 45: iterm2.CellStyle.bgAlternate:type_name -> iterm2.AlternateColor
+	38, // 46: iterm2.CellStyle.bgRgb:type_name -> iterm2.RGBColor
+	1,  // 47: iterm2.CellStyle.image:type_name -> iterm2.ImagePlaceholderType
+	38, // 48: iterm2.CellStyle.underlineColor:type_name -> iterm2.RGBColor
+	39, // 49: iterm2.CellStyle.url:type_name -> iterm2.URL
+	9,  // 50: iterm2.GetPropertyResponse.status:type_name -> iterm2.GetPropertyResponse.Status
+	10, // 51: iterm2.VariableResponse.status:type_name -> iterm2.VariableResponse.Status
+	47, // 52: iterm2.FocusResponse.notifications:type_name -> iterm2.FocusChangedNotification
+	51, // 53: iterm2.FocusChangedNotification.window:type_name -> iterm2.FocusChangedNotification.Window
+	49, // 54: iterm2.ListSessionsResponse.Window.tabs:type_name -> iterm2.ListSessionsResponse.Tab
+	17, // 55: iterm2.ListSessionsResponse.Tab.root:type_name -> iterm2.SplitTreeNode
+	18, // 56: iterm2.SplitTreeNode.SplitTreeLink.session:type_name -> iterm2.SessionSummary
+	17, // 57: iterm2.SplitTreeNode.SplitTreeLink.node:type_name -> iterm2.SplitTreeNode
+	11, // 58: iterm2.FocusChangedNotification.Window.window_status:type_name -> iterm2.FocusChangedNotification.Window.WindowStatus
+	59, // [59:59] is the sub-list for method output_type
+	59, // [59:59] is the sub-list for method input_type
+	59, // [59:59] is the sub-list for extension type_name
+	59, // [59:59] is the sub-list for extension extendee
+	0,  // [0:59] is the sub-list for field type_name
 }
 
 func init() { file_proto_api_proto_init() }
@@ -3806,6 +4202,7 @@ func file_proto_api_proto_init() {
 		(*ClientOriginatedMessage_ListSessionsRequest)(nil),
 		(*ClientOriginatedMessage_SendTextRequest)(nil),
 		(*ClientOriginatedMessage_CreateTabRequest)(nil),
+		(*ClientOriginatedMessage_SplitPaneRequest)(nil),
 		(*ClientOriginatedMessage_ActivateRequest)(nil),
 		(*ClientOriginatedMessage_VariableRequest)(nil),
 		(*ClientOriginatedMessage_FocusRequest)(nil),
@@ -3817,17 +4214,18 @@ func file_proto_api_proto_init() {
 		(*ServerOriginatedMessage_ListSessionsResponse)(nil),
 		(*ServerOriginatedMessage_SendTextResponse)(nil),
 		(*ServerOriginatedMessage_CreateTabResponse)(nil),
+		(*ServerOriginatedMessage_SplitPaneResponse)(nil),
 		(*ServerOriginatedMessage_ActivateResponse)(nil),
 		(*ServerOriginatedMessage_VariableResponse)(nil),
 		(*ServerOriginatedMessage_FocusResponse)(nil),
 		(*ServerOriginatedMessage_Notification)(nil),
 	}
-	file_proto_api_proto_msgTypes[12].OneofWrappers = []any{
+	file_proto_api_proto_msgTypes[15].OneofWrappers = []any{
 		(*ActivateRequest_WindowId)(nil),
 		(*ActivateRequest_TabId)(nil),
 		(*ActivateRequest_SessionId)(nil),
 	}
-	file_proto_api_proto_msgTypes[25].OneofWrappers = []any{
+	file_proto_api_proto_msgTypes[28].OneofWrappers = []any{
 		(*CellStyle_FgStandard)(nil),
 		(*CellStyle_FgAlternate)(nil),
 		(*CellStyle_FgRgb)(nil),
@@ -3837,23 +4235,23 @@ func file_proto_api_proto_init() {
 		(*CellStyle_BgRgb)(nil),
 		(*CellStyle_BgAlternatePlacementY)(nil),
 	}
-	file_proto_api_proto_msgTypes[26].OneofWrappers = []any{
+	file_proto_api_proto_msgTypes[29].OneofWrappers = []any{
 		(*GetPropertyRequest_WindowId)(nil),
 		(*GetPropertyRequest_SessionId)(nil),
 	}
-	file_proto_api_proto_msgTypes[28].OneofWrappers = []any{
+	file_proto_api_proto_msgTypes[31].OneofWrappers = []any{
 		(*VariableRequest_SessionId)(nil),
 		(*VariableRequest_TabId)(nil),
 		(*VariableRequest_App)(nil),
 		(*VariableRequest_WindowId)(nil),
 	}
-	file_proto_api_proto_msgTypes[32].OneofWrappers = []any{
+	file_proto_api_proto_msgTypes[35].OneofWrappers = []any{
 		(*FocusChangedNotification_ApplicationActive)(nil),
 		(*FocusChangedNotification_Window_)(nil),
 		(*FocusChangedNotification_SelectedTab)(nil),
 		(*FocusChangedNotification_Session)(nil),
 	}
-	file_proto_api_proto_msgTypes[35].OneofWrappers = []any{
+	file_proto_api_proto_msgTypes[38].OneofWrappers = []any{
 		(*SplitTreeNode_SplitTreeLink_Session)(nil),
 		(*SplitTreeNode_SplitTreeLink_Node)(nil),
 	}
@@ -3862,8 +4260,8 @@ func file_proto_api_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_api_proto_rawDesc), len(file_proto_api_proto_rawDesc)),
-			NumEnums:      10,
-			NumMessages:   37,
+			NumEnums:      12,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

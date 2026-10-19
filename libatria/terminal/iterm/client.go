@@ -571,6 +571,98 @@ func (c *Client) NewSession() (string, error) {
 	return ctr.GetSessionId(), nil
 }
 
+// Compile-time check that the iTerm2 backend opens tabs and splits in place.
+var _ terminal.PaneOpener = (*Client)(nil)
+
+// dirProperties sets a new session's working directory through profile
+// properties: "Custom Directory" set to "Yes" makes iTerm2 use "Working
+// Directory". It returns nil for "", which leaves the profile's own setting.
+func dirProperties(dir string) []*pb.ProfileProperty {
+	if dir == "" {
+		return nil
+	}
+	quoted, _ := json.Marshal(dir) // a string always marshals
+	return []*pb.ProfileProperty{
+		{Key: proto.String("Custom Directory"), JsonValue: proto.String(`"Yes"`)},
+		{Key: proto.String("Working Directory"), JsonValue: proto.String(string(quoted))},
+	}
+}
+
+// NewTab opens a tab in window windowID and returns its session ID. dir sets
+// its directory; "" leaves it to the profile. The tab opens in the
+// background (select_tab false): it isn't selected and its window isn't
+// brought forward.
+func (c *Client) NewTab(windowID, dir string) (string, error) {
+	if windowID == "" {
+		return "", fmt.Errorf("new tab: no window given")
+	}
+	resp, err := c.request(&pb.ClientOriginatedMessage{
+		Submessage: &pb.ClientOriginatedMessage_CreateTabRequest{
+			CreateTabRequest: &pb.CreateTabRequest{
+				WindowId:                proto.String(windowID),
+				SelectTab:               proto.Bool(false),
+				CustomProfileProperties: dirProperties(dir),
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	ctr := resp.GetCreateTabResponse()
+	if ctr == nil {
+		return "", fmt.Errorf("unexpected response type")
+	}
+	if ctr.GetStatus() != pb.CreateTabResponse_OK {
+		return "", fmt.Errorf("new tab in window %s: %s", windowID, ctr.GetStatus().String())
+	}
+	return ctr.GetSessionId(), nil
+}
+
+// SplitPane splits session sessionID and returns the new session's ID. dir
+// sets its directory; "" uses the split session's own path variable when
+// iTerm2 knows it (shell integration or OSC 7), else the profile's setting.
+//
+// iTerm2 makes the new pane the tab's active one, so SplitPane selects the
+// original again afterwards, without ordering any window or the app forward.
+// A keystroke typed in the moment between the two can still land in the new
+// pane. A failed reselect doesn't fail the split.
+func (c *Client) SplitPane(sessionID string, d terminal.SplitDirection, dir string) (string, error) {
+	if dir == "" {
+		dir, _ = c.GetVar(sessionID, "path") // unknown leaves the profile's setting
+	}
+	direction := pb.SplitPaneRequest_HORIZONTAL // a horizontal divider: stacked
+	if d == terminal.SplitRight {
+		direction = pb.SplitPaneRequest_VERTICAL // a vertical divider: side by side
+	}
+	resp, err := c.request(&pb.ClientOriginatedMessage{
+		Submessage: &pb.ClientOriginatedMessage_SplitPaneRequest{
+			SplitPaneRequest: &pb.SplitPaneRequest{
+				Session:                 proto.String(sessionID),
+				SplitDirection:          direction.Enum(),
+				CustomProfileProperties: dirProperties(dir),
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	spr := resp.GetSplitPaneResponse()
+	if spr == nil {
+		return "", fmt.Errorf("unexpected response type")
+	}
+	if spr.GetStatus() != pb.SplitPaneResponse_OK {
+		return "", fmt.Errorf("split session %s: %s", sessionID, spr.GetStatus().String())
+	}
+	if len(spr.GetSessionId()) == 0 {
+		return "", fmt.Errorf("split session %s: no new session", sessionID)
+	}
+	_ = c.activate(&pb.ActivateRequest{
+		Identifier:    &pb.ActivateRequest_SessionId{SessionId: sessionID},
+		SelectSession: proto.Bool(true),
+	})
+	return spr.GetSessionId()[0], nil
+}
+
 // SendText sends raw text to a session.
 func (c *Client) SendText(sessionID, text string) error {
 	resp, err := c.request(&pb.ClientOriginatedMessage{

@@ -106,6 +106,44 @@ func (c *CachedBackend) NewSessionOn(source string) (string, error) {
 	return "", fmt.Errorf("inner backend does not support NewSessionOn")
 }
 
+// NewTabOn delegates to the inner backend's NewTabOn, then invalidates the
+// cache so the next listing shows the new tab. It returns ErrUnsupported when
+// the inner backend isn't a SourcePaneOpener.
+func (c *CachedBackend) NewTabOn(source, windowID, dir string) (string, error) {
+	sl, ok := c.inner.(SourcePaneOpener)
+	if !ok {
+		return "", fmt.Errorf("new tab on %s: %w", source, ErrUnsupported)
+	}
+	id, err := sl.NewTabOn(source, windowID, dir)
+	if err == nil {
+		c.Invalidate()
+	}
+	return id, err
+}
+
+// CanOpenPanes delegates to the inner backend's CanOpenPanes; false when the
+// inner backend isn't a SourcePaneOpener.
+func (c *CachedBackend) CanOpenPanes(source string) bool {
+	if sl, ok := c.inner.(SourcePaneOpener); ok {
+		return sl.CanOpenPanes(source)
+	}
+	return false
+}
+
+// SplitPane delegates to the inner backend's PaneSplitter, then invalidates
+// the cache. It returns ErrUnsupported when the inner backend isn't one.
+func (c *CachedBackend) SplitPane(sessionID string, d SplitDirection, dir string) (string, error) {
+	sp, ok := c.inner.(PaneSplitter)
+	if !ok {
+		return "", fmt.Errorf("split %s: %w", sessionID, ErrUnsupported)
+	}
+	id, err := sp.SplitPane(sessionID, d, dir)
+	if err == nil {
+		c.Invalidate()
+	}
+	return id, err
+}
+
 // SendText delegates to the inner backend.
 func (c *CachedBackend) SendText(sessionID, text string) error {
 	return c.inner.SendText(sessionID, text)
@@ -210,14 +248,15 @@ var _ Backend = (*CachedBackend)(nil)
 
 // Compile-time checks for the optional interfaces the cache provides.
 var (
-	_ StyledReader    = (*CachedBackend)(nil)
-	_ Resizer         = (*CachedBackend)(nil)
-	_ SourceLauncher  = (*CachedBackend)(nil)
-	_ Invalidator     = (*CachedBackend)(nil)
-	_ FailureReporter = (*CachedBackend)(nil)
-	_ Lister          = (*CachedBackend)(nil)
-	_ PrimaryReporter = (*CachedBackend)(nil)
-	_ KeySender       = (*CachedBackend)(nil)
-	_ BellSource      = (*CachedBackend)(nil)
-	_ io.Closer       = (*CachedBackend)(nil)
+	_ StyledReader     = (*CachedBackend)(nil)
+	_ Resizer          = (*CachedBackend)(nil)
+	_ SourceLauncher   = (*CachedBackend)(nil)
+	_ SourcePaneOpener = (*CachedBackend)(nil)
+	_ Invalidator      = (*CachedBackend)(nil)
+	_ FailureReporter  = (*CachedBackend)(nil)
+	_ Lister           = (*CachedBackend)(nil)
+	_ PrimaryReporter  = (*CachedBackend)(nil)
+	_ KeySender        = (*CachedBackend)(nil)
+	_ BellSource       = (*CachedBackend)(nil)
+	_ io.Closer        = (*CachedBackend)(nil)
 )

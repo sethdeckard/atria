@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // trackingBackend extends mockBackend with tracking for routed calls.
@@ -264,6 +265,102 @@ func TestComposite_RouteReadScrollback(t *testing.T) {
 	}
 	if primary.lastReadID != "" {
 		t.Errorf("primary was read for an integration session: %q", primary.lastReadID)
+	}
+}
+
+// openerBackend is a trackingBackend that opens tabs and splits.
+type openerBackend struct {
+	trackingBackend
+	tabWindow, tabDir string
+	splitID, splitDir string
+	splitDirection    SplitDirection
+}
+
+func (o *openerBackend) NewTab(windowID, dir string) (string, error) {
+	o.tabWindow, o.tabDir = windowID, dir
+	return "new-tab", nil
+}
+
+func (o *openerBackend) SplitPane(sessionID string, d SplitDirection, dir string) (string, error) {
+	o.splitID, o.splitDirection, o.splitDir = sessionID, d, dir
+	return "new-split", nil
+}
+
+func TestComposite_OpenPanes(t *testing.T) {
+	primary := &openerBackend{}
+	tmux := &openerBackend{}
+	kitty := &trackingBackend{}
+	comp := NewCompositeBackend(primary, "iterm", []Integration{
+		{Prefix: "tmux:", Source: "tmux", Backend: tmux},
+		{Prefix: "kitty:", Source: "kitty", Backend: kitty},
+	})
+
+	if id, err := comp.NewTabOn("tmux", "$1", "/p"); err != nil || id != "tmux:new-tab" || tmux.tabWindow != "$1" || tmux.tabDir != "/p" {
+		t.Errorf("NewTabOn tmux = %q, %v (window %q, dir %q)", id, err, tmux.tabWindow, tmux.tabDir)
+	}
+	if id, err := comp.NewTabOn("iterm", "w1", ""); err != nil || id != "new-tab" {
+		t.Errorf("NewTabOn on the primary = %q, %v; want an unprefixed ID", id, err)
+	}
+	if id, err := comp.SplitPane("tmux:%3", SplitBelow, "/q"); err != nil || id != "tmux:new-split" ||
+		tmux.splitID != "%3" || tmux.splitDirection != SplitBelow || tmux.splitDir != "/q" {
+		t.Errorf("SplitPane tmux = %q, %v (%q %v %q)", id, err, tmux.splitID, tmux.splitDirection, tmux.splitDir)
+	}
+	if id, err := comp.SplitPane("orig", SplitRight, ""); err != nil || id != "new-split" || primary.splitID != "orig" {
+		t.Errorf("SplitPane on the primary = %q, %v", id, err)
+	}
+
+	if _, err := comp.NewTabOn("kitty", "1", ""); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("NewTabOn kitty = %v, want ErrUnsupported", err)
+	}
+	if _, err := comp.SplitPane("kitty:7", SplitRight, ""); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("SplitPane kitty = %v, want ErrUnsupported", err)
+	}
+	if _, err := comp.NewTabOn("wezterm", "1", ""); err == nil || errors.Is(err, ErrUnsupported) {
+		t.Errorf("NewTabOn on a missing source = %v, want a plain error", err)
+	}
+
+	for source, want := range map[string]bool{"iterm": true, "tmux": true, "kitty": false, "wezterm": false} {
+		if got := comp.CanOpenPanes(source); got != want {
+			t.Errorf("CanOpenPanes(%q) = %v, want %v", source, got, want)
+		}
+	}
+}
+
+func TestCached_OpenPanesInvalidates(t *testing.T) {
+	tmux := &openerBackend{}
+	comp := NewCompositeBackend(&trackingBackend{}, "pty", []Integration{
+		{Prefix: "tmux:", Source: "tmux", Backend: tmux},
+	})
+	cached := NewCachedBackend(comp, time.Hour)
+	listings := func() int {
+		tmux.mu.Lock()
+		defer tmux.mu.Unlock()
+		return tmux.calls
+	}
+
+	if _, err := cached.ListSessions(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cached.ListSessions(); err != nil || listings() != 1 {
+		t.Fatalf("second listing reached tmux: %d listings, %v", listings(), err)
+	}
+	if id, err := cached.SplitPane("tmux:%3", SplitRight, ""); err != nil || id != "tmux:new-split" {
+		t.Fatalf("SplitPane = %q, %v", id, err)
+	}
+	if _, err := cached.ListSessions(); err != nil || listings() != 2 {
+		t.Errorf("listing after a split = %d listings, %v; want the cache invalidated", listings(), err)
+	}
+	if id, err := cached.NewTabOn("tmux", "$1", ""); err != nil || id != "tmux:new-tab" {
+		t.Fatalf("NewTabOn = %q, %v", id, err)
+	}
+	if _, err := cached.ListSessions(); err != nil || listings() != 3 {
+		t.Errorf("listing after a new tab = %d listings, %v; want the cache invalidated", listings(), err)
+	}
+	if !cached.CanOpenPanes("tmux") || cached.CanOpenPanes("pty") {
+		t.Error("CanOpenPanes through the cache")
+	}
+	if _, err := cached.NewTabOn("pty", "", ""); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("NewTabOn pty = %v, want ErrUnsupported", err)
 	}
 }
 

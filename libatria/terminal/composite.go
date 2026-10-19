@@ -178,6 +178,71 @@ func (c *CompositeBackend) NewSessionOn(source string) (string, error) {
 	return "", fmt.Errorf("backend %q not available", source)
 }
 
+// member returns the backend for source and the prefix its session IDs
+// carry in the composite ("" for the primary). Call it with c.mu held.
+func (c *CompositeBackend) member(source string) (Backend, string, bool) {
+	if source == c.primarySource {
+		return c.primary, "", true
+	}
+	for _, integ := range c.integrations {
+		if integ.Source == source {
+			return integ.Backend, integ.Prefix, true
+		}
+	}
+	return nil, "", false
+}
+
+// NewTabOn opens a tab in window windowID of the backend for source, which
+// must be a PaneOpener, and returns the new session's ID with that backend's
+// prefix. It returns ErrUnsupported when the backend isn't one.
+func (c *CompositeBackend) NewTabOn(source, windowID, dir string) (string, error) {
+	c.mu.RLock()
+	b, prefix, ok := c.member(source)
+	c.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("backend %q not available", source)
+	}
+	po, ok := b.(PaneOpener)
+	if !ok {
+		return "", fmt.Errorf("new tab on %s: %w", source, ErrUnsupported)
+	}
+	id, err := po.NewTab(windowID, dir)
+	if err != nil {
+		return "", err
+	}
+	return prefix + id, nil
+}
+
+// SplitPane routes to the backend that owns sessionID, which must be a
+// PaneSplitter, and returns the new session's ID with the same prefix. It
+// returns ErrUnsupported when the owner isn't one.
+func (c *CompositeBackend) SplitPane(sessionID string, d SplitDirection, dir string) (string, error) {
+	c.mu.RLock()
+	b, id, err := c.route(sessionID)
+	c.mu.RUnlock()
+	if err != nil {
+		return "", err
+	}
+	po, ok := b.(PaneSplitter)
+	if !ok {
+		return "", fmt.Errorf("split %s: %w", sessionID, ErrUnsupported)
+	}
+	newID, err := po.SplitPane(id, d, dir)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(sessionID, id) + newID, nil
+}
+
+// CanOpenPanes reports whether the backend for source is a PaneOpener.
+func (c *CompositeBackend) CanOpenPanes(source string) bool {
+	c.mu.RLock()
+	b, _, ok := c.member(source)
+	c.mu.RUnlock()
+	_, opener := b.(PaneOpener)
+	return ok && opener
+}
+
 // SendText routes to the correct backend based on session ID prefix.
 func (c *CompositeBackend) SendText(sessionID, text string) error {
 	c.mu.RLock()
@@ -424,13 +489,14 @@ var _ Backend = (*CompositeBackend)(nil)
 
 // Compile-time checks for the optional interfaces the composite implements.
 var (
-	_ StyledReader    = (*CompositeBackend)(nil)
-	_ Resizer         = (*CompositeBackend)(nil)
-	_ SourceLauncher  = (*CompositeBackend)(nil)
-	_ FailureReporter = (*CompositeBackend)(nil)
-	_ Lister          = (*CompositeBackend)(nil)
-	_ PrimaryReporter = (*CompositeBackend)(nil)
-	_ KeySender       = (*CompositeBackend)(nil)
-	_ BellSource      = (*CompositeBackend)(nil)
-	_ io.Closer       = (*CompositeBackend)(nil)
+	_ StyledReader     = (*CompositeBackend)(nil)
+	_ Resizer          = (*CompositeBackend)(nil)
+	_ SourceLauncher   = (*CompositeBackend)(nil)
+	_ SourcePaneOpener = (*CompositeBackend)(nil)
+	_ FailureReporter  = (*CompositeBackend)(nil)
+	_ Lister           = (*CompositeBackend)(nil)
+	_ PrimaryReporter  = (*CompositeBackend)(nil)
+	_ KeySender        = (*CompositeBackend)(nil)
+	_ BellSource       = (*CompositeBackend)(nil)
+	_ io.Closer        = (*CompositeBackend)(nil)
 )

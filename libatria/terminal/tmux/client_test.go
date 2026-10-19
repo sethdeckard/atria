@@ -667,6 +667,43 @@ printf 'old 1\nold 2\nprompt\n\n\n'
 	}
 }
 
+func TestNewTabAndSplitPane(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := writeFakeTmux(t, `
+printf '%s\n' "$*" >> "`+logPath+`"
+echo '%9'
+`)
+	c := NewClient(Options{Path: tmuxPath})
+	calls := []func() (string, error){
+		func() (string, error) { return c.NewTab("$1", "") },
+		func() (string, error) { return c.NewTab("$1", "/p/a#b") },
+		func() (string, error) { return c.SplitPane("%3", terminal.SplitRight, "") },
+		func() (string, error) { return c.SplitPane("%3", terminal.SplitBelow, "/p") },
+		func() (string, error) { return c.SplitPane("%3", terminal.SplitBelow, "/p;") },
+	}
+	for i, call := range calls {
+		id, err := call()
+		if err != nil || id != "%9" {
+			t.Fatalf("call %d = %q, %v; want %%9", i, id, err)
+		}
+	}
+	if _, err := c.NewTab("", "/p"); err == nil {
+		t.Error("NewTab with no window succeeded")
+	}
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "new-window -d -t $1: -P -F #{pane_id}\n" +
+		"new-window -d -t $1: -P -F #{pane_id} -c /p/a##b\n" +
+		"split-window -d -t %3 -h -c #{pane_current_path} -P -F #{pane_id}\n" +
+		"split-window -d -t %3 -c /p -P -F #{pane_id}\n" +
+		"split-window -d -t %3 -c /p\\; -P -F #{pane_id}\n"
+	if string(logData) != want {
+		t.Fatalf("tmux calls:\n%s\nwant:\n%s", logData, want)
+	}
+}
+
 func TestRunWrapsNoServerAndTimeoutAsUnavailable(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "tmux.log")
 	tmuxPath := writeFakeTmux(t, `

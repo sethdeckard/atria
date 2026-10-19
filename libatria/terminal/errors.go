@@ -16,6 +16,12 @@ import (
 // context.DeadlineExceeded).
 var ErrUnavailable = errors.New("terminal unavailable")
 
+// ErrUnsupported marks a call the owning terminal can't do, such as opening a
+// tab in a chosen window. Ask CanOpenPanes before offering that action rather
+// than finding out from this error, because where the call is supported it
+// opens a pane.
+var ErrUnsupported = errors.New("not supported by this terminal")
+
 // DefaultCommandTimeout is the default limit for CLI commands, the ps/lsof
 // helpers, and iTerm2 socket round trips when a client's options leave the
 // timeout unset.

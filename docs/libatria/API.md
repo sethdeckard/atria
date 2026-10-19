@@ -206,6 +206,39 @@ type SourceError struct {
 
 `ConsumeBell` reports whether the session rang its bell since the last time anyone asked, and clears the flag. Only the PTY client has bell state; the other terminals don't include BEL in captured text. The PTY's plain `ReadScreen` already consumes the flag and prepends `"\x07"` to its output, which is how the classifier sees a bell today. Its styled read doesn't touch the flag, because a BEL in display output would ring the viewer's own terminal. `ConsumeBell` exists so a caller that reads only the styled screen can still get the bell; see `StyledScreens` in the `watch` package. The composite and cache route it and return false when the owning backend has no bell state.
 
+### Opening Panes
+
+```go
+var ErrUnsupported = errors.New("not supported by this terminal")
+
+type SplitDirection int
+const (
+    SplitRight SplitDirection = iota // side by side, the new pane on the right
+    SplitBelow                       // stacked, the new pane below
+)
+
+type PaneOpener interface {
+    NewTab(windowID, dir string) (string, error)
+    PaneSplitter
+}
+type PaneSplitter interface {
+    SplitPane(sessionID string, d SplitDirection, dir string) (string, error)
+}
+type SourcePaneOpener interface {
+    NewTabOn(source, windowID, dir string) (string, error)
+    CanOpenPanes(source string) bool
+    PaneSplitter
+}
+```
+
+`NewTab` opens a shell in a new tab of a listed window (`windowID` is a `Session.Window.ID`), and `SplitPane` splits a listed pane. Both return the new session's ID, as `NewSession` does, and open a shell; to start an agent there, send it a command with `RunCommand`. iTerm2 and tmux are `PaneOpener`s. DeviceTerm, kitty, WezTerm, and PTY aren't.
+
+Through a composite or cache, call `NewTabOn` with the window's `Source`, because a window ID doesn't name its terminal, and `SplitPane` with the session ID you hold. The new ID carries its terminal's prefix, and the cache drops its listing so the next one shows the pane. Ask `CanOpenPanes(source)` before offering either action. A terminal that can't do them returns `ErrUnsupported`, but on one that can, the call itself opens a pane, so the error is no way to probe.
+
+`dir` is the new shell's working directory. Leave it empty and a new tab gets the terminal's default, and a split gets the split pane's own directory: tmux's `pane_current_path`, or iTerm2's `path` variable when it knows one (shell integration or OSC 7), otherwise the profile's setting. To land a split in a given project, pass its directory; a pane's `Cwd` is best-effort and can be empty or lag a `cd`. Neither call checks that `dir` exists, and tmux opens the shell in your home directory when it doesn't, without an error.
+
+Neither call brings a window or the terminal forward. tmux opens with `-d`, so attached clients stay on the window and pane they show. iTerm2 opens a new tab in the background, unselected. An iTerm2 split makes the new pane active, so `SplitPane` then tries to select the original again. A keystroke typed in that moment can land in the new pane, and if the reselect fails, the split still succeeds and the new pane stays active.
+
 ### Named Keys
 
 ```go
