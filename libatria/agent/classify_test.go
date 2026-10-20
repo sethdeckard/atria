@@ -218,6 +218,27 @@ func TestClassifyScreen(t *testing.T) {
 			"Would you like to proceed?",
 		},
 		{
+			"claude plan approval with type here and a wrapped question",
+			"Claude has written up a plan and is ready to execute. Would you like to\nproceed?\n\n ❯ 1. Yes, clear context (62% used) and auto-accept edits (shift+tab)\n   2. Yes, auto-accept edits\n   3. Yes, manually approve edits\n   4. Type here to tell Claude what to change\n\n ctrl-g to edit in Mvim · ~/.claude/plans/...",
+			Claude,
+			StatusNeedsInput,
+			"4. Type here to tell Claude what to change",
+		},
+		{
+			"claude plan approval with keep planning and a wrapped question",
+			"Claude has written up a plan and is ready to execute. Would you like to\nproceed?\n\n ❯ 1. Yes, and auto-accept edits\n   2. Yes, and manually approve edits\n   3. No, keep planning\n",
+			Claude,
+			StatusNeedsInput,
+			"3. No, keep planning",
+		},
+		{
+			"claude plan approval with auto mode and a wrapped question",
+			"Claude has written up a plan and is ready to execute. Would you like to\nproceed?\n\n ❯ 1. Yes, and use auto mode\n   2. Yes, manually approve edits\n   3. Tell Claude what to change\n\n shift+tab to approve with this feedback\n",
+			Claude,
+			StatusNeedsInput,
+			"3. Tell Claude what to change",
+		},
+		{
 			"claude working in scrollback ignored",
 			"line1\n✻ Reading…\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n❯ \n? for shortcuts",
 			Claude,
@@ -603,6 +624,12 @@ const (
 		"  Press enter to confirm or esc to cancel\n"
 )
 
+func TestPlanHintSkipsPermissionOption(t *testing.T) {
+	if got := ClassifyOutput("3. No, and tell Claude what to do differently (esc)", Claude); got == StatusNeedsInput {
+		t.Errorf("a permission dialog's option classified as %q; the plan hint must not claim it", got)
+	}
+}
+
 func TestPromptText(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -610,6 +637,15 @@ func TestPromptText(t *testing.T) {
 		agent  Type
 		want   string
 	}{
+		{"claude plan approval with type here and a wrapped question",
+			"Claude has written up a plan and is ready to execute. Would you like to\nproceed?\n\n ❯ 1. Yes, auto-accept edits\n   2. Yes, manually approve edits\n   3. Type here to tell Claude what to change\n", Claude,
+			"Claude has written up a plan and is ready to execute. Would you like to proceed?"},
+		{"claude plan approval with keep planning and a wrapped question",
+			"Claude has written up a plan and is ready to execute. Would you like to\nproceed?\n\n ❯ 1. Yes, and auto-accept edits\n   2. Yes, and manually approve edits\n   3. No, keep planning\n", Claude,
+			"Claude has written up a plan and is ready to execute. Would you like to proceed?"},
+		{"claude plan approval with auto mode and a wrapped question",
+			"Claude has written up a plan and is ready to execute. Would you like to\nproceed?\n\n ❯ 1. Yes, and use auto mode\n   2. Yes, manually approve edits\n   3. Tell Claude what to change\n\n shift+tab to approve with this feedback\n", Claude,
+			"Claude has written up a plan and is ready to execute. Would you like to proceed?"},
 		{"claude question above a footer", claudeQuestionDialog, Claude,
 			"A refused request returns an empty result. How should the plan handle it?"},
 		{"codex question pattern in view", codexApprovalWithQuestion, Codex,

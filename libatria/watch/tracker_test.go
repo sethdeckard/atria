@@ -174,6 +174,64 @@ func TestObserveNeedsInputEdgesAndAttention(t *testing.T) {
 	}
 }
 
+func TestObserveAttentionChanged(t *testing.T) {
+	tr := Tracker{Type: agent.Claude, Status: agent.StatusWorking}
+	if got := tr.Observe("Do you want to proceed?\n", t0); !got.EnteredNeedsInput() || got.AttentionChanged {
+		t.Fatalf("entering needs_input is a status change, not an attention change: %+v", got)
+	}
+	// The same prompt with other text around it: applied, same attention.
+	if got := tr.Observe("output\nDo you want to proceed?\n", t0); !got.Applied || got.AttentionChanged {
+		t.Fatalf("same prompt, changed screen: %+v attention=%q", got, tr.Attention)
+	}
+	// A different prompt with no working read in between.
+	got := tr.Observe("Allow file edit?\n", t0)
+	if got.StatusChanged() || !got.AttentionChanged || tr.Attention != "Allow file edit?" {
+		t.Fatalf("next prompt: %+v attention=%q", got, tr.Attention)
+	}
+	// A stale read of it changes nothing.
+	if got := tr.Observe("Allow file edit?\n", t0); got.Applied || got.AttentionChanged {
+		t.Fatalf("stale read: %+v", got)
+	}
+}
+
+func TestObserveRewrappedPromptIsNotAttentionChanged(t *testing.T) {
+	// Codex's question is matched on its own row, so a narrow pane cuts it.
+	wide := "Would you like to run the following command?\n\n  $ ls\n\n› 1. Yes\n  2. No\n\n  Press enter to confirm or esc to cancel\n"
+	narrow := "Would you like to run the\nfollowing command?\n  $ ls\n› 1. Yes\n  2. No\n  Press enter to confirm or esc\nto cancel\n"
+	// Claude's wrapped plan question is joined from rows, and a mid-word
+	// break comes back with a space in it.
+	claudeWide := "Claude has written up a plan and is ready to execute. Would you like to proceed?\n\n ❯ 1. Yes, and use auto mode\n   2. Yes, manually approve edits\n   3. Tell Claude what to change\n"
+	claudeSplit := "Claude has written up a plan and is ready to execute. Would you like to pro\nceed?\n\n ❯ 1. Yes, and use auto mode\n   2. Yes, manually approve edits\n   3. Tell Claude what to change\n"
+	// A narrower pane puts the question alone on the row below its
+	// preamble, and that row is the match, so only the suffix comes back.
+	claudeOwnRow := "Claude has written up a plan and is ready to execute.\nWould you like to proceed?\n\n ❯ 1. Yes, and use auto mode\n   2. Yes, manually approve edits\n   3. Tell Claude what to change\n"
+	tests := []struct {
+		name        string
+		agent       agent.Type
+		first, next string
+	}{
+		{"codex wide to narrow", agent.Codex, wide, narrow},
+		{"codex narrow to wide", agent.Codex, narrow, wide},
+		{"claude split mid-word", agent.Claude, claudeWide, claudeSplit},
+		{"claude question onto its own row", agent.Claude, claudeWide, claudeOwnRow},
+		{"claude question back onto the preamble's row", agent.Claude, claudeOwnRow, claudeWide},
+	}
+	for _, tt := range tests {
+		tr := Tracker{Type: tt.agent, Status: agent.StatusWorking}
+		if got := tr.Observe(tt.first, t0); !got.EnteredNeedsInput() {
+			t.Fatalf("%s: first read %+v, want needs_input", tt.name, got)
+		}
+		first := tr.Attention
+		got := tr.Observe(tt.next, t0)
+		if first == tr.Attention {
+			t.Fatalf("%s: both reads extracted %q; the case doesn't rewrap", tt.name, first)
+		}
+		if !got.Applied || got.AttentionChanged {
+			t.Errorf("%s: rewrap %q -> %q gave %+v, want no AttentionChanged", tt.name, first, tr.Attention, got)
+		}
+	}
+}
+
 func TestRefreshTable(t *testing.T) {
 	tests := []struct {
 		name         string

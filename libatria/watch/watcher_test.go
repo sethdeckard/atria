@@ -98,6 +98,36 @@ func TestNeedsInputEdgeEmitsOnceWithAttention(t *testing.T) {
 	}
 }
 
+func TestBackToBackPromptsEmitAttentionChanged(t *testing.T) {
+	b := newFake()
+	b.setSessions(claudeSession(b, "s1"))
+	w, clock := newWatcher(t, b, Options{})
+	ctx := context.Background()
+	w.discoverOnce(ctx)
+	w.pollOnce(ctx) // first read: StatusKnown{working}
+	drain(w.Events())
+
+	b.setScreen("s1", "Do you want to proceed?\n")
+	clock.Advance(time.Second)
+	w.pollOnce(ctx)
+	if ev := recvEvent(t, w.Events()); ev.Kind != StatusChanged || ev.To != agent.StatusNeedsInput {
+		t.Fatalf("first prompt = %+v, want StatusChanged to needs_input", ev)
+	}
+
+	// The next prompt replaces it with no working read between them.
+	b.setScreen("s1", "Allow file edit?\n")
+	clock.Advance(time.Second)
+	w.pollOnce(ctx)
+	evs := drain(w.Events())
+	if len(evs) != 1 || evs[0].Kind != AttentionChanged || evs[0].MatchLine != "Allow file edit?" ||
+		evs[0].Session.Attention != "Allow file edit?" || evs[0].Session.Status != agent.StatusNeedsInput {
+		t.Fatalf("second prompt = %+v, want one AttentionChanged carrying the new question", evs)
+	}
+	if got := AttentionChanged.String(); got != "attention" {
+		t.Errorf("AttentionChanged.String() = %q", got)
+	}
+}
+
 func TestFirstReadIsStatusKnownNotStatusChanged(t *testing.T) {
 	b := newFake()
 	b.setSessions(claudeSession(b, "s1"))

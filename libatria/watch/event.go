@@ -36,6 +36,15 @@ const (
 	// resize or a divider drag doesn't, unless the drag moves a divider into
 	// or out of line with another (see splitLayout).
 	PanesChanged
+	// AttentionChanged reports that a session in needs_input now shows a
+	// different prompt, one dialog having replaced another with no read in
+	// between that left needs_input. Session carries the new Attention, and
+	// MatchLine holds it too. A new prompt whose question matches the last
+	// one's, or contains it or is contained in it once whitespace is
+	// removed, doesn't count, so a resize that rewraps the question doesn't
+	// fire it. After a session's StatusKnown, entering needs_input is a
+	// StatusChanged, not this.
+	AttentionChanged
 )
 
 func (k EventKind) String() string {
@@ -58,6 +67,8 @@ func (k EventKind) String() string {
 		return "known"
 	case PanesChanged:
 		return "panes"
+	case AttentionChanged:
+		return "attention"
 	default:
 		return "unknown"
 	}
@@ -109,7 +120,7 @@ type Event struct {
 
 	From, To         agent.Status // StatusChanged
 	FromType, ToType agent.Type   // TypeChanged
-	MatchLine        string       // StatusChanged and StatusKnown: the classifier's line, the attention text when the status is needs_input
+	MatchLine        string       // StatusChanged and StatusKnown: the classifier's line, the attention text when the status is needs_input; AttentionChanged: the new attention text
 	Reason           RemoveReason // SessionRemoved
 	Screen           string       // ScreenRead; never carries a bell byte
 	Err              error        // Error; errors.Is(Err, terminal.ErrUnavailable) for a lost terminal, errors.As into a *terminal.SourceError names the source of a listing failure

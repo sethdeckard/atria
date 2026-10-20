@@ -1001,6 +1001,9 @@ func (w *Watcher) pollOnce(ctx context.Context) bool {
 			}
 			events = append(events, Event{Kind: StatusChanged, Time: readAt, Session: t.snapshot(), From: tr.From, To: tr.To, MatchLine: line})
 		}
+		if tr.AttentionChanged {
+			events = append(events, Event{Kind: AttentionChanged, Time: readAt, Session: t.snapshot(), MatchLine: t.tr.Attention})
+		}
 	}
 	w.mu.Unlock()
 	return w.emit(ctx, events)

@@ -63,7 +63,8 @@ w := watch.New(b, watch.Options{WatchDirs: []string{"/Users/me/projects"}})
 go w.Run(ctx)
 for ev := range w.Events() {
     needsInput := (ev.Kind == watch.StatusChanged && ev.To == agent.StatusNeedsInput) ||
-        (ev.Kind == watch.StatusKnown && !ev.Session.Preexisting && ev.Session.Status == agent.StatusNeedsInput)
+        (ev.Kind == watch.StatusKnown && !ev.Session.Preexisting && ev.Session.Status == agent.StatusNeedsInput) ||
+        ev.Kind == watch.AttentionChanged
     if needsInput {
         notify(ev.Session.ID, ev.MatchLine)
     }
@@ -574,7 +575,7 @@ type Options struct {
     Logf              func(format string, args ...any)
 }
 
-type EventKind int    // SessionAdded, SessionRemoved, StatusChanged, ActivityChanged, TypeChanged, ScreenRead, Error, StatusKnown, PanesChanged
+type EventKind int    // SessionAdded, SessionRemoved, StatusChanged, ActivityChanged, TypeChanged, ScreenRead, Error, StatusKnown, PanesChanged, AttentionChanged
 type RemoveReason int // RemovedGone, RemovedOrphan, RemovedOutOfScope
 
 type Snapshot struct {
@@ -598,7 +599,7 @@ type Event struct {
     Session          Snapshot
     From, To         agent.Status // StatusChanged
     FromType, ToType agent.Type   // TypeChanged
-    MatchLine        string       // StatusChanged, StatusKnown
+    MatchLine        string       // StatusChanged, StatusKnown, AttentionChanged
     Reason           RemoveReason // SessionRemoved
     Screen           string       // ScreenRead
     Err              error        // Error
@@ -617,6 +618,10 @@ func (w *Watcher) Panes() []terminal.Session
 A session's first screen read is reported as `StatusKnown`, not as a `StatusChanged` from that placeholder. It comes right after `SessionAdded` when `Identify` read the screen to type the session, and from the first successful poll otherwise. A first read that matches no pattern leaves the status working, and a session removed before any read succeeds gets no `StatusKnown`.
 
 Handle both kinds when you act on a status. A session that's already sitting at a prompt reports needs_input in its `StatusKnown`, never in a `StatusChanged`.
+
+`AttentionChanged` reports a new prompt in a session that stays in needs_input, when one dialog replaces another with no read between them that leaves needs_input. `MatchLine` and `Session.Attention` hold the new prompt. Entering needs_input is still a `StatusChanged` (after the session's `StatusKnown`), so to notify when one prompt replaces another, handle this kind too; code that switches on `EventKind` will see it.
+
+A resize rewraps the question, so prompts are compared with whitespace removed, and two count as the same when one contains the other. A new dialog whose question matches or contains the last one's doesn't fire it, two Bash approvals that both ask "Do you want to proceed?" among them.
 
 `Snapshot.Preexisting` says the session was already there when its terminal was listed, rather than appearing while you watched. Take a preexisting session's `StatusKnown` as its starting state, and a new session's as a change: a new tab whose agent is already asking reports needs_input in a `StatusKnown` with `Preexisting` false.
 

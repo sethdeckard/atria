@@ -334,6 +334,7 @@ The patterns live in `libatria/agent/patterns.go`, each with a comment naming th
 
 **Claude Code**
 - Permission dialogs have ~10 blank lines of padding below them; the non-blank anchor handles this.
+- Plan-mode approval is matched on its question, and on its last option (`Tell Claude what to change`, earlier `Type here to tell Claude what to change`, or `No, keep planning`) for when the question wraps and leaves "proceed?" alone on a row.
 - A `⏵⏵ … esc to interrupt` status bar counts as working while a background shell task runs. It doesn't when the line also shows a `(running)` task, because that bar stays up while Claude is idle.
 
 **Codex**

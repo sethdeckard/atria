@@ -42,6 +42,13 @@ var claudePatterns = &Patterns{
 		regexp.MustCompile(`Would you like to proceed`), // plan-mode approval; its ❯ cursor also matches idle
 		regexp.MustCompile(`Allow .+\?`),                // "Allow file edit?" and similar
 		hint(`Esc to cancel`),                           // permission dialog footer
+		// Plan-mode approval's last option: "Tell Claude what to change",
+		// earlier "Type here to tell Claude what to change", and "No, keep
+		// planning" before that. It still matches when the question wraps and
+		// leaves "proceed?" alone on a row, which the proceed pattern can't
+		// see. A permission dialog's "No, and tell Claude what to do
+		// differently" doesn't match.
+		hint(`[Tt]ell Claude what to change|No, keep planning`),
 	},
 	Working: []*regexp.Regexp{
 		// Spinner glyph, then the activity word ("✶ Doodling…", "* Germinating...").

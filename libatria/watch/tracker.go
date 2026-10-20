@@ -79,6 +79,9 @@ type Transition struct {
 	Matched   agent.Status // the raw ClassifyScreen result, "" when nothing matched
 	MatchLine string       // the raw ClassifyScreen line
 	Reason    Reason
+	// AttentionChanged is set when a read in needs_input stays in
+	// needs_input with a different prompt: one dialog replaced another.
+	AttentionChanged bool
 }
 
 // StatusChanged reports whether the status is different after this read.
@@ -112,7 +115,8 @@ type RefreshResult struct {
 // idle after StableUnmatchedReads reads, or after BlankReads reads when the
 // screen is blank. Anything else changes nothing. When a status is applied,
 // LastActivity is stamped, Attention is set to agent.PromptText on entering
-// or staying in needs_input, and cleared on leaving it.
+// or staying in needs_input, and cleared on leaving it; a different prompt
+// while staying sets Transition.AttentionChanged.
 func (t *Tracker) Observe(screen string, now time.Time) Transition {
 	t.ScreenChecked = true
 	t.LastRead = now
@@ -165,12 +169,25 @@ func (t *Tracker) Observe(screen string, now time.Time) Transition {
 	t.Status = status
 	t.LastActivity = now
 	if status == agent.StatusNeedsInput {
+		prev := t.Attention
 		t.Attention = agent.PromptText(screen, t.Type)
+		tr.AttentionChanged = tr.From == agent.StatusNeedsInput && !samePrompt(prev, t.Attention)
 	}
 	if tr.From == agent.StatusNeedsInput && status != agent.StatusNeedsInput {
 		t.Attention = ""
 	}
 	return tr
+}
+
+// samePrompt treats two attention texts as one prompt when, with whitespace
+// removed, either contains the other. That absorbs a rewrap, which moves
+// where rows break: a word split across rows comes back with a space in it,
+// and a question matched on its own row keeps only that row. It also means
+// a new dialog whose question matches or contains the last one's counts as
+// the same prompt.
+func samePrompt(a, b string) bool {
+	a, b = strings.Join(strings.Fields(a), ""), strings.Join(strings.Fields(b), "")
+	return strings.Contains(a, b) || strings.Contains(b, a)
 }
 
 // Refresh applies one discovery listing of the session, taken at now.
