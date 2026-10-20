@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.16.0
+
+- Add `terminal.PaneOpener` to the library, for opening a shell where the caller chooses: `NewTab` in a listed window, or `SplitPane` of a listed pane (`SplitRight` or `SplitBelow`), each in a given directory and returning the new session's ID. iTerm2 and tmux implement it. Through a composite or cache, use `SourcePaneOpener`: `NewTabOn` takes the window's `Source`, and `CanOpenPanes` says up front whether to offer the action, because on a terminal that can, the call opens a pane, and on one that can't, it returns `ErrUnsupported`. Neither call brings a window forward. An iTerm2 split selects the original pane again afterwards, and a keystroke typed in that moment can land in the new one. A `dir` that doesn't exist isn't an error; tmux opens the shell in your home directory instead
+- Add the `AttentionChanged` event: a session that stays in needs_input while one dialog replaces another now reports the new prompt in `MatchLine` and `Session.Attention`, where before a consumer kept the old question. Prompts are compared with whitespace removed and one containing the other counting as the same, so a resize that rewraps the question doesn't fire it, and neither does a new dialog asking the same question. Callers that switch on `EventKind` will see this new kind
+- Fix Claude Code's plan approval reading as idle, in atria and in the Watcher, when its question wrapped and left "proceed?" alone on a row: the dialog's last option (`Tell Claude what to change`, or the older `Type here to tell Claude what to change` and `No, keep planning`) now marks it, and the attention text is the whole question
+
 ## v0.15.0
 
 - Breaking for library callers: `terminal.Backend` gains `ReadScrollback(sessionID, lines, styled)`, so anything that implements `Backend` itself (a test fake, a backend of your own) needs the method. It returns up to `lines` lines ending at the bottom of the screen, reaching back into history on tmux and iTerm2; DeviceTerm, kitty, WezTerm, and PTY return the visible screen. `styled` keeps the escapes `ReadScreenStyled` keeps. A `lines` of 0 or less returns the visible screen, so a whole unlimited iTerm2 history can't come back by accident
