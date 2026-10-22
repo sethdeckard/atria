@@ -435,6 +435,10 @@ An empty `dir` skips the `cd` in both `LaunchCommand` and `Launch`, so pass the 
 
 `SendPrompt` sends the text, waits `SubmitDelay`, then sends a carriage return as a separate write, because the raw-mode TUIs these agents run drop a trailing newline that arrives in the same write. Copilot gets its own path: newlines are flattened to spaces (its input treats Enter as newline, not submit), and the text goes one rune per write with `CopilotRuneDelay` between them.
 
+When the text's last whitespace-separated word starts with `$` or `@`, and the text doesn't already end in whitespace, `SendPrompt` adds one space before the carriage return. Codex opens a popup while its composer ends in a `$skill` or `@file` mention, and its Enter inserts the highlighted item rather than submitting, so without the space the prompt sits unsent. The space closes the popup. Every agent but Copilot gets it, because where no popup is open the space ends up harmlessly at the end of the prompt (Claude Code's `@` popup lets Enter through as of 2.1.305). The check looks only at the first character, so "costs $100" gets the space too.
+
+A prompt that ends in a `/command` is sent as it is. In both Codex and Claude Code, Enter on the `/` popup runs the highlighted command, so `/stat` runs `/status`.
+
 `FindProcess` returns the first process whose `argv[0]` basename is a known agent binary. For `node`, `bun`, and `deno` it checks the first argument that isn't a flag instead, which is how an npm install runs (`node /opt/homebrew/bin/claude`).
 
 ## Package watch
