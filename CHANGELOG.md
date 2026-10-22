@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.1
+
+- Fix a prompt sent to Codex staying unsubmitted when it ended in a `$skill` or `@file` mention, in atria's chat view and in `agent.SendPrompt`: Codex opens a popup while its composer ends in a mention, and its Enter inserts the highlighted item instead of submitting. `SendPrompt` now adds a space before the carriage return when the last word starts with `$` or `@`, which closes the popup; every agent but Copilot gets it, so such a prompt reaches the agent with one trailing space. A trailing `/command` is sent as it is, because Enter there runs the highlighted command
+- Requires Go 1.26.10, which fixes GO-2026-6809 in `crypto/x509` (compromised intermediate certificates were trusted)
+
 ## v0.16.0
 
 - Add `terminal.PaneOpener` to the library, for opening a shell where the caller chooses: `NewTab` in a listed window, or `SplitPane` of a listed pane (`SplitRight` or `SplitBelow`), each in a given directory and returning the new session's ID. iTerm2 and tmux implement it. Through a composite or cache, use `SourcePaneOpener`: `NewTabOn` takes the window's `Source`, and `CanOpenPanes` says up front whether to offer the action, because on a terminal that can, the call opens a pane, and on one that can't, it returns `ErrUnsupported`. Neither call brings a window forward. An iTerm2 split selects the original pane again afterwards, and a keystroke typed in that moment can land in the new one. A `dir` that doesn't exist isn't an error; tmux opens the shell in your home directory instead
